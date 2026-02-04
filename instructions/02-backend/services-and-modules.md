@@ -7,6 +7,7 @@ apps/api/
   app/
     api/
       v1/
+        health.py
         chat.py
         recommendations.py
         events.py
@@ -64,4 +65,3 @@ apps/api/
 - Centralize exception handling in middleware.
 - Map internal errors to the API error model.
 - Always return `trace_id`.
-

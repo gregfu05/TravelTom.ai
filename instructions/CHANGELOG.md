@@ -7,6 +7,7 @@
 - Refined recommender specs with retrieval sizes, ranking signals, and flight penalties.
 - Reduced open questions to those explicitly listed in the design doc.
 - Noted runtime README placeholders in `repo-structure.md`.
+- Added health endpoint to backend docs and layout.
 
 ## 2026-02-04
 
