@@ -8,6 +8,8 @@
 - Reduced open questions to those explicitly listed in the design doc.
 - Noted runtime README placeholders in `repo-structure.md`.
 - Added health endpoint to backend docs and layout.
+- Documented Alembic config path usage in migrations guide.
+- Added guidance to use `.env` for configuration and avoid hard-coded env vars.
 
 ## 2026-02-04
 
