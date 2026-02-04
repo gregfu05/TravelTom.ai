@@ -10,6 +10,7 @@
 - Added health endpoint to backend docs and layout.
 - Documented Alembic config path usage in migrations guide.
 - Added guidance to use `.env` for configuration and avoid hard-coded env vars.
+- Noted ORM model location in data model documentation.
 
 ## 2026-02-04
 

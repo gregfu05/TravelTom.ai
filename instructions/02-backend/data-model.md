@@ -102,4 +102,4 @@ Indexes:
 - Use UUIDs for all primary keys.
 - Store session state as JSONB; validate with Pydantic before persist.
 - Use pgvector for embedding similarity in MVP.
-
+- ORM models live in `apps/api/app/db/models/` and are registered via `Base.metadata` for Alembic.
