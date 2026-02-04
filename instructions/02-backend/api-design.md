@@ -23,6 +23,18 @@ All errors return JSON:
 
 ## Endpoints
 
+### GET /api/v1/health
+
+Liveness check for the API service.
+
+Response:
+
+```json
+{
+  "status": "ok"
+}
+```
+
 ### POST /api/v1/chat
 
 Primary chat endpoint. Orchestrates tool calls and returns a response.
@@ -166,4 +178,3 @@ Returns the current itinerary for a session.
 - 409 Conflict: Idempotency conflict.
 - 429 Too Many Requests: Rate limit.
 - 500 Internal Server Error: Unhandled errors.
-
