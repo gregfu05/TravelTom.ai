@@ -16,9 +16,7 @@ sys.path.append(str(BASE_DIR))
 
 from app.core.config import get_settings  # noqa: E402
 from app.db.base import Base  # noqa: E402
-
-# Import models here when they exist to register with metadata.
-# from app.db import models  # noqa: F401
+from app.db import models  # noqa: F401,E402
 
 config = context.config
 
