@@ -18,6 +18,7 @@ If the design document is not available locally, proceed using the assumptions d
 - Determinism first: The Recommendation Service must be deterministic and testable independent of the LLM.
 - LLM orchestration only: The LLM must not invent recommendations. It only selects tools, interprets results, and formats responses.
 - Strict schema validation: All tool calls and tool responses must use explicit schemas with validation and failure handling.
+- Configuration hygiene: Never hard-code environment variables or URLs in code; use `.env` and runtime environment configuration.
 - Incremental changes: No sweeping refactors. Each step should be small, with a clear acceptance bar.
 - Commit discipline: One logical change per commit. Use the suggested commit message for each step.
 - Docs are first-class: Every step requires explicit doc updates.
@@ -44,4 +45,3 @@ If the design document is not available locally, proceed using the assumptions d
 - Relative links are used for internal docs.
 - Mermaid diagrams are used for architecture and flows.
 - All schemas are defined using Pydantic models or JSON Schema where applicable.
-

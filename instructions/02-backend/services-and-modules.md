@@ -59,6 +59,7 @@ apps/api/
 - Use environment-based configuration.
 - Validate config with Pydantic Settings.
 - Provide a `.env.example` for local dev.
+- Do not hard-code environment-specific values (URLs, secrets, endpoints) in code.
 
 ## Error handling
 

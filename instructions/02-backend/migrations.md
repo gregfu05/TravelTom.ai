@@ -3,9 +3,9 @@
 ## Workflow
 
 1. Update SQLAlchemy models.
-2. Generate migration: `alembic revision --autogenerate -m "describe change"`.
+2. Generate migration: `alembic -c apps/api/alembic.ini revision --autogenerate -m "describe change"`.
 3. Review and edit the migration file.
-4. Apply migration locally: `alembic upgrade head`.
+4. Apply migration locally: `alembic -c apps/api/alembic.ini upgrade head`.
 5. Verify schema matches expectations.
 
 ## Conventions
@@ -17,7 +17,6 @@
 
 ## Verification
 
-- Use `alembic history` to confirm revision order.
-- Use `alembic current` after upgrade.
+- Use `alembic -c apps/api/alembic.ini history` to confirm revision order.
+- Use `alembic -c apps/api/alembic.ini current` after upgrade.
 - Run DB smoke tests that validate critical tables exist.
-
