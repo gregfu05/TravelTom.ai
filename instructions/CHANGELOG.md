@@ -6,8 +6,8 @@
 - Adjusted repo structure to `apps/api` and `apps/web` and updated paths across the plan.
 - Refined recommender specs with retrieval sizes, ranking signals, and flight penalties.
 - Reduced open questions to those explicitly listed in the design doc.
+- Noted runtime README placeholders in `repo-structure.md`.
 
 ## 2026-02-04
 
 - Initial creation of instructions folder and documentation set.
-

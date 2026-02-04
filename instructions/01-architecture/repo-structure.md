@@ -9,7 +9,6 @@ Expected top-level layout (new additions only; existing folders are preserved):
   /worker  (optional, final)
 /infra
   /docker
-    /db
   /azure
 /scripts
 /tests
@@ -29,3 +28,4 @@ Expected top-level layout (new additions only; existing folders are preserved):
 - `instructions`: This documentation set.
 - `traveltom`: Existing prototypes and experiments. Do not refactor.
 
+Note: Each runtime folder includes a short `README.md` placeholder describing purpose and ownership.
