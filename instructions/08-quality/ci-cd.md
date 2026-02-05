@@ -3,9 +3,20 @@
 ## Minimal CI pipeline
 
 1. Install dependencies.
-2. Lint (Python and TS).
-3. Type check (mypy, tsc).
-4. Run unit and integration tests.
+2. Format check (Black).
+3. Lint (Ruff for Python, plus TS linting).
+4. Type check (mypy, tsc).
+5. Run unit and integration tests.
+
+Recommended commands:
+- `black --check .`
+- `ruff check .`
+- `mypy apps/api`
+
+## Branch and PR checks
+
+- `Quality Checks` workflow runs on every push to any branch.
+- The same workflow runs on every PR targeting `main`.
 
 ## Security automation
 

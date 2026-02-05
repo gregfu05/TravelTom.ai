@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 import sys
+from pathlib import Path
+from typing import Any, cast
 
 from alembic import context
 from sqlalchemy import pool
@@ -15,8 +16,8 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 sys.path.append(str(BASE_DIR))
 
 from app.core.config import get_settings  # noqa: E402
-from app.db.base import Base  # noqa: E402
 from app.db import models  # noqa: F401,E402
+from app.db.base import Base  # noqa: E402
 
 config = context.config
 
@@ -49,8 +50,9 @@ def do_run_migrations(connection) -> None:
 
 async def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
+    section = config.get_section(config.config_ini_section) or {}
     connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section),
+        cast(dict[str, Any], section),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

@@ -12,6 +12,8 @@
 - Added guidance to use `.env` for configuration and avoid hard-coded env vars.
 - Noted ORM model location in data model documentation.
 - Documented CI security automation (CodeQL, Gitleaks, Dependabot).
+- Added Ruff, Black, and mypy tooling references in CI/CD docs.
+- Added quality checks workflow for all branches and PRs to main.
 
 ## 2026-02-04
 
