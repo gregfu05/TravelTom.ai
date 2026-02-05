@@ -14,6 +14,7 @@
 - Documented CI security automation (CodeQL, Gitleaks, Dependabot).
 - Added Ruff, Black, and mypy tooling references in CI/CD docs.
 - Added quality checks workflow for all branches and PRs to main.
+- Scoped CodeQL to Python until frontend code is present.
 
 ## 2026-02-04
 

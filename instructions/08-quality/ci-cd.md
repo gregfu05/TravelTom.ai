@@ -20,7 +20,7 @@ Recommended commands:
 
 ## Security automation
 
-- CodeQL analysis runs on every PR targeting `main`.
+- CodeQL analysis runs on every PR targeting `main` (Python only until the web app is scaffolded).
 - Secret scanning runs on every PR targeting `main` via Gitleaks.
 - Dependabot opens weekly update PRs for pip and npm dependencies.
 
