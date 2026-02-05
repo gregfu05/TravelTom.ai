@@ -11,6 +11,7 @@
 - Documented Alembic config path usage in migrations guide.
 - Added guidance to use `.env` for configuration and avoid hard-coded env vars.
 - Noted ORM model location in data model documentation.
+- Documented CI security automation (CodeQL, Gitleaks, Dependabot).
 
 ## 2026-02-04
 
