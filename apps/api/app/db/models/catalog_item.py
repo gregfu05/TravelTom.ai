@@ -18,7 +18,9 @@ class CatalogItem(Base):
         Index("gin_catalog_tags", "tags", postgresql_using="gin"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
     item_type: Mapped[str] = mapped_column(String(32))
     name: Mapped[str] = mapped_column(Text)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -30,7 +32,9 @@ class CatalogItem(Base):
     rating: Mapped[float | None] = mapped_column(Numeric(4, 2), nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[object] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
     updated_at: Mapped[object] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

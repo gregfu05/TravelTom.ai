@@ -16,6 +16,13 @@ dependencies = [
   "uvicorn[standard]>=0.27",
 ]
 
+[project.optional-dependencies]
+dev = [
+  "black>=24.3",
+  "mypy>=1.8",
+  "ruff>=0.3.0",
+]
+
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -24,3 +31,19 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["traveltom*"]
 exclude = ["apps*", "docs*", "examples*", "infra*", "instructions*", "scripts*", "tests*", "venv*"]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+ignore_missing_imports = true
