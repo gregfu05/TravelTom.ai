@@ -14,9 +14,13 @@ class Settings(BaseSettings):
     )
     database_url: str = Field(..., validation_alias="DATABASE_URL")
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
 
 @lru_cache()
 def get_settings() -> Settings:
-    return Settings()  # type: ignore[call-arg]
+    """Return cached application settings."""
+    return Settings()

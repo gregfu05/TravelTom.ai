@@ -87,7 +87,7 @@ Indexes:
 - event_version (int)
 - occurred_at (timestamptz)
 - received_at (timestamptz)
-- session_id (uuid, nullable)
+- session_id (uuid, required)
 - user_id (uuid, nullable)
 - idempotency_key (text)
 - payload (jsonb)
@@ -95,7 +95,7 @@ Indexes:
 Indexes:
 - idx_events_type_time
 - idx_events_session_time
-- idx_events_idempotency (unique)
+- idx_events_idempotency (unique on session_id + event_type + idempotency_key)
 
 ## Notes
 

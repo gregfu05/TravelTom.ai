@@ -1,6 +1,7 @@
 """Embedding model."""
 
 import uuid
+from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, ForeignKey, Text, func
@@ -21,6 +22,6 @@ class Embedding(Base):
     )
     embedding: Mapped[list[float]] = mapped_column(Vector)
     model_name: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[object] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
