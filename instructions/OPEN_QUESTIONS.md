@@ -1,25 +1,42 @@
 # Open Questions
 
-This file tracks ambiguities or missing details from the design document. Each item includes a recommended default and alternatives.
+This file tracks ambiguities or missing details from the design document.
+
+Decision lock timestamp: 2026-02-06.
+Use these values as the active defaults for implementation until explicitly changed.
 
 ## 1. Coverage requirement ("Coverage >= N candidates")
 
-Question: What is the exact minimum coverage per category and total results?
-Recommended default: At least 5 per requested category and 20 total.
-Alternatives: Per category only, or total only.
-Decision needed: Confirm thresholds for evaluation and ranking.
+Status: Provisional default (active).
+
+Decision:
+- Minimum coverage per requested category: `N = 5`.
+- Minimum total results per request: `M = 20`.
+- Evaluation pass condition: at least 95% of evaluated sessions meet both thresholds.
+
+Change control:
+- Revisit only after a benchmark refresh or explicit product decision.
 
 ## 2. Flight data realism in MVP
 
-Question: Should flight data be fully dummy or partially realistic (e.g., real carriers and schedules but static prices)?
-Recommended default: Dummy flights with realistic-looking metadata but static pricing.
-Alternatives: Partial realism or omit flights from MVP UI.
-Decision needed: Confirm data source and required fidelity.
+Status: Provisional default (active).
+
+Decision:
+- MVP uses dummy flights with realistic-looking metadata and static pricing.
+- Final keeps static demo pricing unless a real provider integration is explicitly approved.
+- Flight recommendations must remain deterministic for a fixed seed dataset.
+
+Change control:
+- Revisit only if external provider integration enters scope.
 
 ## 3. Personalization persistence
 
-Question: Should user preferences persist across sessions?
-Recommended default: Session-level only for MVP; optional account-level for final.
-Alternatives: Immediate account-level persistence.
-Decision needed: Confirm storage and privacy implications.
+Status: Provisional default (active).
 
+Decision:
+- MVP: session-level preferences only.
+- Final: session-level remains default.
+- Account-level persistence is disabled until authentication and deletion SLA controls are fully enabled.
+
+Change control:
+- Revisit when account auth and privacy controls are completed.

@@ -23,6 +23,7 @@ If the design document is not available locally, proceed using the assumptions d
 - Commit discipline: One logical change per commit. Use the suggested commit message for each step.
 - Docs are first-class: Every step requires explicit doc updates.
 - Test on change: If a change affects business logic, add or update tests in the same step.
+- Zen of Python for backend code: Python changes must follow the enforced standards in `08-quality/code-standards.md` (explicit, simple, readable, fail-fast patterns).
 
 ## Quality gates
 
@@ -30,6 +31,7 @@ If the design document is not available locally, proceed using the assumptions d
 - API contracts are versioned and backward compatible within a version.
 - Security posture is documented even for MVP (auth, rate limiting, secrets handling).
 - Observability is not optional: structured logs and tracing are required for chat and recommendations.
+- Python review must pass the Zen of Python checklist in `08-quality/code-standards.md`.
 
 ## Doc update policy
 

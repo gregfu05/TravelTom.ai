@@ -11,6 +11,9 @@
 - Recommendation service error
   - Verify retrieval backend connectivity.
   - Run deterministic ranking tests.
+- Model quality regression alert
+  - Verify latest offline evaluation report and gate results.
+  - Compare current production model version against previous blue revision.
 
 ## Migrations
 
@@ -21,6 +24,15 @@
 
 - Confirm scope of impact.
 - Collect logs and trace IDs.
-- Mitigate (disable feature flags or reduce traffic).
+- Identify whether incident is service outage, data issue, or model-quality issue.
+- Mitigate (disable feature flags, reduce traffic, or switch to previous blue revision).
+- If model-related, roll back to previous model version and re-run smoke checks.
 - Document root cause and follow-up tasks.
 
+## Blue-green rollback triggers
+
+- Trigger immediate rollback when any condition is met:
+  - Smoke tests fail on green.
+  - `/api/v1/chat` P95 latency stays above 2.0s for 15 minutes.
+  - `/api/v1/recommendations/query` P95 latency stays above 1.5s for 15 minutes.
+  - 7-day CTR proxy drops by more than 20% versus trailing 28-day baseline.

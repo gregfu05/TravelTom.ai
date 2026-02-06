@@ -1,5 +1,20 @@
 # Instructions Changelog
 
+## 2026-02-06
+
+- Converted `OPEN_QUESTIONS.md` to active provisional decisions with a lock timestamp.
+- Fixed recommender decisions: in-process runtime, LightGBM model family, Azure AI Search primary with pgvector fallback, Azure ML Registry.
+- Added explicit evaluation gates, retraining cadence, retraining triggers, and required training artifacts.
+- Locked final deployment target to Azure Container Apps and documented blue-green rollout and rollback behavior.
+- Added budget-mode constraints with a USD 10/month cloud spend cap.
+- Added model drift checks, thresholds, and alert ownership in observability docs.
+- Added ML CI/CD promotion gates, manifest requirements, and reviewer approvals.
+- Fixed event pipeline and taxonomy ambiguity (mandatory final dual-write, explicit `message_id` requirements, deletion SLA).
+- Locked final auth provider path to Azure AD B2C and added secret rotation and access rules.
+- Updated implementation plan wording to LightGBM and Azure AD B2C.
+- Added explicit Zen of Python enforcement rules and Python PR checklist in `08-quality/code-standards.md`.
+- Added Zen of Python compliance requirement to coding-agent rules and quality gates in `README.md`.
+
 ## 2026-02-04
 
 - Updated documentation to align with `TravelTom_Final_Design_Document.pdf` (requirements, architecture, recommender, orchestrator, events, and plan).
