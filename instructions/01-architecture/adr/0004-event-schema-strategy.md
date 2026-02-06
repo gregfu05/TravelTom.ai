@@ -9,7 +9,7 @@ TravelTom relies on event logging for evaluation and analytics. Events must be c
 
 ## Decision
 
-Adopt a versioned event schema with mandatory fields: `event_id`, `event_type`, `event_version`, `occurred_at`, `session_id`, `user_id` (optional), `idempotency_key`, and `payload`. Events are stored in PostgreSQL for MVP and optionally streamed to Event Hub in final.
+Adopt a versioned event schema with mandatory fields: `event_id`, `event_type`, `event_version`, `occurred_at`, `session_id`, `user_id` (optional), `idempotency_key`, and `payload`. Events are stored in PostgreSQL for MVP and dual-written to Event Hub in final.
 
 ## Alternatives considered
 
@@ -25,4 +25,3 @@ Adopt a versioned event schema with mandatory fields: `event_id`, `event_type`, 
 ## Notes
 
 See `06-events-analytics/event-taxonomy.md` and `06-events-analytics/event-pipeline.md`.
-

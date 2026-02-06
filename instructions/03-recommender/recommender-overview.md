@@ -5,6 +5,15 @@
 1. Retrieval: Candidate generation using vector similarity and hard filters.
 2. Ranking: Deterministic scoring for MVP; ML ranker for final.
 
+## Fixed implementation decisions
+
+- Recommender runtime boundary: in-process module inside the API service.
+- Retrieval backend strategy:
+  - Final primary: Azure AI Search.
+  - Fallback: PostgreSQL + pgvector (local dev, rollback mode, and low-cost mode).
+- Final ML model family: LightGBM.
+- Final model registry: Azure ML Registry.
+
 ## Goals
 
 - Low-latency candidate generation.
@@ -24,17 +33,17 @@ Purpose: generate a broad candidate set.
 Techniques:
 - Vector similarity search (query vs item embeddings).
 - Hard filters: budget, dates, star rating, location constraints, flight constraints.
-- Optional keyword fallback.
+- Keyword fallback when vector retrieval returns fewer than 20 candidates.
 
-Output: Top-K candidates (100–300 items) with basic metadata.
+Output: Top-K candidates (100-300 items) with basic metadata.
 
 Implementations:
-- Azure AI Search (recommended).
-- PostgreSQL + pgvector (simpler, midterm).
+- Azure AI Search (primary in final).
+- PostgreSQL + pgvector (MVP and fallback).
 
 ## Ranking
 
-Purpose: produce final top-N results (10–20 items).
+Purpose: produce final top-N results (default 20, max 50).
 
 Signals:
 - Session context (constraints, inferred preferences).
@@ -48,9 +57,9 @@ Midterm:
 - Penalties: early flights, long layovers, distance.
 
 Final:
-- ML-based ranker (XGBoost / LightGBM).
+- ML-based ranker (LightGBM).
 - Labels derived from logged events.
-- Model registry: Azure ML Registry or MLflow (final).
+- Model registry: Azure ML Registry.
 
 ## Outputs
 

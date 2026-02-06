@@ -35,7 +35,10 @@
 ## Session correlation
 
 - Every event must include `session_id`.
-- `message_id` should be included where applicable.
+- `message_id` is required for:
+  - `chat.message_sent`
+  - `chat.message_received`
+  - `rec.impression` events emitted from a chat response
 
 ## Example payloads
 

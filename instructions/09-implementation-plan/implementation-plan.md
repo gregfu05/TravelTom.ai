@@ -611,7 +611,7 @@ Files to touch:
 - [scripts/evaluate_ranker.py](scripts/evaluate_ranker.py)
 - [apps/api/app/services/recommender/ml_ranker.py](apps/api/app/services/recommender/ml_ranker.py)
 Implementation tasks:
-- [ ] Implement training pipeline with XGBoost or LightGBM.
+- [ ] Implement training pipeline with LightGBM.
 - [ ] Add evaluation metrics reporting.
 Commands to run:
 ```bash
@@ -688,7 +688,7 @@ Files to touch:
 - [apps/api/app/core/security.py](apps/api/app/core/security.py)
 - [apps/api/app/api/v1/*](apps/api/app/api/v1/*)
 Implementation tasks:
-- [ ] Add auth middleware (OIDC or Azure AD B2C).
+- [ ] Add auth middleware (Azure AD B2C over OIDC).
 - [ ] Apply rate limiting to chat and events endpoints.
 Commands to run:
 ```bash

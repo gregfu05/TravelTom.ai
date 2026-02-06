@@ -81,7 +81,7 @@ Response:
 
 ### POST /api/v1/recommendations/query
 
-Deterministic recommendation retrieval and ranking. Primarily used by orchestrator; can be internal.
+Deterministic recommendation retrieval and ranking. Internal endpoint used by orchestrator and test tooling.
 
 Request:
 
@@ -98,7 +98,7 @@ Request:
     "star_rating_min": 0
   },
   "filters": {},
-  "max_results": 50,
+  "max_results": 20,
   "ranking_version": "string"
 }
 ```
@@ -120,6 +120,10 @@ Response:
   "ranking_version": "string"
 }
 ```
+
+Notes:
+- `max_results` default is 20.
+- `max_results` hard cap is 50 (debug and evaluation use only).
 
 ### POST /api/v1/events
 

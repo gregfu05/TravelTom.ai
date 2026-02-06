@@ -2,7 +2,7 @@
 
 ## Core tables
 
-### users (optional for MVP)
+### users (present schema, inactive in MVP)
 
 - id (uuid, pk)
 - email (text, unique, nullable for MVP)
@@ -70,7 +70,7 @@ Indexes:
 Indexes:
 - ivfflat or hnsw index on embedding
 
-### recommendations (optional cache)
+### recommendations (cache table, disabled by default)
 
 - id (uuid, pk)
 - session_id (uuid, fk sessions.id)

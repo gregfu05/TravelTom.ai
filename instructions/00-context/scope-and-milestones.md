@@ -22,14 +22,18 @@ Explicit non-goals:
 
 Deliverables:
 - Azure-deployed frontend and backend.
-- Managed Postgres and vector store (Azure AI Search preferred).
+- Managed Postgres and vector store (Azure AI Search primary, pgvector fallback).
 - Offline feature pipelines.
 - Trained ML ranker with versioned model registry.
 - Scheduled offline evaluation.
 - Event streaming via Event Hub.
 - Improved LLM routing and guardrails.
 
+Operational constraints:
+- Deployment platform is Azure Container Apps.
+- Model registry is Azure ML Registry.
+- Cloud spend cap is USD 10/month for this university project.
+
 Non-goals:
 - Full commercial booking engine.
 - Dynamic pricing or real-time inventory.
-

@@ -29,8 +29,30 @@ Recommended commands:
 - All steps must pass to merge.
 - Require code review for changes to ranking logic and orchestrator schemas.
 
+## ML evaluation and release gates (final)
+
+- Model changes must include an evaluation report from `03-recommender/evaluation.md`.
+- Promotion requires all evaluation gates to pass.
+- Every promoted model must include a manifest with:
+  - `model_version`
+  - `dataset_snapshot_id`
+  - `feature_schema_version`
+  - `git_sha`
+  - `run_timestamp_utc`
+- Approval requirement for model promotion:
+  - one recommender reviewer
+  - one backend reviewer
+  - in the university team, one person may satisfy both roles when team size requires it.
+
+## Scheduled ML jobs
+
+- Weekly scheduled evaluation job.
+- Monthly scheduled retraining job.
+- For cost control under USD 10/month, heavy jobs may run on-demand locally and upload artifacts manually.
+
 ## CD (final)
 
 - Build and publish container images.
-- Deploy to Azure Container Apps.
+- Deploy to Azure Container Apps using blue-green revisions.
 - Run migrations as a deployment step.
+- Shift traffic only after green revision checks pass.
