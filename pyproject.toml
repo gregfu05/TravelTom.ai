@@ -19,7 +19,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "black>=24.3",
+  "httpx>=0.28",
   "mypy>=1.8",
+  "pytest>=8.0",
   "ruff>=0.3.0",
 ]
 
@@ -47,3 +49,4 @@ select = ["E", "F", "I"]
 python_version = "3.10"
 warn_unused_configs = true
 ignore_missing_imports = true
+plugins = ["pydantic.mypy"]

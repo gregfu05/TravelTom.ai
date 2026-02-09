@@ -21,8 +21,13 @@ from app.db.base import Base  # noqa: E402
 
 config = context.config
 
-settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url)
+
+def get_database_url() -> str:
+    """Load the Alembic database URL from application settings."""
+    return get_settings().database_url
+
+
+config.set_main_option("sqlalchemy.url", get_database_url())
 
 target_metadata = Base.metadata
 

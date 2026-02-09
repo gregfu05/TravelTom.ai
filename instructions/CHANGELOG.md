@@ -14,6 +14,7 @@
 - Updated implementation plan wording to LightGBM and Azure AD B2C.
 - Added explicit Zen of Python enforcement rules and Python PR checklist in `08-quality/code-standards.md`.
 - Added Zen of Python compliance requirement to coding-agent rules and quality gates in `README.md`.
+- Updated event data-model documentation to require `session_id` and scoped idempotency uniqueness.
 
 ## 2026-02-04
 
