@@ -99,11 +99,11 @@ async function parseJsonSafely(response: Response): Promise<unknown | null> {
   }
 }
 
-async function request<T>(
+async function request<TSchema extends z.ZodTypeAny>(
   path: string,
   init: RequestInit,
-  schema: z.ZodType<T>,
-): Promise<T> {
+  schema: TSchema,
+): Promise<z.output<TSchema>> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
       Accept: "application/json",
@@ -131,7 +131,7 @@ async function request<T>(
   return schema.parse(payload);
 }
 
-function mapChatResponse(raw: z.infer<typeof chatResponseSchema>): ChatResponse {
+function mapChatResponse(raw: z.output<typeof chatResponseSchema>): ChatResponse {
   return {
     sessionId: raw.session_id,
     messageId: raw.message_id,
