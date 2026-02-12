@@ -8,6 +8,7 @@
 - Linked the new skill doc from `04-llm-orchestrator/orchestrator-overview.md`.
 - Updated orchestrator instructions for Step 10 with implemented policy routing, timeout handling, and placeholder recommendation behavior.
 - Updated prompt/guardrail instructions with explicit fallback requirements for invalid inputs, tool timeouts, invalid tool payloads, and empty results.
+- Updated `02-backend/api-design.md` with Step 11 chat endpoint implementation notes, persistence behavior, and FastAPI 422 validation status.
 
 ## 2026-02-06
 
