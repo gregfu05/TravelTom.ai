@@ -4,14 +4,17 @@
 
 1. Install dependencies.
 2. Format check (Black).
-3. Lint (Ruff for Python, plus TS linting).
-4. Type check (mypy, tsc).
-5. Run unit and integration tests.
+3. Lint (Ruff for Python; add ESLint when frontend lint config is introduced).
+4. Type check (mypy for backend, `tsc` for frontend).
+5. Run backend unit/integration tests.
+6. Build frontend to catch compile-time and bundling failures before deploy.
 
 Recommended commands:
 - `black --check .`
 - `ruff check .`
 - `mypy apps/api`
+- `python -m pytest -q`
+- `cd apps/web && npm install && npm run typecheck && npm run build`
 
 ## Branch and PR checks
 
@@ -28,6 +31,7 @@ Recommended commands:
 
 - All steps must pass to merge.
 - Require code review for changes to ranking logic and orchestrator schemas.
+- Frontend code changes must pass both `npm run typecheck` and `npm run build` in CI.
 
 ## ML evaluation and release gates (final)
 
@@ -56,3 +60,19 @@ Recommended commands:
 - Deploy to Azure Container Apps using blue-green revisions.
 - Run migrations as a deployment step.
 - Shift traffic only after green revision checks pass.
+
+## Pre-deploy local checklist (backend + frontend)
+
+Run these before triggering deployment:
+
+Backend (repo root):
+- `python -m pip install -e ".[dev]"`
+- `black --check .`
+- `ruff check .`
+- `mypy apps/api`
+- `python -m pytest -q`
+
+Frontend (`apps/web`):
+- `npm install`
+- `npm run typecheck`
+- `npm run build`
