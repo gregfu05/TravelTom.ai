@@ -6,6 +6,7 @@
 - Integration tests: API endpoints with test DB.
 - Contract tests: tool schemas and orchestrator I/O.
 - E2E tests: chat flow in frontend (smoke).
+- Frontend static quality checks: TypeScript type-check and production build.
 
 ## Recommender tests
 
@@ -27,5 +28,5 @@
 ## CI gating
 
 - Unit + integration tests required for merge.
+- Frontend static quality checks (`npm run typecheck`, `npm run build`) required for merge when frontend code changes.
 - E2E tests required for release.
-
