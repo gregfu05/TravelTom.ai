@@ -1,5 +1,22 @@
 # Instructions Changelog
 
+## 2026-02-11
+
+- Updated deployment documentation to require frontend validation gates (`npm run typecheck` and `npm run build`) alongside backend checks before blue-green rollout.
+- Updated CI/CD guidance with explicit backend + frontend command checklist for pre-deploy validation.
+- Updated testing strategy to include frontend static quality checks as merge gates when frontend code changes.
+- Updated local development docs with a concrete pre-deploy check list for Python and frontend commands.
+
+## 2026-02-10
+
+- Added `05-frontend/ui-design-skill.md` as a dedicated agent-facing UI quality skill for visually strong, consistent frontend work.
+- Updated `05-frontend/frontend-architecture.md` to require using the frontend UI design skill during UI implementation.
+- Documented the homepage-first frontend baseline in `05-frontend/frontend-architecture.md` (Vite scaffold, app shell, health indicator, and API client behavior).
+- Updated `05-frontend/ux-flows.md` to include homepage entry flow and homepage-specific states.
+- Updated Step 14 in `09-implementation-plan/implementation-plan.md` to explicitly require homepage implementation before chat flow work.
+- Updated frontend docs for standalone `Why TravelTom` and `How It Works` route pages in the MVP baseline.
+- Added Step 15 frontend documentation updates for `/planner` chat flow, Zustand session state, `/api/v1/chat` integration, and retry-oriented error states.
+
 ## 2026-02-06
 
 - Converted `OPEN_QUESTIONS.md` to active provisional decisions with a lock timestamp.

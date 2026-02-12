@@ -21,13 +21,35 @@
 
 ## Deployment flow (blue-green)
 
-1. Build and push container images.
-2. Provision infra via Bicep/Terraform.
-3. Run database migrations.
-4. Deploy a green revision with the target model version.
-5. Run smoke checks and metric gate checks on green.
-6. Shift traffic from blue to green.
-7. Keep the previous blue revision available for fast rollback.
+1. Run pre-deploy validation checks for backend and frontend.
+2. Build and push container images.
+3. Provision infra via Bicep/Terraform.
+4. Run database migrations.
+5. Deploy a green revision with the target model version.
+6. Run smoke checks and metric gate checks on green.
+7. Shift traffic from blue to green.
+8. Keep the previous blue revision available for fast rollback.
+
+## Pre-deploy validation checks
+
+Backend checks (repo root):
+- `black --check .`
+- `ruff check .`
+- `mypy apps/api`
+- `python -m pytest -q`
+
+Frontend checks (`apps/web`):
+- `npm install`
+- `npm run typecheck`
+- `npm run build`
+
+Required smoke checks after green deploy:
+- API health: `GET /api/v1/health` returns `{"status":"ok"}`.
+- Frontend routes load without runtime errors:
+  - `/`
+  - `/planner`
+  - `/why-traveltom`
+  - `/how-it-works`
 
 ## Rollback
 

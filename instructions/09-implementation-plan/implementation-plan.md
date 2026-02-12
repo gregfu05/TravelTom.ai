@@ -348,27 +348,33 @@ Rollback notes: Remove events endpoint and service.
 
 #### Step 14: Scaffold React app and API client
 
-Objective: Initialize frontend with Vite and a typed API client.
+Objective: Initialize frontend with Vite and a typed API client, then deliver a homepage-first UI baseline.
 Rationale: Provides UI foundation for MVP flows.
 Preconditions: Step 11 complete.
 Files to touch:
 - [apps/web/package.json](apps/web/package.json)
 - [apps/web/src/api/client.ts](apps/web/src/api/client.ts)
 - [apps/web/src/App.tsx](apps/web/src/App.tsx)
+- [apps/web/src/pages/HomePage.tsx](apps/web/src/pages/HomePage.tsx)
+- [apps/web/src/styles.css](apps/web/src/styles.css)
 Implementation tasks:
 - [ ] Create Vite React app.
 - [ ] Add API client with base URL and types.
+- [ ] Build a responsive homepage with strong visual hierarchy and clear planner CTA.
+- [ ] Show API health status on the homepage using `/api/v1/health`.
+- [ ] Add standalone informational routes for `Why TravelTom` and `How It Works` to support pre-chat orientation.
 Commands to run:
 ```bash
 npm install
 npm run dev
 ```
 Acceptance criteria:
-- Frontend starts locally and renders a placeholder shell.
+- Frontend starts locally and renders a homepage suitable as the MVP entry surface.
 Verification:
 - Browser shows the app without errors.
 Doc updates required:
 - [../05-frontend/frontend-architecture.md](../05-frontend/frontend-architecture.md)
+- [../05-frontend/ux-flows.md](../05-frontend/ux-flows.md)
 Suggested commit message: `feat(frontend): scaffold React app with API client`
 Rollback notes: Remove frontend scaffold.
 
@@ -383,6 +389,8 @@ Files to touch:
 Implementation tasks:
 - [ ] Implement message list and input.
 - [ ] Call `/api/v1/chat` and append response.
+- [ ] Add a planner route surface for chat (`/planner`) and wire navigation to it.
+- [ ] Add loading, error, and retry UI states for chat sends.
 Commands to run:
 ```bash
 npm run test
@@ -392,6 +400,7 @@ Acceptance criteria:
 Verification:
 - Manual test confirms message flow.
 Doc updates required:
+- [../05-frontend/frontend-architecture.md](../05-frontend/frontend-architecture.md)
 - [../05-frontend/ux-flows.md](../05-frontend/ux-flows.md)
 Suggested commit message: `feat(frontend): add chat UI and flow`
 Rollback notes: Revert chat components and store.
