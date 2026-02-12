@@ -58,7 +58,10 @@ jobs:
           node-version: "20"
 
       - name: Install web dependencies
-        run: npm install
+        run: |
+          npm install --include=optional
+          # Work around npm optional-deps bug on GitHub Linux runners.
+          npm ls @rollup/rollup-linux-x64-gnu >/dev/null 2>&1 || npm install --no-save @rollup/rollup-linux-x64-gnu
 
       - name: Frontend type-check
         run: npm run typecheck
