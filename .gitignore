@@ -24,6 +24,10 @@ wheels/
 .installed.cfg
 *.egg
 
+# Keep frontend source utilities tracked
+!apps/web/src/lib/
+!apps/web/src/lib/**
+
 # PyInstaller
 *.manifest
 *.spec
