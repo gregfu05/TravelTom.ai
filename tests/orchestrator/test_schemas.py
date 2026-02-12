@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import ValidationError
 import pytest
-
 from app.schemas.state import SessionState
 from app.schemas.tools.catalog import CatalogSearchQuery
 from app.schemas.tools.events import EventPayload
@@ -12,6 +10,7 @@ from app.schemas.tools.recommendations import (
     RecommendationQuery,
     RecommendationToolResponse,
 )
+from pydantic import ValidationError
 
 
 def test_session_state_validates_canonical_payload() -> None:
@@ -66,9 +65,7 @@ def test_session_state_rejects_invalid_date_range() -> None:
         SessionState.model_validate(
             {
                 "session_id": "sess-1",
-                "constraints": {
-                    "dates": {"start": "2026-06-17", "end": "2026-06-10"}
-                },
+                "constraints": {"dates": {"start": "2026-06-17", "end": "2026-06-10"}},
             }
         )
 

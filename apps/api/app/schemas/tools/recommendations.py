@@ -57,4 +57,3 @@ class RecommendationToolResponse(BaseModel):
 
     results: list[RecommendationResult] = Field(default_factory=list)
     ranking_version: str = Field(min_length=1)
-

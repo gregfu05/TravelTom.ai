@@ -74,9 +74,7 @@ class Preferences(BaseModel):
     def validate_interest_weights(cls, values: dict[str, float]) -> dict[str, float]:
         for key, value in values.items():
             if not 0 <= value <= 1:
-                raise ValueError(
-                    f"weighted_interests[{key}] must be between 0 and 1"
-                )
+                raise ValueError(f"weighted_interests[{key}] must be between 0 and 1")
         return values
 
 
@@ -112,4 +110,3 @@ class SessionState(BaseModel):
     status: Literal["explore", "refine", "itinerary", "booking"] = "explore"
     last_recommendation_version: str | None = None
     last_message_at: datetime | None = None
-

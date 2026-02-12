@@ -21,4 +21,3 @@ class EventPayload(BaseModel):
     user_id: str | None = None
     idempotency_key: str = Field(min_length=1)
     payload: dict[str, Any] = Field(default_factory=dict)
-
