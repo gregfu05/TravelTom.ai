@@ -10,7 +10,7 @@ const apiErrorSchema = z.object({
   error: z.object({
     code: z.string(),
     message: z.string(),
-    details: z.record(z.unknown()).optional(),
+    details: z.record(z.string(), z.unknown()).optional(),
     trace_id: z.string().optional(),
   }),
 });
@@ -21,7 +21,7 @@ const recommendationSchema = z.object({
   score: z.number(),
   rank: z.number(),
   explanation: z.string(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 const itinerarySchema = z.object({
@@ -34,7 +34,7 @@ const chatResponseSchema = z.object({
   assistant_message: z.string(),
   recommendations: z.array(recommendationSchema).default([]),
   itinerary: itinerarySchema.optional(),
-  state: z.record(z.unknown()).optional(),
+  state: z.record(z.string(), z.unknown()).optional(),
 });
 
 type ApiErrorPayload = z.infer<typeof apiErrorSchema>;

@@ -11,6 +11,7 @@ If the design document is not available locally, proceed using the assumptions d
 3. Use the step-by-step plan in `09-implementation-plan/implementation-plan.md` as the execution checklist.
 4. Update documentation as required by each step. Documentation changes are mandatory.
 5. Keep `CHANGELOG.md` updated whenever these instructions change.
+6. For frontend UI implementation quality, apply `05-frontend/ui-design-skill.md`.
 
 ## Rules of engagement for coding agents
 
