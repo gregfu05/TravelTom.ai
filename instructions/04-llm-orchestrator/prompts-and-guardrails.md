@@ -11,6 +11,8 @@
 - Always call the recommendation tool for user requests that require suggestions.
 - Validate tool inputs; refuse to call tools with invalid inputs.
 - If the tool returns no results, request more constraints.
+- Apply deterministic policy routing before tool calls.
+- Enforce per-tool timeout handling and return retry-safe copy.
 
 ## Grounding rules
 
@@ -28,4 +30,11 @@
 - System message: role, constraints, and tool usage requirements.
 - Developer message: current session state and tool schemas.
 - User message: raw user input.
+
+## Fallback response requirements
+
+- Input schema invalid: ask for destination, dates, and budget.
+- Tool timeout: return a retry prompt and preserve session continuity.
+- Tool output schema invalid: return a safe error without exposing internals.
+- Empty recommendation set: ask for tighter constraints (budget, dates, destination, etc.).
 

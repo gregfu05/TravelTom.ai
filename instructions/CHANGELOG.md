@@ -6,6 +6,8 @@
 - Updated `04-llm-orchestrator/session-state-schema.md` to match implemented Pydantic models in `apps/api/app/schemas/state.py`.
 - Updated `04-llm-orchestrator/tool-schemas.md` to match implemented tool contracts in `apps/api/app/schemas/tools/*`.
 - Linked the new skill doc from `04-llm-orchestrator/orchestrator-overview.md`.
+- Updated orchestrator instructions for Step 10 with implemented policy routing, timeout handling, and placeholder recommendation behavior.
+- Updated prompt/guardrail instructions with explicit fallback requirements for invalid inputs, tool timeouts, invalid tool payloads, and empty results.
 
 ## 2026-02-06
 
