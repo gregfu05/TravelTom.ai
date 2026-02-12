@@ -33,3 +33,7 @@
 - Timeouts and circuit breakers.
 - Booking claims only after adapter confirmation.
 
+## Skill reference
+
+- Builder skill: [chatbot-orchestration-skill.md](chatbot-orchestration-skill.md)
+

@@ -1,5 +1,12 @@
 # Instructions Changelog
 
+## 2026-02-12
+
+- Added `04-llm-orchestrator/chatbot-orchestration-skill.md` defining the chatbot/orchestration implementation skill and quality bar.
+- Updated `04-llm-orchestrator/session-state-schema.md` to match implemented Pydantic models in `apps/api/app/schemas/state.py`.
+- Updated `04-llm-orchestrator/tool-schemas.md` to match implemented tool contracts in `apps/api/app/schemas/tools/*`.
+- Linked the new skill doc from `04-llm-orchestrator/orchestrator-overview.md`.
+
 ## 2026-02-06
 
 - Converted `OPEN_QUESTIONS.md` to active provisional decisions with a lock timestamp.
