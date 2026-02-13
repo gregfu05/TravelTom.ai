@@ -9,6 +9,7 @@
 - Updated orchestrator instructions for Step 10 with implemented policy routing, timeout handling, and placeholder recommendation behavior.
 - Updated prompt/guardrail instructions with explicit fallback requirements for invalid inputs, tool timeouts, invalid tool payloads, and empty results.
 - Updated `02-backend/api-design.md` with Step 11 chat endpoint implementation notes, persistence behavior, and FastAPI 422 validation status.
+- Added Step 12 recommendation query endpoint notes in `02-backend/api-design.md`, including schema-validation behavior and placeholder-mode empty results.
 
 ## 2026-02-06
 

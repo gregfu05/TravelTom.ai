@@ -105,6 +105,9 @@ async def chat(
         if request_user_uuid is not None:
             session_row.user_id = request_user_uuid
 
+        # Ensure session row exists before dependent message/recommendation inserts.
+        await db.flush()
+
         _persist_messages(
             db=db,
             session_pk=session_pk,

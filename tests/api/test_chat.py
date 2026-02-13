@@ -29,6 +29,7 @@ class _FakeAsyncSession:
         self.added: list[Any] = []
         self.committed = False
         self.rolled_back = False
+        self.flushed = False
 
     async def execute(self, _statement: Any) -> _FakeResult:
         return _FakeResult(self.existing_session)
@@ -40,6 +41,9 @@ class _FakeAsyncSession:
 
     async def commit(self) -> None:
         self.committed = True
+
+    async def flush(self) -> None:
+        self.flushed = True
 
     async def rollback(self) -> None:
         self.rolled_back = True
@@ -141,6 +145,7 @@ def test_chat_endpoint_returns_expected_shape_and_persists_records() -> None:
     assert body["assistant_message"] == "I found 1 strong option for Lisbon."
     assert len(body["recommendations"]) == 1
     assert body["recommendations"][0]["metadata"] == {"interest_match": 0.9}
+    assert fake_db.flushed is True
     assert fake_db.committed is True
 
     assert any(isinstance(item, Session) for item in fake_db.added)
@@ -204,4 +209,3 @@ def test_chat_endpoint_allows_empty_recommendations() -> None:
     snapshots = [item for item in fake_db.added if isinstance(item, Recommendation)]
     assert len(snapshots) == 1
     assert snapshots[0].results_json == {"results": []}
-

@@ -134,6 +134,9 @@ Response:
 Notes:
 - `max_results` default is 20.
 - `max_results` hard cap is 50 (debug and evaluation use only).
+- Current implementation lives in `apps/api/app/api/v1/recommendations.py`.
+- Endpoint validates `RecommendationQuery` and `RecommendationToolResponse` with shared Pydantic schemas.
+- In placeholder mode, results may be an empty list while recommender integration is pending.
 
 ### POST /api/v1/events
 
