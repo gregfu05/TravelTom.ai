@@ -79,6 +79,16 @@ Response:
 }
 ```
 
+Implementation notes (current):
+
+- Endpoint lives in `apps/api/app/api/v1/chat.py`.
+- `session_id` is treated as an opaque client id and mapped to an internal deterministic UUID for DB persistence.
+- Each call persists:
+  - updated `sessions.state_json`
+  - one `messages` row for the user message
+  - one `messages` row for the assistant message
+  - one `recommendations` snapshot row (empty `results` is valid in placeholder mode)
+
 ### POST /api/v1/recommendations/query
 
 Deterministic recommendation retrieval and ranking. Internal endpoint used by orchestrator and test tooling.
@@ -124,6 +134,9 @@ Response:
 Notes:
 - `max_results` default is 20.
 - `max_results` hard cap is 50 (debug and evaluation use only).
+- Current implementation lives in `apps/api/app/api/v1/recommendations.py`.
+- Endpoint validates `RecommendationQuery` and `RecommendationToolResponse` with shared Pydantic schemas.
+- In placeholder mode, results may be an empty list while recommender integration is pending.
 
 ### POST /api/v1/events
 
@@ -176,6 +189,7 @@ Returns the current itinerary for a session.
 - 201 Created: Resource created.
 - 204 No Content: Event accepted.
 - 400 Bad Request: Validation error.
+- 422 Unprocessable Entity: Request schema validation error (FastAPI default).
 - 401 Unauthorized: Auth required (final).
 - 403 Forbidden: Auth failed (final).
 - 404 Not Found: Missing resource.

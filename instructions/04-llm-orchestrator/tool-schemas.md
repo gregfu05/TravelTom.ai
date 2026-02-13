@@ -1,57 +1,65 @@
 # Tool Schemas
 
-All tool inputs and outputs must be validated with explicit schemas.
+Source of truth:
 
-## Example Pydantic models (conceptual)
+- `apps/api/app/schemas/tools/recommendations.py`
+- `apps/api/app/schemas/tools/catalog.py`
+- `apps/api/app/schemas/tools/events.py`
 
-- `RecommendationQuery`:
-  - `session_id: str`
-  - `query: str`
-  - `constraints: Constraints`
-  - `filters: dict`
-  - `max_results: int`
-  - `ranking_version: str`
+All tool inputs and outputs must pass explicit Pydantic validation.
 
-- `Constraints`:
+## Recommendation tool
+
+- `RecommendationQuery`
+  - `session_id: str` (required)
+  - `query: str` (required)
+  - `constraints: RecommendationConstraints` (defaults to empty object)
+  - `filters: dict[str, Any]` (default `{}`)
+  - `max_results: int` (default `20`, range `1..50`)
+  - `ranking_version: str` (default `"heuristic-v1"`)
+- `RecommendationConstraints`
   - `origin: str | None`
   - `destination: str | None`
-  - `dates: DateRange`
-  - `budget: BudgetRange`
-  - `party_size: PartySize`
-
-- `RecommendationResult`:
+  - `dates: DateRange | None`
+  - `budget: BudgetRange | None`
+  - `party_size: PartySize | None`
+  - `star_rating_min: int | None` (range `0..5`)
+- `RecommendationResult`
   - `item_id: str`
-  - `item_type: Literal["destination", "hotel", "flight"]`
+  - `item_type: "destination" | "hotel" | "flight"`
   - `score: float`
-  - `rank: int`
-  - `features: dict`
+  - `rank: int` (>= 1)
+  - `features: dict[str, Any]` (default `{}`)
   - `explanation: str`
+- `RecommendationToolResponse`
+  - `results: list[RecommendationResult]` (default `[]`)
+  - `ranking_version: str`
 
-- `CatalogSearchQuery`:
+Note: empty recommendation results are valid and expected in placeholder mode.
+
+## Catalog tool
+
+- `CatalogSearchQuery`
   - `q: str`
-  - `type: str`
-  - `limit: int`
-  - `offset: int`
+  - `item_type: "destination" | "hotel" | "flight" | None` (alias input key: `type`)
+  - `limit: int` (default `20`, range `1..100`)
+  - `offset: int` (default `0`, `>= 0`)
 
-- `EventPayload`:
+## Events tool
+
+- `EventPayload`
   - `event_id: str`
   - `event_type: str`
-  - `event_version: int`
+  - `event_version: int` (>= 1)
   - `occurred_at: datetime`
   - `session_id: str`
   - `user_id: str | None`
-  - `idempotency_key: str`
-  - `payload: dict`
+  - `idempotency_key: str` (required)
+  - `payload: dict[str, Any]` (default `{}`)
 
-## Failure handling
+## Failure handling baseline
 
-- Validation error: do not call the tool; return a user-safe error.
-- Tool error: retry once with backoff; if still failing, return a partial response.
-- Timeouts: 2s for catalog, 4s for recommendations, 6s for LLM.
-
-## Circuit breakers
-
-- Open circuit after 5 consecutive failures per tool.
-- Cooldown: 60 seconds.
-- Log circuit events as `system.tool_circuit_open`.
+- Validation failure: block tool execution and return a safe user response.
+- Tool timeout/error: return partial orchestration output and prompt for retry.
+- Use per-tool timeout policies from orchestration config.
 

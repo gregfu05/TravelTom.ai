@@ -1,21 +1,15 @@
 # Instructions Changelog
 
-## 2026-02-11
+## 2026-02-12
 
-- Updated deployment documentation to require frontend validation gates (`npm run typecheck` and `npm run build`) alongside backend checks before blue-green rollout.
-- Updated CI/CD guidance with explicit backend + frontend command checklist for pre-deploy validation.
-- Updated testing strategy to include frontend static quality checks as merge gates when frontend code changes.
-- Updated local development docs with a concrete pre-deploy check list for Python and frontend commands.
-
-## 2026-02-10
-
-- Added `05-frontend/ui-design-skill.md` as a dedicated agent-facing UI quality skill for visually strong, consistent frontend work.
-- Updated `05-frontend/frontend-architecture.md` to require using the frontend UI design skill during UI implementation.
-- Documented the homepage-first frontend baseline in `05-frontend/frontend-architecture.md` (Vite scaffold, app shell, health indicator, and API client behavior).
-- Updated `05-frontend/ux-flows.md` to include homepage entry flow and homepage-specific states.
-- Updated Step 14 in `09-implementation-plan/implementation-plan.md` to explicitly require homepage implementation before chat flow work.
-- Updated frontend docs for standalone `Why TravelTom` and `How It Works` route pages in the MVP baseline.
-- Added Step 15 frontend documentation updates for `/planner` chat flow, Zustand session state, `/api/v1/chat` integration, and retry-oriented error states.
+- Added `04-llm-orchestrator/chatbot-orchestration-skill.md` defining the chatbot/orchestration implementation skill and quality bar.
+- Updated `04-llm-orchestrator/session-state-schema.md` to match implemented Pydantic models in `apps/api/app/schemas/state.py`.
+- Updated `04-llm-orchestrator/tool-schemas.md` to match implemented tool contracts in `apps/api/app/schemas/tools/*`.
+- Linked the new skill doc from `04-llm-orchestrator/orchestrator-overview.md`.
+- Updated orchestrator instructions for Step 10 with implemented policy routing, timeout handling, and placeholder recommendation behavior.
+- Updated prompt/guardrail instructions with explicit fallback requirements for invalid inputs, tool timeouts, invalid tool payloads, and empty results.
+- Updated `02-backend/api-design.md` with Step 11 chat endpoint implementation notes, persistence behavior, and FastAPI 422 validation status.
+- Added Step 12 recommendation query endpoint notes in `02-backend/api-design.md`, including schema-validation behavior and placeholder-mode empty results.
 
 ## 2026-02-06
 

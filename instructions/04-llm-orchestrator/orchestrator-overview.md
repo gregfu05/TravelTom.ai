@@ -20,6 +20,22 @@
 - Strict input/output schemas.
 - Persistent session state.
 
+## Step 10 implementation snapshot
+
+- Runtime modules:
+  - `apps/api/app/services/orchestrator/policies.py`
+  - `apps/api/app/services/orchestrator/service.py`
+- Deterministic policy gates:
+  - keyword intent classification (`recommend`, `refine`, `clarify`)
+  - continuation logic for active sessions (`refine|itinerary|booking`)
+- Tool execution:
+  - recommendation tool call with schema-validated `RecommendationQuery`
+  - configurable timeout policy (default 4s)
+  - strict validation of `RecommendationToolResponse`
+- Placeholder mode:
+  - recommendation tool may return empty `results` while recommender integration is pending
+  - orchestrator must ask for tighter constraints instead of fabricating options
+
 ## Failure handling
 
 - Validation error: log event and return a user-friendly error.
@@ -32,4 +48,8 @@
 - Fallback logic on extraction failure.
 - Timeouts and circuit breakers.
 - Booking claims only after adapter confirmation.
+
+## Skill reference
+
+- Builder skill: [chatbot-orchestration-skill.md](chatbot-orchestration-skill.md)
 
