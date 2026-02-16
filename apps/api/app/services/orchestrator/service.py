@@ -18,8 +18,8 @@ from app.schemas.tools.recommendations import (
 )
 from app.services.orchestrator.langchain_compat import (
     LANGCHAIN_AVAILABLE,
-    RunnableLambda,
-    StructuredTool,
+    create_runnable_lambda,
+    create_structured_tool,
 )
 from app.services.orchestrator.policies import (
     OrchestratorPolicyConfig,
@@ -67,13 +67,15 @@ class OrchestratorService:
         )
         self._policy = policy_config or OrchestratorPolicyConfig()
         self._uses_langchain = LANGCHAIN_AVAILABLE
-        self._recommendation_structured_tool = StructuredTool.from_function(
+        self._recommendation_structured_tool = create_structured_tool(
             func=self._recommendation_tool_adapter,
             name="recommendation_query",
             description="Run deterministic TravelTom recommendation retrieval.",
             args_schema=RecommendationQuery,
         )
-        self._recommendation_chain = RunnableLambda(self._invoke_recommendation_chain)
+        self._recommendation_chain = create_runnable_lambda(
+            self._invoke_recommendation_chain
+        )
 
     @property
     def uses_langchain(self) -> bool:
