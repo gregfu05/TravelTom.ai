@@ -17,6 +17,7 @@
 
 - Tool-first routing.
 - Deterministic decision logic.
+- LangChain runnable orchestration.
 - Strict input/output schemas.
 - Persistent session state.
 
@@ -29,12 +30,16 @@
   - keyword intent classification (`recommend`, `refine`, `clarify`)
   - continuation logic for active sessions (`refine|itinerary|booking`)
 - Tool execution:
-  - recommendation tool call with schema-validated `RecommendationQuery`
+  - LangChain `StructuredTool` for recommendation calls with schema-validated `RecommendationQuery`
+  - LangChain `RunnableLambda` chain for tool invocation and response parsing
   - configurable timeout policy (default 4s)
   - strict validation of `RecommendationToolResponse`
 - Placeholder mode:
   - recommendation tool may return empty `results` while recommender integration is pending
   - orchestrator must ask for tighter constraints instead of fabricating options
+- Compatibility mode:
+  - if `langchain_core` is unavailable locally, a lightweight fallback shim keeps local tests runnable
+  - production/runtime environments should install `langchain-core`
 
 ## Failure handling
 

@@ -11,9 +11,15 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.schemas.state import SessionState
 from app.schemas.tools.recommendations import (
+    RecommendationConstraints,
     RecommendationQuery,
     RecommendationResult,
     RecommendationToolResponse,
+)
+from app.services.orchestrator.langchain_compat import (
+    LANGCHAIN_AVAILABLE,
+    RunnableLambda,
+    StructuredTool,
 )
 from app.services.orchestrator.policies import (
     OrchestratorPolicyConfig,
@@ -49,17 +55,31 @@ class OrchestratorResponse(BaseModel):
 
 
 class OrchestratorService:
-    """Coordinates intent detection, tool calls, and safe fallback responses."""
+    """Coordinates deterministic policy checks and LangChain tool execution."""
 
     def __init__(
         self,
         recommendation_tool: RecommendationTool | None = None,
         policy_config: OrchestratorPolicyConfig | None = None,
     ) -> None:
-        self._recommendation_tool = (
+        self._recommendation_handler = (
             recommendation_tool or placeholder_recommendation_tool
         )
         self._policy = policy_config or OrchestratorPolicyConfig()
+        self._uses_langchain = LANGCHAIN_AVAILABLE
+        self._recommendation_structured_tool = StructuredTool.from_function(
+            func=self._recommendation_tool_adapter,
+            name="recommendation_query",
+            description="Run deterministic TravelTom recommendation retrieval.",
+            args_schema=RecommendationQuery,
+        )
+        self._recommendation_chain = RunnableLambda(self._invoke_recommendation_chain)
+
+    @property
+    def uses_langchain(self) -> bool:
+        """Return whether langchain_core runtime is available."""
+
+        return self._uses_langchain
 
     def handle_message(
         self,
@@ -100,13 +120,21 @@ class OrchestratorService:
             )
 
         try:
-            tool_output = self._call_recommendation_tool(query)
+            recommendation_response = self._recommendation_chain.invoke(query)
         except FuturesTimeoutError:
             return self._safe_error_response(
                 session_state=session_state,
                 assistant_message=(
                     "I could not finish the recommendation lookup in time. "
                     "Please try again in a moment."
+                ),
+            )
+        except ValidationError:
+            return self._safe_error_response(
+                session_state=session_state,
+                assistant_message=(
+                    "I received an invalid recommendation payload. Please retry and "
+                    "I will fetch results again."
                 ),
             )
         except Exception:
@@ -117,20 +145,6 @@ class OrchestratorService:
                     "from this plan."
                 ),
             )
-
-        try:
-            recommendation_response = RecommendationToolResponse.model_validate(
-                tool_output
-            )
-        except ValidationError:
-            return self._safe_error_response(
-                session_state=session_state,
-                assistant_message=(
-                    "I received an invalid recommendation payload. Please retry and "
-                    "I will fetch results again."
-                ),
-            )
-
         next_state = session_state.model_copy(deep=True)
         next_state.last_message_at = datetime.now(timezone.utc)
         next_state.last_recommendation_version = recommendation_response.ranking_version
@@ -202,8 +216,39 @@ class OrchestratorService:
         query: RecommendationQuery,
     ) -> RecommendationToolResponse | dict[str, Any]:
         with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(self._recommendation_tool, query)
+            future = executor.submit(self._recommendation_handler, query)
             return future.result(timeout=self._policy.recommendation_timeout_seconds)
+
+    def _invoke_recommendation_chain(
+        self,
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        payload = query.model_dump(mode="python")
+        tool_output = self._recommendation_structured_tool.invoke(payload)
+        return RecommendationToolResponse.model_validate(tool_output)
+
+    def _recommendation_tool_adapter(
+        self,
+        session_id: str,
+        query: str,
+        constraints: RecommendationConstraints | None = None,
+        filters: dict[str, Any] | None = None,
+        max_results: int = 20,
+        ranking_version: str = "heuristic-v1",
+    ) -> dict[str, Any]:
+        recommendation_query = RecommendationQuery.model_validate(
+            {
+                "session_id": session_id,
+                "query": query,
+                "constraints": constraints or RecommendationConstraints(),
+                "filters": filters or {},
+                "max_results": max_results,
+                "ranking_version": ranking_version,
+            }
+        )
+        tool_output = self._call_recommendation_tool(recommendation_query)
+        validated_output = RecommendationToolResponse.model_validate(tool_output)
+        return validated_output.model_dump(mode="json")
 
     def _build_clarification_message(self, session_state: SessionState) -> str:
         missing = missing_core_constraints(session_state)

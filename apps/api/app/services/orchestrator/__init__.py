@@ -1,5 +1,6 @@
 """LLM orchestration service exports."""
 
+from app.services.orchestrator.langchain_compat import LANGCHAIN_AVAILABLE
 from app.services.orchestrator.policies import (
     OrchestrationDecision,
     OrchestratorPolicyConfig,
@@ -17,6 +18,7 @@ __all__ = [
     "OrchestratorPolicyConfig",
     "OrchestratorResponse",
     "OrchestratorService",
+    "LANGCHAIN_AVAILABLE",
     "decide_next_action",
     "missing_core_constraints",
     "placeholder_recommendation_tool",

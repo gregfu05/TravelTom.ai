@@ -8,6 +8,7 @@ requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.110",
   "alembic>=1.13",
+  "langchain-core>=0.3",
   "pydantic>=2.6",
   "pydantic-settings>=2.2",
   "pgvector>=0.2.5",

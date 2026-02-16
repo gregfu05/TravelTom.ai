@@ -10,6 +10,8 @@
 - Updated prompt/guardrail instructions with explicit fallback requirements for invalid inputs, tool timeouts, invalid tool payloads, and empty results.
 - Updated `02-backend/api-design.md` with Step 11 chat endpoint implementation notes, persistence behavior, and FastAPI 422 validation status.
 - Added Step 12 recommendation query endpoint notes in `02-backend/api-design.md`, including schema-validation behavior and placeholder-mode empty results.
+- Refactored orchestrator service to LangChain-style `StructuredTool` + `RunnableLambda` execution flow with compatibility shim for local environments without `langchain-core`.
+- Updated orchestrator docs and skill instructions to reflect active LangChain integration.
 
 ## 2026-02-06
 
