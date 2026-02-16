@@ -14,6 +14,7 @@ try:
     StructuredTool = LCStructuredTool
     LANGCHAIN_AVAILABLE = True
 except ImportError:
+
     class RunnableLambda:
         """Small subset of RunnableLambda used by orchestrator tests."""
 
@@ -45,4 +46,3 @@ except ImportError:
 
         def invoke(self, payload: dict[str, Any]) -> Any:
             return self._func(**payload)
-
