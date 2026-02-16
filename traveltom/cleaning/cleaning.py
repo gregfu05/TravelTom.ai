@@ -21,7 +21,6 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 
-
 REVIEW_FLOOR = 10
 DATA_DIR = Path(__file__).resolve().parent.parent / "datasets"
 RAW_PATH = DATA_DIR / "business_SB.parquet"
@@ -56,7 +55,9 @@ def _parse_maybe_mapping(value) -> Dict:
 
 
 def extract_attributes(df: pd.DataFrame) -> pd.DataFrame:
-    attr_dicts = df.get("attributes", pd.Series(dtype=object)).apply(_parse_maybe_mapping)
+    attr_dicts = df.get("attributes", pd.Series(dtype=object)).apply(
+        _parse_maybe_mapping
+    )
     cols = {}
     for key in ATTRIBUTE_KEYS:
         cols[f"attr_{key}"] = attr_dicts.apply(lambda d: d.get(key))
@@ -74,7 +75,9 @@ def add_category_flags(df: pd.DataFrame, top_n: int = 20) -> pd.DataFrame:
     counts = pd.Series(chain.from_iterable(cats)).value_counts()
     top = counts.head(top_n).index
     for cat in top:
-        df[f"cat_{cat.replace(' ', '_').replace('&', 'and')}"] = cats.apply(lambda lst: cat in lst)
+        df[f"cat_{cat.replace(' ', '_').replace('&', 'and')}"] = cats.apply(
+            lambda lst: cat in lst
+        )
     return df
 
 
@@ -97,7 +100,11 @@ def _range_minutes(range_str: str) -> int:
 def hour_features(hours_value) -> Dict[str, int | bool]:
     hours = _parse_maybe_mapping(hours_value)
     if not hours:
-        return {"weekly_open_minutes": 0, "weekend_open_minutes": 0, "late_night": False}
+        return {
+            "weekly_open_minutes": 0,
+            "weekend_open_minutes": 0,
+            "late_night": False,
+        }
 
     weekly = 0
     weekend = 0
@@ -149,11 +156,15 @@ def clean_business_df(df: pd.DataFrame) -> pd.DataFrame:
     df = pd.concat([df, attr_df], axis=1)
 
     # Categories
-    df["categories_list"] = df.get("categories", pd.Series(dtype=object)).apply(split_categories)
+    df["categories_list"] = df.get("categories", pd.Series(dtype=object)).apply(
+        split_categories
+    )
     df = add_category_flags(df)
 
     # Hours
-    hours_features_df = df.get("hours", pd.Series(dtype=object)).apply(hour_features).apply(pd.Series)
+    hours_features_df = (
+        df.get("hours", pd.Series(dtype=object)).apply(hour_features).apply(pd.Series)
+    )
     df = pd.concat([df, hours_features_df], axis=1)
 
     # Drop fields we don't need for modeling (keep city/name for display/filtering)
