@@ -126,3 +126,8 @@ def test_orchestrator_requests_more_constraints_on_empty_results() -> None:
     assert "do not have strong matches yet" in response.assistant_message
     assert "budget range" in response.assistant_message
     assert response.state["status"] == "explore"
+
+
+def test_orchestrator_exposes_langchain_runtime_flag() -> None:
+    service = OrchestratorService()
+    assert isinstance(service.uses_langchain, bool)

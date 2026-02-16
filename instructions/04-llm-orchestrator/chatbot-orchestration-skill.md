@@ -36,4 +36,4 @@ Act as a world-class chatbot builder and orchestration flow creator with world-c
 ## Current project direction
 
 - Recommendation results may be empty while recommender integration is pending.
-- Orchestrator should support placeholder tool calls now and LangChain-backed tools later.
+- Orchestrator uses LangChain runnable + structured tool wiring with placeholder recommendation results while recommender integration is pending.

@@ -12,6 +12,7 @@
 - Validate tool inputs; refuse to call tools with invalid inputs.
 - If the tool returns no results, request more constraints.
 - Apply deterministic policy routing before tool calls.
+- Route tool invocation through LangChain structured tool bindings.
 - Enforce per-tool timeout handling and return retry-safe copy.
 
 ## Grounding rules
