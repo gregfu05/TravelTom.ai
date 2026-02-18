@@ -49,7 +49,9 @@ def recommendation_tool(
     top_row = _select_top_row(candidates)
 
     if top_row is None:
-        return RecommendationToolResponse(results=[], ranking_version=query.ranking_version)
+        return RecommendationToolResponse(
+            results=[], ranking_version=query.ranking_version
+        )
 
     result = RecommendationResult(
         item_id=str(top_row["business_id"]),
@@ -112,7 +114,9 @@ def _infer_category(request_text: str) -> str | None:
     return None
 
 
-def _filter_candidates(catalog: pd.DataFrame, category_column: str | None) -> pd.DataFrame:
+def _filter_candidates(
+    catalog: pd.DataFrame, category_column: str | None
+) -> pd.DataFrame:
     """Filter catalog by category when available.
 
     Args:
