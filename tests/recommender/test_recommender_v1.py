@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-
 from app.schemas.tools.recommendations import RecommendationQuery
+
 from traveltom.recommendor import recommendor_v1
 
 
