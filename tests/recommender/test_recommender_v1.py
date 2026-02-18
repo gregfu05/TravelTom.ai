@@ -8,6 +8,20 @@ from app.schemas.tools.recommendations import RecommendationQuery
 
 from traveltom.recommendor import recommendor_v1
 
+REQUIRED_COLUMNS = [
+    "business_id",
+    "name",
+    "city",
+    "stars",
+    "review_count",
+    "popularity",
+    "cat_Shopping",
+    "cat_Restaurants",
+    "cat_Bars",
+    "cat_Nightlife",
+    "is_open",
+]
+
 
 def _query(text: str) -> RecommendationQuery:
     return RecommendationQuery(session_id="test-session", query=text, max_results=1)
@@ -109,11 +123,7 @@ def test_unknown_request_returns_top_overall_business(
     response = recommendor_v1.recommendation_tool(
         _query("surprise me"), catalog=catalog_df
     )
-    assert response.results, "Expected a fallback recommendation"
-    top = response.results[0]
-
-    assert top.item_id == "overall-top"
-    assert top.rank == 1
+    assert response.results == []
 
 
 def test_tie_breaking_prefers_review_count_then_popularity() -> None:
@@ -168,3 +178,12 @@ def test_tie_breaking_prefers_review_count_then_popularity() -> None:
     top = response.results[0]
 
     assert top.item_id == "c"
+
+
+def test_missing_dataset_returns_empty_results() -> None:
+    empty_catalog = pd.DataFrame(columns=REQUIRED_COLUMNS)
+    response = recommendor_v1.recommendation_tool(
+        _query("anything"), catalog=empty_catalog
+    )
+
+    assert response.results == []

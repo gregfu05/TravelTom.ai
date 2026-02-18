@@ -76,5 +76,5 @@ Final:
 
 - Location: `traveltom/recommendor/recommendor_v1.py`
 - API integration: `apps/api/app/api/v1/recommendations.py` imports `recommendation_tool` and exposes it via `/api/v1/recommendations/query`.
-- Behavior: single-result lookup from `business_SB_cleaned.parquet`, selecting the highest `stars` item for the inferred `cat_*` category (shopping, restaurants, bars, nightlife). Falls back to the overall top-rated business when no category matches. Tie-breakers use `review_count` then `popularity`.
+- Behavior: single-result lookup from `business_SB_cleaned.parquet`, selecting the highest `stars` item for the inferred `cat_*` category (shopping, restaurants, bars, nightlife). If no category keyword matches or the dataset is missing, it returns an empty `results` list while keeping a valid response to keep the API at HTTP 200. Tie-breakers use `review_count` then `popularity`.
 - Tests: `pytest tests/recommender/` (covers category routing, fallback, and tie-breaking).

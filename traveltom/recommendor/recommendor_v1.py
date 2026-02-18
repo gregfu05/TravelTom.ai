@@ -27,6 +27,20 @@ CATEGORY_KEYWORDS: list[tuple[str, str]] = [
     ("store", "cat_Shopping"),
 ]
 
+_EMPTY_COLUMNS = [
+    "business_id",
+    "name",
+    "city",
+    "stars",
+    "review_count",
+    "popularity",
+    "cat_Shopping",
+    "cat_Restaurants",
+    "cat_Bars",
+    "cat_Nightlife",
+    "is_open",
+]
+
 
 def recommendation_tool(
     query: RecommendationQuery,
@@ -44,6 +58,10 @@ def recommendation_tool(
 
     catalog_df = catalog if catalog is not None else _load_catalog()
     category_column = _infer_category(query.query)
+    if category_column is None:
+        return RecommendationToolResponse(
+            results=[], ranking_version=query.ranking_version
+        )
     candidates = _filter_candidates(catalog_df, category_column)
     top_row = _select_top_row(candidates)
 
@@ -78,17 +96,18 @@ def _load_catalog() -> pd.DataFrame:
     """Load and cache the cleaned business catalog.
 
     Returns:
-        DataFrame containing cleaned business records.
-
-    Raises:
-        FileNotFoundError: If the parquet dataset is missing.
+        DataFrame containing cleaned business records, or an empty catalog
+        when the dataset is unavailable.
     """
 
     dataset_path = Path(__file__).with_name(DATASET_NAME)
     if not dataset_path.exists():
-        raise FileNotFoundError(f"Dataset not found at {dataset_path}")
+        return _empty_catalog()
 
-    catalog = pd.read_parquet(dataset_path)
+    try:
+        catalog = pd.read_parquet(dataset_path)
+    except (FileNotFoundError, OSError):
+        return _empty_catalog()
     if "is_open" in catalog.columns:
         catalog = catalog[catalog["is_open"] == 1]
     catalog = catalog.copy()
@@ -169,6 +188,12 @@ def _build_explanation(category_column: str | None, business_name: str) -> str:
         category_label = category_column.replace("cat_", "").replace("_", " ").lower()
         return f"Top {category_label} option by rating: {business_name}."
     return f"Top overall option by rating: {business_name}."
+
+
+def _empty_catalog() -> pd.DataFrame:
+    """Return an empty catalog with required columns for safe fallback."""
+
+    return pd.DataFrame(columns=_EMPTY_COLUMNS)
 
 
 __all__ = ["recommendation_tool"]
