@@ -12,7 +12,7 @@ from app.schemas.tools.recommendations import (
     RecommendationQuery,
     RecommendationToolResponse,
 )
-from app.services.orchestrator.service import placeholder_recommendation_tool
+from traveltom.recommendor.recommendor_v1 import recommendation_tool
 
 router = APIRouter()
 
@@ -26,7 +26,7 @@ RecommendationTool = Callable[
 def get_recommendation_tool() -> RecommendationTool:
     """Return the active recommendation tool implementation."""
 
-    return placeholder_recommendation_tool
+    return recommendation_tool
 
 
 @router.post("/recommendations/query", response_model=RecommendationToolResponse)
