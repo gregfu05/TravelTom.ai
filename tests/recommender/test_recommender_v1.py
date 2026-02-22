@@ -24,7 +24,7 @@ REQUIRED_COLUMNS = [
 
 
 def _query(text: str) -> RecommendationQuery:
-    return RecommendationQuery(session_id="test-session", query=text, max_results=1)
+    return RecommendationQuery(session_id="test-session", query=text, max_results=5)
 
 
 @pytest.fixture()
@@ -69,6 +69,19 @@ def catalog_df() -> pd.DataFrame:
                 "stars": 4.8,
                 "review_count": 300,
                 "popularity": 0.7,
+                "cat_Shopping": False,
+                "cat_Restaurants": False,
+                "cat_Bars": True,
+                "cat_Nightlife": True,
+                "is_open": 1,
+            },
+            {
+                "business_id": "nightlife-2",
+                "name": "Nightlife Two",
+                "city": "Testville",
+                "stars": 4.6,
+                "review_count": 250,
+                "popularity": 0.65,
                 "cat_Shopping": False,
                 "cat_Restaurants": False,
                 "cat_Bars": True,
@@ -123,7 +136,9 @@ def test_unknown_request_returns_top_overall_business(
     response = recommendor_v1.recommendation_tool(
         _query("surprise me"), catalog=catalog_df
     )
-    assert response.results == []
+    assert response.results, "Expected fallback to overall catalog"
+    assert response.results[0].item_id == "rest-top"
+    assert response.results[0].rank == 1
 
 
 def test_tie_breaking_prefers_review_count_then_popularity() -> None:
@@ -187,3 +202,80 @@ def test_missing_dataset_returns_empty_results() -> None:
     )
 
     assert response.results == []
+
+
+def test_composite_scoring_changes_ranking() -> None:
+    catalog = pd.DataFrame(
+        [
+            {
+                "business_id": "high-stars-low-reviews",
+                "name": "Shiny Place",
+                "city": "Testville",
+                "stars": 5.0,
+                "review_count": 10,
+                "popularity": 0.1,
+                "cat_Restaurants": True,
+                "cat_Shopping": False,
+                "cat_Bars": False,
+                "cat_Nightlife": False,
+                "is_open": 1,
+            },
+            {
+                "business_id": "lower-stars-many-reviews",
+                "name": "Beloved Spot",
+                "city": "Testville",
+                "stars": 4.7,
+                "review_count": 1000,
+                "popularity": 0.9,
+                "cat_Restaurants": True,
+                "cat_Shopping": False,
+                "cat_Bars": False,
+                "cat_Nightlife": False,
+                "is_open": 1,
+            },
+        ]
+    )
+
+    response = recommendor_v1.recommendation_tool(_query("restaurant"), catalog=catalog)
+
+    assert response.results[0].item_id == "lower-stars-many-reviews"
+
+
+def test_max_results_respected(catalog_df: pd.DataFrame) -> None:
+    query = RecommendationQuery(
+        session_id="test-session",
+        query="nightlife",
+        max_results=2,
+    )
+    response = recommendor_v1.recommendation_tool(query, catalog=catalog_df)
+
+    assert len(response.results) == 2
+    assert response.results[0].rank == 1
+    assert response.results[1].rank == 2
+
+
+def test_category_filter_fallbacks_to_all_when_empty() -> None:
+    catalog = pd.DataFrame(
+        [
+            {
+                "business_id": "only-one",
+                "name": "Only One",
+                "city": "Testville",
+                "stars": 4.5,
+                "review_count": 50,
+                "popularity": 0.4,
+                "cat_Restaurants": False,
+                "cat_Shopping": False,
+                "cat_Bars": False,
+                "cat_Nightlife": False,
+                "is_open": 1,
+            }
+        ]
+    )
+
+    response = recommendor_v1.recommendation_tool(_query("restaurant"), catalog=catalog)
+
+    assert (
+        response.results
+    ), "Fallback should use full catalog when category filter is empty"
+    assert response.results[0].item_id == "only-one"

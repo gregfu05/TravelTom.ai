@@ -72,9 +72,14 @@ Final:
 - Hotels
 - Flights
 
-## Minimal recommender v1 (temporary)
+## Minimal recommender v1.1 (temporary)
 
 - Location: `traveltom/recommendor/recommendor_v1.py`
 - API integration: `apps/api/app/api/v1/recommendations.py` imports `recommendation_tool` and exposes it via `/api/v1/recommendations/query`.
-- Behavior: single-result lookup from `business_SB_cleaned.parquet`, selecting the highest `stars` item for the inferred `cat_*` category (shopping, restaurants, bars, nightlife). If no category keyword matches or the dataset is missing, it returns an empty `results` list while keeping a valid response to keep the API at HTTP 200. Tie-breakers use `review_count` then `popularity`.
-- Tests: `pytest tests/recommender/` (covers category routing, fallback, and tie-breaking).
+- Behavior:
+  - Loads `business_SB_cleaned.parquet` (returns empty results if the dataset is missing).
+  - Infers a `cat_*` category from keywords (shopping, restaurants, bars, nightlife); if none match or the filtered set is empty, it ranks the full catalog.
+  - Composite score: `score = stars + 0.25 * log1p(review_count) + 0.25 * popularity`.
+  - Sorting: score desc, then `review_count`, `popularity`, `business_id`.
+  - Returns up to `max_results` (defaults to 5 when missing/invalid) with deterministic ranks.
+- Tests: `pytest tests/recommender/` (covers category routing, composite scoring, max_results, fallback, tie-breaking).

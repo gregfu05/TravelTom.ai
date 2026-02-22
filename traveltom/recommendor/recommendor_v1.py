@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from app.schemas.tools.recommendations import (
     RecommendationQuery,
@@ -46,48 +47,55 @@ def recommendation_tool(
     query: RecommendationQuery,
     catalog: pd.DataFrame | None = None,
 ) -> RecommendationToolResponse:
-    """Return a single top recommendation for the given query.
+    """Return ranked recommendations for the given query.
 
     Args:
         query: Validated recommendation request.
         catalog: Optional preloaded catalog (used in unit tests).
 
     Returns:
-        RecommendationToolResponse containing at most one result.
+        RecommendationToolResponse containing up to max_results results.
     """
 
     catalog_df = catalog if catalog is not None else _load_catalog()
+    if catalog_df.empty:
+        return RecommendationToolResponse(
+            results=[], ranking_version=query.ranking_version
+        )
+
     category_column = _infer_category(query.query)
-    if category_column is None:
-        return RecommendationToolResponse(
-            results=[], ranking_version=query.ranking_version
-        )
     candidates = _filter_candidates(catalog_df, category_column)
-    top_row = _select_top_row(candidates)
+    if candidates.empty:
+        candidates = catalog_df
+        category_column = None
 
-    if top_row is None:
-        return RecommendationToolResponse(
-            results=[], ranking_version=query.ranking_version
+    ranked = _rank_candidates(candidates)
+    max_results = _normalize_max_results(query.max_results)
+
+    results: list[RecommendationResult] = []
+    for rank, row in enumerate(
+        ranked.head(max_results).itertuples(index=False), start=1
+    ):
+        results.append(
+            RecommendationResult(
+                item_id=str(row.business_id),
+                item_type="destination",
+                score=float(row.score),
+                rank=rank,
+                features={
+                    "name": row.name,
+                    "city": row.city,
+                    "stars": float(row.stars),
+                    "review_count": int(row.review_count),
+                    "popularity": float(row.popularity),
+                    "category": category_column or "fallback_top_rated",
+                },
+                explanation=_build_explanation(category_column, row.name),
+            )
         )
 
-    result = RecommendationResult(
-        item_id=str(top_row["business_id"]),
-        item_type="destination",
-        score=float(top_row["stars"]),
-        rank=1,
-        features={
-            "name": top_row["name"],
-            "city": top_row["city"],
-            "stars": float(top_row["stars"]),
-            "review_count": int(top_row["review_count"]),
-            "popularity": float(top_row["popularity"]),
-            "category": category_column or "fallback_top_rated",
-        },
-        explanation=_build_explanation(category_column, top_row["name"]),
-    )
     return RecommendationToolResponse(
-        results=[result],
-        ranking_version=query.ranking_version,
+        results=results, ranking_version=query.ranking_version
     )
 
 
@@ -152,25 +160,25 @@ def _filter_candidates(
     return catalog
 
 
-def _select_top_row(catalog: pd.DataFrame) -> pd.Series | None:
-    """Select the top row using deterministic tie-breaking.
+def _rank_candidates(catalog: pd.DataFrame) -> pd.DataFrame:
+    """Compute scores and return candidates sorted deterministically."""
 
-    Args:
-        catalog: Candidate DataFrame.
+    working = catalog.copy()
+    if working.empty:
+        return working
 
-    Returns:
-        Top-ranked row or None when no rows are present.
-    """
+    working["score"] = (
+        working["stars"]
+        + 0.25 * np.log1p(working["review_count"])
+        + 0.25 * working["popularity"]
+    )
 
-    if catalog.empty:
-        return None
-
-    ranked = catalog.sort_values(
-        by=["stars", "review_count", "popularity", "business_id"],
+    ranked = working.sort_values(
+        by=["score", "review_count", "popularity", "business_id"],
         ascending=[False, False, False, True],
         kind="mergesort",
     )
-    return ranked.iloc[0]
+    return ranked
 
 
 def _build_explanation(category_column: str | None, business_name: str) -> str:
@@ -186,14 +194,22 @@ def _build_explanation(category_column: str | None, business_name: str) -> str:
 
     if category_column:
         category_label = category_column.replace("cat_", "").replace("_", " ").lower()
-        return f"Top {category_label} option by rating: {business_name}."
-    return f"Top overall option by rating: {business_name}."
+        return f"Top {category_label} option by score: {business_name}."
+    return f"Top overall option by score: {business_name}."
 
 
 def _empty_catalog() -> pd.DataFrame:
     """Return an empty catalog with required columns for safe fallback."""
 
     return pd.DataFrame(columns=_EMPTY_COLUMNS)
+
+
+def _normalize_max_results(max_results: int | None) -> int:
+    """Ensure max_results is a positive integer, defaulting to 5."""
+
+    if isinstance(max_results, int) and max_results > 0:
+        return max_results
+    return 5
 
 
 __all__ = ["recommendation_tool"]

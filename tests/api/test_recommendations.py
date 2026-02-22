@@ -30,7 +30,8 @@ def test_recommendations_query_returns_placeholder_response() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["results"] == []
+    assert isinstance(body["results"], list)
+    assert len(body["results"]) <= _base_payload()["max_results"]
     assert body["ranking_version"] == "heuristic-v1"
 
 
