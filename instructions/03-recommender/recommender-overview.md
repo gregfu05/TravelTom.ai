@@ -82,8 +82,19 @@ Final:
   - Loads candidate catalog from PostgreSQL `catalog_items` (returns empty results when the table has no rows).
   - Uses a dedicated DB access path for recommendation reads (does not reuse
     request-scoped async session objects across threads).
+  - Applies hard destination filtering from `RecommendationQuery.constraints.destination`
+    against catalog `city`; if no rows match the destination constraint, returns
+    an empty result set.
+  - Applies hard item-type filtering from `RecommendationQuery.filters.item_type`
+    (`destination|hotel|flight`); if no rows match the requested type, returns
+    an empty result set.
+  - Hotel-specific quality gate narrows `item_type=hotel` results to rows with
+    lodging tags (for example `Hotels`, `Resorts`, `Inns`) when such rows are
+    present, to avoid generic travel/tour listings dominating hotel requests.
   - Uses fields from `rating` + `metadata_json.review_count/popularity` for deterministic scoring.
-  - Infers a `cat_*` category from keywords (shopping, restaurants, bars, nightlife); if none match or the filtered set is empty, it ranks the full catalog.
+  - Infers a `cat_*` category from keyword matches using token boundaries
+    (avoids false matches like `bar` inside `Santa Barbara`); if none match or
+    the filtered set is empty, it ranks the full filtered catalog.
   - Composite score: `score = stars + 0.25 * log1p(review_count) + 0.25 * popularity`.
   - Sorting: score desc, then `review_count`, `popularity`, `business_id`.
   - Returns up to `max_results` (defaults to 5 when missing/invalid) with deterministic ranks.

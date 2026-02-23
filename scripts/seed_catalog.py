@@ -38,18 +38,29 @@ BUSINESS_ID_NAMESPACE = uuid.UUID("56f6e980-b2c0-4be2-a238-7176bf5a4fa7")
 
 HOTEL_KEYWORDS = (
     "hotel",
+    "hotels",
     "hostel",
+    "hostels",
     "resort",
+    "resorts",
     "lodging",
-    "bed & breakfast",
+    "bed and breakfast",
     "vacation rental",
+    "vacation rentals",
     "guest house",
+    "guest houses",
+    "motel",
+    "motels",
+    "inn",
+    "inns",
 )
 FLIGHT_KEYWORDS = (
     "airline",
+    "airlines",
     "airport",
-    "flight",
     "airports",
+    "flight",
+    "flights",
 )
 
 T = TypeVar("T")
@@ -142,12 +153,19 @@ def _item_type_from_tags(tags: list[str] | None) -> str:
     if not tags:
         return "destination"
 
-    normalized = " ".join(tag.lower() for tag in tags)
-    if any(keyword in normalized for keyword in FLIGHT_KEYWORDS):
+    normalized_tags = {_normalize_tag(tag) for tag in tags}
+    if any(tag in FLIGHT_KEYWORDS for tag in normalized_tags):
         return "flight"
-    if any(keyword in normalized for keyword in HOTEL_KEYWORDS):
+    if any(tag in HOTEL_KEYWORDS for tag in normalized_tags):
         return "hotel"
     return "destination"
+
+
+def _normalize_tag(value: str) -> str:
+    normalized = value.casefold().strip()
+    normalized = normalized.replace("&", " and ")
+    normalized = " ".join(normalized.split())
+    return normalized
 
 
 def _price_from_attributes(attributes: dict[str, Any]) -> Decimal | None:
