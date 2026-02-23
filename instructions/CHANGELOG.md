@@ -20,6 +20,22 @@
 - Updated frontend/local-dev docs with explicit Vite proxy target configuration
   via `apps/web/.env` (`VITE_API_PROXY_TARGET`) to avoid calling stale backend
   instances on the wrong port.
+- Added deterministic orchestrator state extraction module
+  (`apps/api/app/services/orchestrator/extraction.py`) and wired extraction into
+  chat orchestration before policy routing and recommendation tool calls.
+- Updated recommender runtime to apply destination hard-filtering from
+  `RecommendationQuery.constraints.destination` and return empty results when no
+  destination rows match.
+- Added backend and infra troubleshooting guidance for validating populated
+  `state.constraints` in `/api/v1/chat` responses.
+- Fixed recommender keyword false-positive matching so `bar` no longer matches
+  inside location names like `Santa Barbara`.
+- Added request-level `item_type` filter extraction in orchestrator and applied
+  hard item-type filtering in recommender (`destination|hotel|flight`).
+- Added hotel-result quality narrowing to prefer lodging-tagged rows over
+  generic travel/tour rows for hotel queries.
+- Updated seed classification rules to avoid mapping generic `Hotels & Travel`
+  categories to `hotel` without lodging-specific tags.
 
 ## 2026-02-12
 

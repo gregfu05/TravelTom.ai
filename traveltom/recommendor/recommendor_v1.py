@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from functools import lru_cache
 from typing import Any
 
@@ -40,6 +41,24 @@ _CATEGORY_FALLBACK_PATTERNS: dict[str, str] = {
 }
 
 _VALID_ITEM_TYPES = {"destination", "hotel", "flight"}
+_HOTEL_LODGING_TAGS = {
+    "hotel",
+    "hotels",
+    "hostel",
+    "hostels",
+    "resort",
+    "resorts",
+    "lodging",
+    "bed and breakfast",
+    "vacation rental",
+    "vacation rentals",
+    "guest house",
+    "guest houses",
+    "motel",
+    "motels",
+    "inn",
+    "inns",
+}
 
 _EMPTY_COLUMNS = [
     "business_id",
@@ -83,10 +102,27 @@ def recommendation_tool(
             results=[], ranking_version=query.ranking_version
         )
 
+    location_filtered = _apply_destination_filter(
+        catalog_df, query.constraints.destination
+    )
+    if query.constraints.destination and location_filtered.empty:
+        return RecommendationToolResponse(
+            results=[],
+            ranking_version=query.ranking_version,
+        )
+
+    requested_item_type = _extract_requested_item_type(query.filters)
+    type_filtered = _apply_item_type_filter(location_filtered, requested_item_type)
+    if requested_item_type and type_filtered.empty:
+        return RecommendationToolResponse(
+            results=[],
+            ranking_version=query.ranking_version,
+        )
+
     category_column = _infer_category(query.query)
-    candidates = _filter_candidates(catalog_df, category_column)
+    candidates = _filter_candidates(type_filtered, category_column)
     if candidates.empty:
-        candidates = catalog_df
+        candidates = type_filtered
         category_column = None
 
     ranked = _rank_candidates(candidates)
@@ -321,11 +357,16 @@ def _infer_category(request_text: str) -> str | None:
         Category column name or None when no keyword matches.
     """
 
-    normalized = request_text.lower()
+    normalized = request_text.casefold()
     for keyword, column in CATEGORY_KEYWORDS:
-        if keyword in normalized:
+        if _contains_keyword(normalized, keyword):
             return column
     return None
+
+
+def _contains_keyword(text: str, keyword: str) -> bool:
+    pattern = rf"(?<![a-z0-9]){re.escape(keyword.casefold())}(?![a-z0-9])"
+    return re.search(pattern, text) is not None
 
 
 def _filter_candidates(
@@ -346,6 +387,93 @@ def _filter_candidates(
         if not filtered.empty:
             return filtered
     return catalog
+
+
+def _apply_destination_filter(
+    catalog: pd.DataFrame, destination: str | None
+) -> pd.DataFrame:
+    """Apply a hard location constraint when destination is provided."""
+
+    if not destination:
+        return catalog
+    if "city" not in catalog.columns:
+        return catalog
+
+    normalized_destination = _normalize_filter_text(destination)
+    if not normalized_destination:
+        return catalog
+
+    normalized_city = (
+        catalog["city"].fillna("").astype(str).apply(_normalize_filter_text)
+    )
+    matches = normalized_city == normalized_destination
+    if not bool(matches.any()):
+        escaped_destination = re.escape(normalized_destination)
+        matches = normalized_city.str.contains(escaped_destination, regex=True)
+
+    filtered = catalog[matches]
+    if filtered.empty:
+        return catalog.iloc[0:0]
+    return filtered
+
+
+def _extract_requested_item_type(filters: dict[str, Any]) -> str | None:
+    value = filters.get("item_type")
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().casefold()
+    if normalized in {"destination", "destinations"}:
+        return "destination"
+    if normalized in {"hotel", "hotels"}:
+        return "hotel"
+    if normalized in {"flight", "flights"}:
+        return "flight"
+    return None
+
+
+def _apply_item_type_filter(
+    catalog: pd.DataFrame,
+    item_type: str | None,
+) -> pd.DataFrame:
+    if not item_type:
+        return catalog
+    if "item_type" not in catalog.columns:
+        return catalog
+    filtered = catalog[catalog["item_type"] == item_type]
+    if filtered.empty:
+        return catalog.iloc[0:0]
+    if item_type == "hotel":
+        filtered = _apply_hotel_quality_filter(filtered)
+    return filtered
+
+
+def _apply_hotel_quality_filter(catalog: pd.DataFrame) -> pd.DataFrame:
+    if "tags" not in catalog.columns:
+        return catalog
+    lodging_mask = catalog["tags"].apply(_has_lodging_tag)
+    if bool(lodging_mask.any()):
+        narrowed = catalog[lodging_mask]
+        if not narrowed.empty:
+            return narrowed
+    return catalog
+
+
+def _has_lodging_tag(value: Any) -> bool:
+    if not isinstance(value, list):
+        return False
+    normalized_tags = {_normalize_tag_text(str(tag)) for tag in value}
+    return bool(normalized_tags & _HOTEL_LODGING_TAGS)
+
+
+def _normalize_tag_text(value: str) -> str:
+    cleaned = value.casefold().strip()
+    cleaned = cleaned.replace("&", " and ")
+    return re.sub(r"\s+", " ", cleaned)
+
+
+def _normalize_filter_text(value: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9 ]+", " ", value.casefold())
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 
 def _rank_candidates(catalog: pd.DataFrame) -> pd.DataFrame:

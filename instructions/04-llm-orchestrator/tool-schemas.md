@@ -15,6 +15,7 @@ All tool inputs and outputs must pass explicit Pydantic validation.
   - `query: str` (required)
   - `constraints: RecommendationConstraints` (defaults to empty object)
   - `filters: dict[str, Any]` (default `{}`)
+    - supported runtime key: `item_type` (`destination|hotel|flight`)
   - `max_results: int` (default `20`, range `1..50`)
   - `ranking_version: str` (default `"heuristic-v1"`)
 - `RecommendationConstraints`

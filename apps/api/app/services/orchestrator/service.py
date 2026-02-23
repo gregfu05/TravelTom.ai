@@ -16,6 +16,10 @@ from app.schemas.tools.recommendations import (
     RecommendationResult,
     RecommendationToolResponse,
 )
+from app.services.orchestrator.extraction import (
+    apply_message_state_updates,
+    extract_query_filters,
+)
 from app.services.orchestrator.langchain_compat import (
     LANGCHAIN_AVAILABLE,
     create_runnable_lambda,
@@ -101,20 +105,25 @@ class OrchestratorService:
                 ),
             )
 
-        decision = decide_next_action(message, session_state)
+        extracted_state = apply_message_state_updates(
+            message=message,
+            session_state=session_state,
+        )
+
+        decision = decide_next_action(message, extracted_state)
         if not decision.should_call_recommendation_tool:
             return self._clarification_response(
-                session_state=session_state,
-                assistant_message=self._build_clarification_message(session_state),
+                session_state=extracted_state,
+                assistant_message=self._build_clarification_message(extracted_state),
             )
 
         query = self._build_recommendation_query(
             user_message=message,
-            session_state=session_state,
+            session_state=extracted_state,
         )
         if query is None:
             return self._safe_error_response(
-                session_state=session_state,
+                session_state=extracted_state,
                 assistant_message=(
                     "I could not validate your request yet. Please share destination, "
                     "dates, and budget so I can continue."
@@ -125,7 +134,7 @@ class OrchestratorService:
             recommendation_response = self._recommendation_chain.invoke(query)
         except FuturesTimeoutError:
             return self._safe_error_response(
-                session_state=session_state,
+                session_state=extracted_state,
                 assistant_message=(
                     "I could not finish the recommendation lookup in time. "
                     "Please try again in a moment."
@@ -133,7 +142,7 @@ class OrchestratorService:
             )
         except ValidationError:
             return self._safe_error_response(
-                session_state=session_state,
+                session_state=extracted_state,
                 assistant_message=(
                     "I received an invalid recommendation payload. Please retry and "
                     "I will fetch results again."
@@ -141,13 +150,13 @@ class OrchestratorService:
             )
         except Exception:
             return self._safe_error_response(
-                session_state=session_state,
+                session_state=extracted_state,
                 assistant_message=(
                     "I hit a temporary tool error. Please retry and I will continue "
                     "from this plan."
                 ),
             )
-        next_state = session_state.model_copy(deep=True)
+        next_state = extracted_state.model_copy(deep=True)
         next_state.last_message_at = datetime.now(timezone.utc)
         next_state.last_recommendation_version = recommendation_response.ranking_version
 
@@ -185,6 +194,7 @@ class OrchestratorService:
             "session_id": session_state.session_id,
             "query": user_message,
             "constraints": self._build_constraints_payload(session_state),
+            "filters": extract_query_filters(user_message),
             "max_results": self._policy.max_recommendation_results,
             "ranking_version": "heuristic-v1",
         }

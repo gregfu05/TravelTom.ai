@@ -41,7 +41,12 @@ Optional pre-check:
 - Chat returns no recommendations:
   - The recommender reads from PostgreSQL `catalog_items`, not directly from parquet.
   - Seed catalog data and verify row count in `catalog_items`.
+  - If seed item-type rules changed, re-seed with truncate so existing rows are
+    reclassified: `python scripts/seed_catalog.py --truncate`.
   - The recommender refreshes catalog cache automatically when empty results are detected.
+  - Inspect `/api/v1/chat` response `state.constraints`; if fields are empty after
+    a message that includes destination/dates/budget text, backend extraction wiring
+    is stale and the API process should be restarted with the latest code.
   - If row count is non-zero but chat still returns
     `I do not have strong matches yet...`, verify `/api/v1/recommendations/query`
     directly; if that is empty, restart backend and ensure latest recommender code
