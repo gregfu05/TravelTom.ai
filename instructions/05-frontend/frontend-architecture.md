@@ -14,6 +14,8 @@
 - Added dedicated marketing routes for `/why-traveltom` and `/how-it-works`.
 - Added planner route `/planner` with `ChatView` and message flow.
 - Added client session store in `src/store/session.ts` for chat state.
+- Added recommendations rendering in planner from `/api/v1/chat` responses
+  (latest response snapshot) with a compact top-5 presentation.
 
 ## Component structure
 
@@ -24,10 +26,7 @@
 - `HowItWorksPage`
 - `PlannerPage`
 - `ChatView`
-- `MessageList`
-- `MessageInput`
-- `RecommendationsPanel`
-- `RecommendationCard`
+- `RecommendationsPanel` (currently embedded inside `ChatView`)
 - `ShortlistView`
 - `ItineraryView`
 - `BookingStub`
@@ -39,14 +38,17 @@
   - `/planner`
   - `/why-traveltom`
   - `/how-it-works`
-- Keep chat/planner implementation in upcoming frontend steps and attach route-level surfaces as they are built.
+- Chat + recommendations are implemented on `/planner`; shortlist/itinerary/booking
+  remain upcoming route-level capabilities.
 
 ## State management
 
 - Use Zustand for session state and shortlist.
 - Use React Query for API calls and caching.
 - Keep server state in React Query; UI state in Zustand.
-- Current chat implementation stores `sessionId`, `messages`, send status, and error state in Zustand (`src/store/session.ts`).
+- Current chat implementation stores `sessionId`, `messages`,
+  `latestRecommendations`, send status, and error state in Zustand
+  (`src/store/session.ts`).
 
 ## UI library
 
@@ -58,7 +60,10 @@
 - Request/response schemas validated with Zod (frontend) mirroring Pydantic.
 - Normalize non-2xx responses into a typed `ApiClientError` for predictable UI handling.
 - Map backend snake_case chat response fields to frontend camelCase models in the API client.
-- Implement `sendChatMessage` for `/api/v1/chat` and append assistant responses in chat UI.
+- Implement `sendChatMessage` for `/api/v1/chat`, append assistant responses,
+  and map recommendation payloads for planner rendering.
+- Vite dev proxy target is configurable via `VITE_API_PROXY_TARGET` in
+  `apps/web/.env` (loaded by Vite config).
 
 ## Homepage scope
 
@@ -70,7 +75,11 @@
 ## Error and loading states
 
 - Global error banner for API failures.
-- Inline loading placeholders for recommendations.
+- Inline loading state for chat requests and retry support on failed sends.
+- Recommendation panel empty state when `recommendations` is empty in latest
+  response.
+- Recommendation panel presents only top 5 items with collapsed rationale to
+  reduce clutter.
 - Retry button on chat failures.
 - Homepage API status states: checking, online, unreachable.
 - Chat screen states include:

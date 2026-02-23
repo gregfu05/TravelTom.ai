@@ -24,7 +24,9 @@ TravelTom is a full-stack project that delivers a travel-planning chat experienc
 2. Install dependencies.
 3. Configure `.env`.
 4. Run migrations.
-5. Start the API.
+5. Build cleaned catalog snapshot.
+6. Seed catalog data.
+7. Start the API.
 
 ```bash
 python -m venv .venv
@@ -38,6 +40,14 @@ cp .env.example .env
 
 ```bash
 alembic -c apps/api/alembic.ini upgrade head
+```
+
+```bash
+python -m traveltom.cleaning.cleaning
+```
+
+```bash
+python scripts/seed_catalog.py --truncate
 ```
 
 ```bash

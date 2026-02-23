@@ -5,7 +5,10 @@ from __future__ import annotations
 import time
 
 from app.schemas.state import SessionState
-from app.schemas.tools.recommendations import RecommendationToolResponse
+from app.schemas.tools.recommendations import (
+    RecommendationQuery,
+    RecommendationToolResponse,
+)
 from app.services.orchestrator.policies import OrchestratorPolicyConfig
 from app.services.orchestrator.service import OrchestratorService
 
@@ -55,6 +58,56 @@ def test_orchestrator_calls_recommendation_tool_for_recommend_intent() -> None:
     assert response.recommendations[0].item_id == "dest-lisbon"
     assert "Top picks" in response.assistant_message
     assert response.state["status"] == "refine"
+
+
+def test_orchestrator_passes_extracted_constraints_to_tool() -> None:
+    captured_query: dict[str, RecommendationQuery | None] = {"query": None}
+
+    def tool(query: RecommendationQuery):
+        captured_query["query"] = query
+        return {"ranking_version": "heuristic-v1", "results": []}
+
+    service = OrchestratorService(recommendation_tool=tool)
+    response = service.handle_message(
+        user_message=(
+            "Recommend a trip from NYC to Lisbon from 2026-06-10 to 2026-06-17 "
+            "with budget between 1200 and 2400 USD."
+        ),
+        session_state=SessionState(session_id="sess-new"),
+    )
+
+    query = captured_query["query"]
+    assert query is not None
+    assert query.constraints.origin == "NYC"
+    assert query.constraints.destination == "Lisbon"
+    assert query.constraints.dates is not None
+    assert query.constraints.dates.start.isoformat() == "2026-06-10"
+    assert query.constraints.dates.end.isoformat() == "2026-06-17"
+    assert query.constraints.budget is not None
+    assert query.constraints.budget.min == 1200.0
+    assert query.constraints.budget.max == 2400.0
+    assert query.max_results == 5
+    assert response.state["constraints"]["destination"] == "Lisbon"
+    assert response.state["constraints"]["origin"] == "NYC"
+
+
+def test_orchestrator_extracts_hotel_filter_from_message() -> None:
+    captured_query: dict[str, RecommendationQuery | None] = {"query": None}
+
+    def tool(query: RecommendationQuery):
+        captured_query["query"] = query
+        return {"ranking_version": "heuristic-v1", "results": []}
+
+    service = OrchestratorService(recommendation_tool=tool)
+    service.handle_message(
+        user_message="Recommend me hotels in Santa Barbara",
+        session_state=SessionState(session_id="sess-hotels"),
+    )
+
+    query = captured_query["query"]
+    assert query is not None
+    assert query.filters["item_type"] == "hotel"
+    assert query.constraints.destination == "Santa Barbara"
 
 
 def test_orchestrator_returns_clarification_when_intent_is_unclear() -> None:

@@ -58,8 +58,10 @@ export function ChatView() {
     messages,
     isSending,
     errorMessage,
+    latestRecommendations,
     setSessionId,
     addMessage,
+    setLatestRecommendations,
     setIsSending,
     setErrorMessage,
     resetConversation,
@@ -69,6 +71,7 @@ export function ChatView() {
   const [pendingRequest, setPendingRequest] = useState<PendingRequest | null>(
     null,
   );
+  const topRecommendations = latestRecommendations.slice(0, 5);
 
   async function sendMessage(
     rawMessage: string,
@@ -105,6 +108,7 @@ export function ChatView() {
           response.messageId || createMessageId(),
         ),
       );
+      setLatestRecommendations(response.recommendations);
       setPendingRequest(null);
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -205,6 +209,41 @@ export function ChatView() {
             </button>
           ) : null}
         </aside>
+      ) : null}
+
+      {latestRecommendations.length > 0 ? (
+        <section className="recommendations-panel" aria-live="polite">
+          <div className="recommendations-panel-header">
+            <p className="eyebrow">Recommendations</p>
+            <p>Top {topRecommendations.length} picks from latest response</p>
+          </div>
+          <ol className="recommendation-list">
+            {topRecommendations.map((item) => (
+              <li key={`${item.itemId}-${item.rank}`} className="recommendation-list-item">
+                <article className="recommendation-card">
+                  <div className="recommendation-card-head">
+                    <p className="recommendation-rank">#{item.rank}</p>
+                    <div className="recommendation-card-badges">
+                      <p className="recommendation-type">{item.itemType}</p>
+                      <p className="recommendation-score">
+                        Score {item.score.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                  <h3>{item.metadata?.name ? String(item.metadata.name) : item.itemId}</h3>
+                  <p className="recommendation-subline">
+                    {item.metadata?.city ? String(item.metadata.city) : "Location unavailable"}
+                    {item.metadata?.stars ? ` • ${String(item.metadata.stars)} stars` : ""}
+                  </p>
+                  <details className="recommendation-details">
+                    <summary>Why this pick</summary>
+                    <p>{item.explanation}</p>
+                  </details>
+                </article>
+              </li>
+            ))}
+          </ol>
+        </section>
       ) : null}
 
       <form className="chat-input-form" onSubmit={handleSubmit}>

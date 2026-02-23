@@ -75,10 +75,26 @@ Final:
 ## Minimal recommender v1.1 (temporary)
 
 - Location: `traveltom/recommendor/recommendor_v1.py`
-- API integration: `apps/api/app/api/v1/recommendations.py` imports `recommendation_tool` and exposes it via `/api/v1/recommendations/query`.
+- API integration:
+  - `apps/api/app/api/v1/recommendations.py` exposes it via `/api/v1/recommendations/query`.
+  - `apps/api/app/api/v1/chat.py` injects the same tool into `OrchestratorService` for chat responses.
 - Behavior:
-  - Loads `business_SB_cleaned.parquet` (returns empty results if the dataset is missing).
-  - Infers a `cat_*` category from keywords (shopping, restaurants, bars, nightlife); if none match or the filtered set is empty, it ranks the full catalog.
+  - Loads candidate catalog from PostgreSQL `catalog_items` (returns empty results when the table has no rows).
+  - Uses a dedicated DB access path for recommendation reads (does not reuse
+    request-scoped async session objects across threads).
+  - Applies hard destination filtering from `RecommendationQuery.constraints.destination`
+    against catalog `city`; if no rows match the destination constraint, returns
+    an empty result set.
+  - Applies hard item-type filtering from `RecommendationQuery.filters.item_type`
+    (`destination|hotel|flight`); if no rows match the requested type, returns
+    an empty result set.
+  - Hotel-specific quality gate narrows `item_type=hotel` results to rows with
+    lodging tags (for example `Hotels`, `Resorts`, `Inns`) when such rows are
+    present, to avoid generic travel/tour listings dominating hotel requests.
+  - Uses fields from `rating` + `metadata_json.review_count/popularity` for deterministic scoring.
+  - Infers a `cat_*` category from keyword matches using token boundaries
+    (avoids false matches like `bar` inside `Santa Barbara`); if none match or
+    the filtered set is empty, it ranks the full filtered catalog.
   - Composite score: `score = stars + 0.25 * log1p(review_count) + 0.25 * popularity`.
   - Sorting: score desc, then `review_count`, `popularity`, `business_id`.
   - Returns up to `max_results` (defaults to 5 when missing/invalid) with deterministic ranks.

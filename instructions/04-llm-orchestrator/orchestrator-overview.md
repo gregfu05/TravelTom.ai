@@ -26,13 +26,20 @@
 - Runtime modules:
   - `apps/api/app/services/orchestrator/policies.py`
   - `apps/api/app/services/orchestrator/service.py`
+  - `apps/api/app/services/orchestrator/extraction.py`
 - Deterministic policy gates:
   - keyword intent classification (`recommend`, `refine`, `clarify`)
   - continuation logic for active sessions (`refine|itinerary|booking`)
+- Deterministic state extraction:
+  - parse origin/destination, date ranges, trip length, budget, and party size from user text
+  - merge extracted values into persisted `SessionState` before policy routing and tool calls
+  - persist extracted destinations into `entities.destinations`
+  - extract request-level recommendation filters (for example `item_type=hotel|flight|destination`) from user text
 - Tool execution:
   - LangChain `StructuredTool` for recommendation calls with schema-validated `RecommendationQuery`
   - LangChain `RunnableLambda` chain for tool invocation and response parsing
   - configurable timeout policy (default 4s)
+  - chat policy max results defaults to top 5 per request
   - strict validation of `RecommendationToolResponse`
 - Placeholder mode:
   - recommendation tool may return empty `results` while recommender integration is pending

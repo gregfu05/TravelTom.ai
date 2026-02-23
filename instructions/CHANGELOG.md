@@ -1,5 +1,50 @@
 # Instructions Changelog
 
+## 2026-02-23
+
+- Updated `05-frontend/frontend-architecture.md` to reflect implemented
+  planner behavior: chat + recommendations rendering from `/api/v1/chat`, and
+  current Zustand session state fields.
+- Updated `05-frontend/ux-flows.md` to document recommendation rendering in the
+  primary planner flow and current recommendations panel behavior.
+- Updated `07-infra-ops/local-dev.md` troubleshooting with a frontend-specific
+  check for chat responses that include recommendations but no rendered cards.
+- Updated `03-recommender/recommender-overview.md` to reflect DB-backed
+  catalog retrieval (`catalog_items`) for the minimal recommender flow.
+- Updated `07-infra-ops/local-dev.md` first-run and troubleshooting guidance to
+  use cleaned snapshot seeding as the recommender input path.
+- Documented recommender runtime fix for thread/event-loop-safe DB reads and
+  added troubleshooting verification with `/api/v1/recommendations/query`.
+- Updated recommender runtime behavior to auto-refresh cached catalog snapshot
+  after empty reads to avoid stale-empty cache after seeding.
+- Updated frontend/local-dev docs with explicit Vite proxy target configuration
+  via `apps/web/.env` (`VITE_API_PROXY_TARGET`) to avoid calling stale backend
+  instances on the wrong port.
+- Added deterministic orchestrator state extraction module
+  (`apps/api/app/services/orchestrator/extraction.py`) and wired extraction into
+  chat orchestration before policy routing and recommendation tool calls.
+- Updated recommender runtime to apply destination hard-filtering from
+  `RecommendationQuery.constraints.destination` and return empty results when no
+  destination rows match.
+- Added backend and infra troubleshooting guidance for validating populated
+  `state.constraints` in `/api/v1/chat` responses.
+- Fixed recommender keyword false-positive matching so `bar` no longer matches
+  inside location names like `Santa Barbara`.
+- Added request-level `item_type` filter extraction in orchestrator and applied
+  hard item-type filtering in recommender (`destination|hotel|flight`).
+- Added hotel-result quality narrowing to prefer lodging-tagged rows over
+  generic travel/tour rows for hotel queries.
+- Updated seed classification rules to avoid mapping generic `Hotels & Travel`
+  categories to `hotel` without lodging-specific tags.
+- Reduced chat orchestrator recommendation count to top 5 per message for
+  cleaner planner output.
+- Redesigned planner recommendations panel to a compact top-5 list with
+  metadata badges and collapsible "Why this pick" details.
+- Updated mypy project configuration to exclude generated build/dist/egg-info
+  paths and avoid duplicate-module failures when running `mypy .`.
+- Added `scripts/__init__.py` so `scripts.seed_catalog` resolves as a single
+  module namespace under mypy.
+
 ## 2026-02-12
 
 - Added `04-llm-orchestrator/chatbot-orchestration-skill.md` defining the chatbot/orchestration implementation skill and quality bar.
