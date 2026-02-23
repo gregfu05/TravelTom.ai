@@ -82,4 +82,3 @@ def test_extracts_relative_dates_and_qualitative_budget() -> None:
     assert updated.constraints.party_size is not None
     assert updated.constraints.party_size.adults == 3
     assert updated.constraints.party_size.children == 0
-

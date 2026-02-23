@@ -18,4 +18,3 @@ def test_item_type_detects_actual_hotel_tags() -> None:
 def test_item_type_detects_flight_tags() -> None:
     tags = ["Airports", "Travel Services"]
     assert _item_type_from_tags(tags) == "flight"
-

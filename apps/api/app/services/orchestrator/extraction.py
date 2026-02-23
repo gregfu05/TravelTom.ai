@@ -268,8 +268,8 @@ def apply_message_state_updates(
     if parsed_dates is not None:
         next_state.constraints.dates = parsed_dates
         next_state.constraints.trip_length_days = (
-            (parsed_dates.end - parsed_dates.start).days + 1
-        )
+            parsed_dates.end - parsed_dates.start
+        ).days + 1
     else:
         trip_length_days = _extract_trip_length_days(normalized_message)
         if trip_length_days is not None:
