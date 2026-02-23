@@ -58,8 +58,10 @@ export function ChatView() {
     messages,
     isSending,
     errorMessage,
+    latestRecommendations,
     setSessionId,
     addMessage,
+    setLatestRecommendations,
     setIsSending,
     setErrorMessage,
     resetConversation,
@@ -105,6 +107,7 @@ export function ChatView() {
           response.messageId || createMessageId(),
         ),
       );
+      setLatestRecommendations(response.recommendations);
       setPendingRequest(null);
     } catch (error: unknown) {
       setErrorMessage(getErrorMessage(error));
@@ -205,6 +208,48 @@ export function ChatView() {
             </button>
           ) : null}
         </aside>
+      ) : null}
+
+      {latestRecommendations.length > 0 ? (
+        <section className="recommendations-panel" aria-live="polite">
+          <div className="recommendations-panel-header">
+            <p className="eyebrow">Recommendations</p>
+            <p>{latestRecommendations.length} options from latest response</p>
+          </div>
+          <div className="recommendations-grid">
+            {latestRecommendations.map((item) => (
+              <article
+                key={`${item.itemId}-${item.rank}`}
+                className="recommendation-card"
+              >
+                <div className="recommendation-card-head">
+                  <p className="recommendation-rank">#{item.rank}</p>
+                  <p className="recommendation-type">{item.itemType}</p>
+                </div>
+                <h3>{item.metadata?.name ? String(item.metadata.name) : item.itemId}</h3>
+                <p className="recommendation-explanation">{item.explanation}</p>
+                <dl className="recommendation-meta">
+                  <div>
+                    <dt>Score</dt>
+                    <dd>{item.score.toFixed(3)}</dd>
+                  </div>
+                  {item.metadata?.city ? (
+                    <div>
+                      <dt>City</dt>
+                      <dd>{String(item.metadata.city)}</dd>
+                    </div>
+                  ) : null}
+                  {item.metadata?.stars ? (
+                    <div>
+                      <dt>Stars</dt>
+                      <dd>{String(item.metadata.stars)}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+              </article>
+            ))}
+          </div>
+        </section>
       ) : null}
 
       <form className="chat-input-form" onSubmit={handleSubmit}>

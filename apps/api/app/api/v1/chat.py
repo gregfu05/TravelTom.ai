@@ -18,6 +18,7 @@ from app.db.models.session import Session
 from app.db.session import get_db
 from app.schemas.state import SessionState
 from app.services.orchestrator.service import OrchestratorResponse, OrchestratorService
+from traveltom.recommendor.recommendor_v1 import recommendation_tool
 
 router = APIRouter()
 
@@ -70,7 +71,7 @@ class ChatResponse(BaseModel):
 def get_orchestrator_service() -> OrchestratorService:
     """Return a cached orchestrator service instance."""
 
-    return OrchestratorService()
+    return OrchestratorService(recommendation_tool=recommendation_tool)
 
 
 @router.post("/chat", response_model=ChatResponse)

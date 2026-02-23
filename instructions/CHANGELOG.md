@@ -1,5 +1,26 @@
 # Instructions Changelog
 
+## 2026-02-23
+
+- Updated `05-frontend/frontend-architecture.md` to reflect implemented
+  planner behavior: chat + recommendations rendering from `/api/v1/chat`, and
+  current Zustand session state fields.
+- Updated `05-frontend/ux-flows.md` to document recommendation rendering in the
+  primary planner flow and current recommendations panel behavior.
+- Updated `07-infra-ops/local-dev.md` troubleshooting with a frontend-specific
+  check for chat responses that include recommendations but no rendered cards.
+- Updated `03-recommender/recommender-overview.md` to reflect DB-backed
+  catalog retrieval (`catalog_items`) for the minimal recommender flow.
+- Updated `07-infra-ops/local-dev.md` first-run and troubleshooting guidance to
+  use cleaned snapshot seeding as the recommender input path.
+- Documented recommender runtime fix for thread/event-loop-safe DB reads and
+  added troubleshooting verification with `/api/v1/recommendations/query`.
+- Updated recommender runtime behavior to auto-refresh cached catalog snapshot
+  after empty reads to avoid stale-empty cache after seeding.
+- Updated frontend/local-dev docs with explicit Vite proxy target configuration
+  via `apps/web/.env` (`VITE_API_PROXY_TARGET`) to avoid calling stale backend
+  instances on the wrong port.
+
 ## 2026-02-12
 
 - Added `04-llm-orchestrator/chatbot-orchestration-skill.md` defining the chatbot/orchestration implementation skill and quality bar.

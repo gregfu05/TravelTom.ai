@@ -279,3 +279,126 @@ def test_category_filter_fallbacks_to_all_when_empty() -> None:
         response.results
     ), "Fallback should use full catalog when category filter is empty"
     assert response.results[0].item_id == "only-one"
+
+
+def test_raw_snapshot_without_clean_columns_still_returns_results() -> None:
+    raw_like_catalog = pd.DataFrame(
+        [
+            {
+                "business_id": "rest-1",
+                "name": "Raw Restaurant",
+                "city": "Santa Barbara",
+                "stars": 4.2,
+                "review_count": 120,
+                "categories": "Restaurants, Food",
+                "is_open": 1,
+            },
+            {
+                "business_id": "shop-1",
+                "name": "Raw Shop",
+                "city": "Santa Barbara",
+                "stars": 5.0,
+                "review_count": 1000,
+                "categories": "Shopping, Fashion",
+                "is_open": 1,
+            },
+        ]
+    )
+
+    response = recommendor_v1.recommendation_tool(
+        _query("recommend a restaurant"), catalog=raw_like_catalog
+    )
+
+    assert response.results, "Expected recommendations from raw snapshot inputs"
+    assert response.results[0].item_id == "rest-1"
+    assert response.results[0].features["category"] == "cat_Restaurants"
+
+
+def test_recommendation_tool_uses_database_loader_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog_from_db = pd.DataFrame(
+        [
+            {
+                "business_id": "hotel-1",
+                "item_type": "hotel",
+                "name": "Hotel One",
+                "city": "Santa Barbara",
+                "stars": 4.3,
+                "review_count": 210,
+                "popularity": 23.0,
+                "categories": "Hotels, Travel",
+                "tags": ["Hotels", "Travel"],
+                "is_open": 1,
+                "cat_Shopping": False,
+                "cat_Restaurants": False,
+                "cat_Bars": False,
+                "cat_Nightlife": False,
+            }
+        ]
+    )
+    calls = {"count": 0}
+
+    def fake_loader() -> pd.DataFrame:
+        calls["count"] += 1
+        return catalog_from_db
+
+    recommendor_v1._load_catalog.cache_clear()
+    monkeypatch.setattr(recommendor_v1, "_load_catalog_from_database", fake_loader)
+
+    response = recommendor_v1.recommendation_tool(_query("recommend me a stay"))
+
+    assert calls["count"] == 1
+    assert response.results
+    assert response.results[0].item_id == "hotel-1"
+    assert response.results[0].item_type == "hotel"
+
+
+def test_recommendation_tool_refreshes_cached_empty_catalog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    empty_catalog = pd.DataFrame(columns=REQUIRED_COLUMNS)
+    filled_catalog = pd.DataFrame(
+        [
+            {
+                "business_id": "rest-2",
+                "item_type": "destination",
+                "name": "Recovered Restaurant",
+                "city": "Testville",
+                "stars": 4.6,
+                "review_count": 300,
+                "popularity": 20.0,
+                "categories": "Restaurants, Food",
+                "tags": ["Restaurants", "Food"],
+                "cat_Shopping": False,
+                "cat_Restaurants": True,
+                "cat_Bars": False,
+                "cat_Nightlife": False,
+                "is_open": 1,
+            }
+        ]
+    )
+
+    class _Loader:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.clears = 0
+
+        def __call__(self) -> pd.DataFrame:
+            self.calls += 1
+            if self.calls == 1:
+                return empty_catalog
+            return filled_catalog
+
+        def cache_clear(self) -> None:
+            self.clears += 1
+
+    loader = _Loader()
+    monkeypatch.setattr(recommendor_v1, "_load_catalog", loader)
+
+    response = recommendor_v1.recommendation_tool(_query("recommend restaurant"))
+
+    assert loader.clears == 1
+    assert loader.calls == 2
+    assert response.results
+    assert response.results[0].item_id == "rest-2"

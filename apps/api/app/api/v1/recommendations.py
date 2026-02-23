@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from functools import lru_cache
 from typing import Any, Callable
 
@@ -37,7 +38,7 @@ async def query_recommendations(
     """Return deterministic recommendation results for a validated query."""
 
     try:
-        tool_output = recommendation_tool(request)
+        tool_output = await asyncio.to_thread(recommendation_tool, request)
         return RecommendationToolResponse.model_validate(tool_output)
     except ValidationError as exc:
         raise HTTPException(
