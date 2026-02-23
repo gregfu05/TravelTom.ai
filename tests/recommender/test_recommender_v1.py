@@ -279,3 +279,4 @@ def test_category_filter_fallbacks_to_all_when_empty() -> None:
         response.results
     ), "Fallback should use full catalog when category filter is empty"
     assert response.results[0].item_id == "only-one"
+    
