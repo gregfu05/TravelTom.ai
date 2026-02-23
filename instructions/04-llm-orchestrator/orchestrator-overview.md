@@ -39,6 +39,7 @@
   - LangChain `StructuredTool` for recommendation calls with schema-validated `RecommendationQuery`
   - LangChain `RunnableLambda` chain for tool invocation and response parsing
   - configurable timeout policy (default 4s)
+  - chat policy max results defaults to top 5 per request
   - strict validation of `RecommendationToolResponse`
 - Placeholder mode:
   - recommendation tool may return empty `results` while recommender integration is pending

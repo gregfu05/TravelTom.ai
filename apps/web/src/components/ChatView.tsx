@@ -71,6 +71,7 @@ export function ChatView() {
   const [pendingRequest, setPendingRequest] = useState<PendingRequest | null>(
     null,
   );
+  const topRecommendations = latestRecommendations.slice(0, 5);
 
   async function sendMessage(
     rawMessage: string,
@@ -214,41 +215,34 @@ export function ChatView() {
         <section className="recommendations-panel" aria-live="polite">
           <div className="recommendations-panel-header">
             <p className="eyebrow">Recommendations</p>
-            <p>{latestRecommendations.length} options from latest response</p>
+            <p>Top {topRecommendations.length} picks from latest response</p>
           </div>
-          <div className="recommendations-grid">
-            {latestRecommendations.map((item) => (
-              <article
-                key={`${item.itemId}-${item.rank}`}
-                className="recommendation-card"
-              >
-                <div className="recommendation-card-head">
-                  <p className="recommendation-rank">#{item.rank}</p>
-                  <p className="recommendation-type">{item.itemType}</p>
-                </div>
-                <h3>{item.metadata?.name ? String(item.metadata.name) : item.itemId}</h3>
-                <p className="recommendation-explanation">{item.explanation}</p>
-                <dl className="recommendation-meta">
-                  <div>
-                    <dt>Score</dt>
-                    <dd>{item.score.toFixed(3)}</dd>
+          <ol className="recommendation-list">
+            {topRecommendations.map((item) => (
+              <li key={`${item.itemId}-${item.rank}`} className="recommendation-list-item">
+                <article className="recommendation-card">
+                  <div className="recommendation-card-head">
+                    <p className="recommendation-rank">#{item.rank}</p>
+                    <div className="recommendation-card-badges">
+                      <p className="recommendation-type">{item.itemType}</p>
+                      <p className="recommendation-score">
+                        Score {item.score.toFixed(2)}
+                      </p>
+                    </div>
                   </div>
-                  {item.metadata?.city ? (
-                    <div>
-                      <dt>City</dt>
-                      <dd>{String(item.metadata.city)}</dd>
-                    </div>
-                  ) : null}
-                  {item.metadata?.stars ? (
-                    <div>
-                      <dt>Stars</dt>
-                      <dd>{String(item.metadata.stars)}</dd>
-                    </div>
-                  ) : null}
-                </dl>
-              </article>
+                  <h3>{item.metadata?.name ? String(item.metadata.name) : item.itemId}</h3>
+                  <p className="recommendation-subline">
+                    {item.metadata?.city ? String(item.metadata.city) : "Location unavailable"}
+                    {item.metadata?.stars ? ` • ${String(item.metadata.stars)} stars` : ""}
+                  </p>
+                  <details className="recommendation-details">
+                    <summary>Why this pick</summary>
+                    <p>{item.explanation}</p>
+                  </details>
+                </article>
+              </li>
             ))}
-          </div>
+          </ol>
         </section>
       ) : null}
 

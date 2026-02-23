@@ -31,7 +31,8 @@
   - Error state
   - Retry action for last failed message
 - Recommendations panel
-  - List view with ranking and explanations from latest `/api/v1/chat` response
+  - Compact top-5 list from latest `/api/v1/chat` response
+  - Header-level metadata and collapsible per-item rationale to reduce visual noise
   - Card metadata for item name, score, and available attributes (e.g., city, stars)
   - Empty state handled by chat assistant clarification/error copy
 - Shortlist view

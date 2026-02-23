@@ -17,6 +17,8 @@ See `instructions/02-backend/` for design and API contracts.
   text (for example hotel, flight, destination) for recommendation queries.
 - The recommender applies a destination hard filter from
   `constraints.destination` against catalog city names.
+- Chat orchestration requests top 5 recommendations per message by default
+  (`max_recommendation_results` policy).
 - Recommender DB reads use a dedicated DB connection path and do not reuse
   request-scoped async sessions.
 
