@@ -177,7 +177,11 @@ def _load_catalog_from_database() -> pd.DataFrame:
         tags = row["tags"] if isinstance(row["tags"], list) else []
 
         business_id = str(metadata.get("business_id") or row["id"])
-        stars = _to_float(row["rating"], default=_to_float(metadata.get("stars"), 0.0))
+        parsed_stars = _to_float(
+            row["rating"],
+            default=_to_float(metadata.get("stars"), 0.0),
+        )
+        stars = parsed_stars if parsed_stars is not None else 0.0
         review_count = _to_int(metadata.get("review_count"), default=0)
         popularity = _to_float(metadata.get("popularity"))
         if popularity is None:

@@ -5,7 +5,10 @@ from __future__ import annotations
 import time
 
 from app.schemas.state import SessionState
-from app.schemas.tools.recommendations import RecommendationToolResponse
+from app.schemas.tools.recommendations import (
+    RecommendationQuery,
+    RecommendationToolResponse,
+)
 from app.services.orchestrator.policies import OrchestratorPolicyConfig
 from app.services.orchestrator.service import OrchestratorService
 
@@ -58,9 +61,9 @@ def test_orchestrator_calls_recommendation_tool_for_recommend_intent() -> None:
 
 
 def test_orchestrator_passes_extracted_constraints_to_tool() -> None:
-    captured_query: dict[str, object] = {}
+    captured_query: dict[str, RecommendationQuery | None] = {"query": None}
 
-    def tool(query):
+    def tool(query: RecommendationQuery):
         captured_query["query"] = query
         return {"ranking_version": "heuristic-v1", "results": []}
 
@@ -74,6 +77,7 @@ def test_orchestrator_passes_extracted_constraints_to_tool() -> None:
     )
 
     query = captured_query["query"]
+    assert query is not None
     assert query.constraints.origin == "NYC"
     assert query.constraints.destination == "Lisbon"
     assert query.constraints.dates is not None
@@ -88,9 +92,9 @@ def test_orchestrator_passes_extracted_constraints_to_tool() -> None:
 
 
 def test_orchestrator_extracts_hotel_filter_from_message() -> None:
-    captured_query: dict[str, object] = {}
+    captured_query: dict[str, RecommendationQuery | None] = {"query": None}
 
-    def tool(query):
+    def tool(query: RecommendationQuery):
         captured_query["query"] = query
         return {"ranking_version": "heuristic-v1", "results": []}
 
@@ -101,6 +105,7 @@ def test_orchestrator_extracts_hotel_filter_from_message() -> None:
     )
 
     query = captured_query["query"]
+    assert query is not None
     assert query.filters["item_type"] == "hotel"
     assert query.constraints.destination == "Santa Barbara"
 

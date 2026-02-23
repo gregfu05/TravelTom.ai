@@ -40,6 +40,10 @@
   cleaner planner output.
 - Redesigned planner recommendations panel to a compact top-5 list with
   metadata badges and collapsible "Why this pick" details.
+- Updated mypy project configuration to exclude generated build/dist/egg-info
+  paths and avoid duplicate-module failures when running `mypy .`.
+- Added `scripts/__init__.py` so `scripts.seed_catalog` resolves as a single
+  module namespace under mypy.
 
 ## 2026-02-12
 
