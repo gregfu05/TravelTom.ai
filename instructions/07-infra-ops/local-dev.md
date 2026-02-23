@@ -38,6 +38,10 @@ Optional pre-check:
 - Alembic path error (`Path doesn't exist: migrations`):
   - Run from repo root with config path:
     `alembic -c apps/api/alembic.ini upgrade head`
+- Mypy duplicate module errors (for example `traveltom` in `build/lib`):
+  - Generated build artifacts are excluded by project mypy config.
+  - If artifacts were created before pulling latest changes, rerun
+    `mypy .` after updating, or remove stale `build/` output.
 - Chat returns no recommendations:
   - The recommender reads from PostgreSQL `catalog_items`, not directly from parquet.
   - Seed catalog data and verify row count in `catalog_items`.
