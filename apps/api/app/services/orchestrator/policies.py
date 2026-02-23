@@ -35,7 +35,7 @@ class OrchestratorPolicyConfig:
     """Static policy settings for orchestrator runtime behavior."""
 
     recommendation_timeout_seconds: float = 4.0
-    max_recommendation_results: int = 20
+    max_recommendation_results: int = 5
 
 
 @dataclass(frozen=True)

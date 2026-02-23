@@ -82,6 +82,7 @@ def test_orchestrator_passes_extracted_constraints_to_tool() -> None:
     assert query.constraints.budget is not None
     assert query.constraints.budget.min == 1200.0
     assert query.constraints.budget.max == 2400.0
+    assert query.max_results == 5
     assert response.state["constraints"]["destination"] == "Lisbon"
     assert response.state["constraints"]["origin"] == "NYC"
 

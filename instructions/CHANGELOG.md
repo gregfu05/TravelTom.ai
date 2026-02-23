@@ -36,6 +36,10 @@
   generic travel/tour rows for hotel queries.
 - Updated seed classification rules to avoid mapping generic `Hotels & Travel`
   categories to `hotel` without lodging-specific tags.
+- Reduced chat orchestrator recommendation count to top 5 per message for
+  cleaner planner output.
+- Redesigned planner recommendations panel to a compact top-5 list with
+  metadata badges and collapsible "Why this pick" details.
 
 ## 2026-02-12
 

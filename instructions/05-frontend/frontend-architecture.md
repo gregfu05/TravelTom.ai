@@ -15,7 +15,7 @@
 - Added planner route `/planner` with `ChatView` and message flow.
 - Added client session store in `src/store/session.ts` for chat state.
 - Added recommendations rendering in planner from `/api/v1/chat` responses
-  (latest response snapshot).
+  (latest response snapshot) with a compact top-5 presentation.
 
 ## Component structure
 
@@ -78,6 +78,8 @@
 - Inline loading state for chat requests and retry support on failed sends.
 - Recommendation panel empty state when `recommendations` is empty in latest
   response.
+- Recommendation panel presents only top 5 items with collapsed rationale to
+  reduce clutter.
 - Retry button on chat failures.
 - Homepage API status states: checking, online, unreachable.
 - Chat screen states include:

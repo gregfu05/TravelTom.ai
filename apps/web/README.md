@@ -15,8 +15,8 @@ Ownership: Frontend.
 - Frontend scaffold (MVP Step 14 foundation)
 - Homepage with responsive, accessibility-aware layout and tokenized styling
 - Planner route with chat UI and `/api/v1/chat` message flow
-- Recommendations panel in planner that renders ranked results from the latest
-  chat response
+- Recommendations panel in planner that renders a compact top-5 ranked list
+  from the latest chat response
 - Standalone informational routes:
   - `/planner`
   - `/why-traveltom`
