@@ -25,8 +25,27 @@ def _base_payload() -> dict[str, Any]:
 
 
 def test_recommendations_query_returns_placeholder_response() -> None:
-    client = TestClient(app)
-    response = client.post("/api/v1/recommendations/query", json=_base_payload())
+    def deterministic_tool(_request):
+        return {
+            "ranking_version": "heuristic-v1",
+            "results": [
+                {
+                    "item_id": "dest-1",
+                    "item_type": "destination",
+                    "score": 0.91,
+                    "rank": 1,
+                    "features": {"name": "Example"},
+                    "explanation": "Deterministic sample result.",
+                }
+            ],
+        }
+
+    app.dependency_overrides[get_recommendation_tool] = lambda: deterministic_tool
+    try:
+        client = TestClient(app)
+        response = client.post("/api/v1/recommendations/query", json=_base_payload())
+    finally:
+        app.dependency_overrides.clear()
 
     assert response.status_code == 200
     body = response.json()

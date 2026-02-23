@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from functools import lru_cache
-from pathlib import Path
+from typing import Any
 
+import asyncpg
 import numpy as np
 import pandas as pd
+from app.core.config import get_settings
 from app.schemas.tools.recommendations import (
     RecommendationQuery,
     RecommendationResult,
     RecommendationToolResponse,
 )
 
-DATASET_NAME = "business_SB_cleaned.parquet"
-
-# Keyword → category column mapping. Order matters for matching priority.
+# Keyword -> category column mapping. Order matters for matching priority.
 CATEGORY_KEYWORDS: list[tuple[str, str]] = [
     ("nightlife", "cat_Nightlife"),
     ("bar", "cat_Bars"),
@@ -28,13 +30,27 @@ CATEGORY_KEYWORDS: list[tuple[str, str]] = [
     ("store", "cat_Shopping"),
 ]
 
+_CATEGORY_FALLBACK_PATTERNS: dict[str, str] = {
+    "cat_Shopping": r"\bshopping\b|\bshop\b|\bstore\b|\bfashion\b|\bboutique\b",
+    "cat_Restaurants": (
+        r"\brestaurant\b|\bfood\b|\bcafe\b|\bdiner\b|\bpizza\b|\bbreakfast\b"
+    ),
+    "cat_Bars": r"\bbar\b|\bpub\b|\bbrewery\b|\bcocktail\b|\bwine\b",
+    "cat_Nightlife": r"\bnightlife\b|\bnight\s+club\b|\bclub\b|\bdance\b|\bkaraoke\b",
+}
+
+_VALID_ITEM_TYPES = {"destination", "hotel", "flight"}
+
 _EMPTY_COLUMNS = [
     "business_id",
+    "item_type",
     "name",
     "city",
     "stars",
     "review_count",
     "popularity",
+    "categories",
+    "tags",
     "cat_Shopping",
     "cat_Restaurants",
     "cat_Bars",
@@ -58,6 +74,10 @@ def recommendation_tool(
     """
 
     catalog_df = catalog if catalog is not None else _load_catalog()
+    if catalog is None and catalog_df.empty:
+        _load_catalog.cache_clear()
+        catalog_df = _load_catalog()
+    catalog_df = _prepare_catalog(catalog_df)
     if catalog_df.empty:
         return RecommendationToolResponse(
             results=[], ranking_version=query.ranking_version
@@ -76,10 +96,13 @@ def recommendation_tool(
     for rank, row in enumerate(
         ranked.head(max_results).itertuples(index=False), start=1
     ):
+        item_type = (
+            row.item_type if row.item_type in _VALID_ITEM_TYPES else "destination"
+        )
         results.append(
             RecommendationResult(
                 item_id=str(row.business_id),
-                item_type="destination",
+                item_type=item_type,
                 score=float(row.score),
                 rank=rank,
                 features={
@@ -101,26 +124,191 @@ def recommendation_tool(
 
 @lru_cache()
 def _load_catalog() -> pd.DataFrame:
-    """Load and cache the cleaned business catalog.
+    """Load and cache the catalog snapshot from PostgreSQL."""
 
-    Returns:
-        DataFrame containing cleaned business records, or an empty catalog
-        when the dataset is unavailable.
-    """
+    return _load_catalog_from_database()
 
-    dataset_path = Path(__file__).with_name(DATASET_NAME)
-    if not dataset_path.exists():
+
+def _load_catalog_from_database() -> pd.DataFrame:
+    rows = asyncio.run(_fetch_catalog_rows())
+
+    if not rows:
         return _empty_catalog()
 
+    records: list[dict[str, Any]] = []
+    for row in rows:
+        metadata = _coerce_metadata_json(row.get("metadata_json"))
+        tags = row["tags"] if isinstance(row["tags"], list) else []
+
+        business_id = str(metadata.get("business_id") or row["id"])
+        stars = _to_float(row["rating"], default=_to_float(metadata.get("stars"), 0.0))
+        review_count = _to_int(metadata.get("review_count"), default=0)
+        popularity = _to_float(metadata.get("popularity"))
+        if popularity is None:
+            popularity = stars * float(np.log1p(review_count))
+
+        raw_item_type = str(row["item_type"] or "destination")
+        item_type = (
+            raw_item_type if raw_item_type in _VALID_ITEM_TYPES else "destination"
+        )
+
+        records.append(
+            {
+                "business_id": business_id,
+                "item_type": item_type,
+                "name": str(row["name"] or business_id),
+                "city": str(row["location_city"] or ""),
+                "stars": stars,
+                "review_count": review_count,
+                "popularity": popularity,
+                "categories": str(
+                    metadata.get("categories") or row["description"] or ""
+                ),
+                "tags": tags,
+                "is_open": _to_int(metadata.get("is_open"), default=1),
+            }
+        )
+
+    return pd.DataFrame.from_records(records)
+
+
+async def _fetch_catalog_rows() -> list[dict[str, Any]]:
+    connection = await asyncpg.connect(_database_url_for_asyncpg())
     try:
-        catalog = pd.read_parquet(dataset_path)
-    except (FileNotFoundError, OSError):
+        rows = await connection.fetch(
+            """
+            SELECT
+                id::text AS id,
+                item_type,
+                name,
+                description,
+                location_city,
+                rating,
+                tags,
+                metadata_json
+            FROM catalog_items
+            """
+        )
+        return [dict(row) for row in rows]
+    finally:
+        await connection.close()
+
+
+@lru_cache()
+def _database_url_for_asyncpg() -> str:
+    url = get_settings().database_url
+    if "+asyncpg" in url:
+        return url.replace("+asyncpg", "", 1)
+    return url
+
+
+def _prepare_catalog(catalog: pd.DataFrame) -> pd.DataFrame:
+    """Normalize catalog columns so ranking can operate deterministically."""
+
+    if catalog.empty:
         return _empty_catalog()
-    if "is_open" in catalog.columns:
-        catalog = catalog[catalog["is_open"] == 1]
-    catalog = catalog.copy()
-    catalog["popularity"] = catalog["popularity"].fillna(0.0)
-    return catalog
+
+    working = catalog.copy()
+
+    if "is_open" in working.columns:
+        working = working[working["is_open"] == 1]
+    if working.empty:
+        return _empty_catalog()
+
+    _ensure_required_columns(working)
+    _ensure_category_columns(working)
+    _ensure_popularity(working)
+
+    return working
+
+
+def _ensure_required_columns(catalog: pd.DataFrame) -> None:
+    if "business_id" not in catalog.columns:
+        catalog["business_id"] = catalog.index.map(str)
+    if "item_type" not in catalog.columns:
+        catalog["item_type"] = "destination"
+    if "name" not in catalog.columns:
+        catalog["name"] = catalog["business_id"]
+    if "city" not in catalog.columns:
+        catalog["city"] = ""
+    if "stars" not in catalog.columns:
+        catalog["stars"] = 0.0
+    if "review_count" not in catalog.columns:
+        catalog["review_count"] = 0
+    if "categories" not in catalog.columns:
+        catalog["categories"] = ""
+    if "tags" not in catalog.columns:
+        catalog["tags"] = [[] for _ in range(len(catalog))]
+    if "is_open" not in catalog.columns:
+        catalog["is_open"] = 1
+
+    catalog["item_type"] = catalog["item_type"].apply(
+        lambda value: value if value in _VALID_ITEM_TYPES else "destination"
+    )
+    catalog["stars"] = pd.to_numeric(catalog["stars"], errors="coerce").fillna(0.0)
+    catalog["review_count"] = (
+        pd.to_numeric(catalog["review_count"], errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
+
+
+def _ensure_category_columns(catalog: pd.DataFrame) -> None:
+    category_text = catalog["categories"].fillna("").astype(str).str.lower()
+    tag_text = catalog["tags"].apply(_tag_text_from_value)
+    merged_text = (category_text + " " + tag_text).str.strip()
+
+    for column, pattern in _CATEGORY_FALLBACK_PATTERNS.items():
+        if column not in catalog.columns:
+            catalog[column] = merged_text.str.contains(pattern, regex=True)
+        else:
+            catalog[column] = catalog[column].fillna(False).astype(bool)
+
+
+def _ensure_popularity(catalog: pd.DataFrame) -> None:
+    if "popularity" not in catalog.columns:
+        catalog["popularity"] = catalog["stars"] * np.log1p(catalog["review_count"])
+    else:
+        catalog["popularity"] = pd.to_numeric(
+            catalog["popularity"], errors="coerce"
+        ).fillna(0.0)
+
+
+def _tag_text_from_value(value: Any) -> str:
+    if isinstance(value, list):
+        return " ".join(str(item).lower() for item in value)
+    return ""
+
+
+def _to_float(value: Any, default: float | None = None) -> float | None:
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_int(value: Any, default: int = 0) -> int:
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_metadata_json(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            return {}
+    return {}
 
 
 def _infer_category(request_text: str) -> str | None:

@@ -759,6 +759,104 @@ a {
   line-height: 1.4;
 }
 
+.recommendations-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(16, 34, 54, 0.12);
+  background: rgba(255, 255, 255, 0.74);
+  padding: 0.9rem;
+}
+
+.recommendations-panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.recommendations-panel-header p {
+  margin: 0;
+  color: var(--ink-700);
+  font-size: 0.88rem;
+}
+
+.recommendations-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.recommendation-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(16, 34, 54, 0.12);
+  background: linear-gradient(165deg, #ffffff, rgba(246, 251, 255, 0.8));
+  padding: 0.75rem 0.8rem;
+}
+
+.recommendation-card-head {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.recommendation-rank {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--accent-orange);
+}
+
+.recommendation-type {
+  margin: 0;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  color: var(--ink-700);
+}
+
+.recommendation-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.recommendation-explanation {
+  margin: 0;
+  color: var(--ink-700);
+  line-height: 1.45;
+  font-size: 0.88rem;
+}
+
+.recommendation-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  margin: 0;
+}
+
+.recommendation-meta div {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
+.recommendation-meta dt {
+  margin: 0;
+  color: var(--ink-500);
+  font-size: 0.76rem;
+}
+
+.recommendation-meta dd {
+  margin: 0;
+  font-weight: 700;
+  font-size: 0.84rem;
+}
+
 .chat-input-form {
   display: flex;
   flex-direction: column;
@@ -934,6 +1032,10 @@ a {
   .chat-error {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .recommendations-grid {
+    grid-template-columns: 1fr;
   }
 
   .chat-thread {

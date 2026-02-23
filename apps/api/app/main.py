@@ -1,9 +1,17 @@
 """FastAPI application entrypoint."""
 
+import sys
+from pathlib import Path
+
 from fastapi import FastAPI
 
-from app.api.v1 import api_router
-from app.core.config import get_settings
+# Ensure local repo packages (e.g. `traveltom`) are imported before site-packages.
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from app.api.v1 import api_router  # noqa: E402
+from app.core.config import get_settings  # noqa: E402
 
 
 def create_app() -> FastAPI:
