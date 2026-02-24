@@ -643,6 +643,34 @@ a {
   text-transform: uppercase;
 }
 
+.chat-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-md);
+}
+
+.chat-layout-with-recommendations {
+  grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem);
+  align-items: stretch;
+}
+
+.chat-main-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.chat-main-column-with-recommendations {
+  height: clamp(28rem, 64vh, 40rem);
+}
+
+.chat-main-column-with-recommendations .chat-thread {
+  flex: 1;
+  min-height: 10rem;
+  max-height: none;
+}
+
 .chat-thread {
   display: flex;
   flex-direction: column;
@@ -771,13 +799,24 @@ a {
     rgba(244, 251, 248, 0.75)
   );
   padding: 0.9rem;
+  min-width: 0;
+}
+
+.chat-layout-with-recommendations .recommendations-panel {
+  height: clamp(28rem, 64vh, 40rem);
 }
 
 .recommendations-panel-header {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-sm);
+}
+
+.recommendations-panel-header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .recommendations-panel-header p {
@@ -793,10 +832,26 @@ a {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
+  max-height: 20rem;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.chat-layout-with-recommendations .recommendation-list {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
 }
 
 .recommendation-list-item {
   margin: 0;
+}
+
+.recommendations-collapsed-copy {
+  margin: 0;
+  color: var(--ink-700);
+  font-size: 0.88rem;
+  line-height: 1.45;
 }
 
 .recommendation-card {
@@ -1058,6 +1113,23 @@ a {
     align-items: flex-start;
   }
 
+  .chat-layout-with-recommendations {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chat-main-column-with-recommendations {
+    height: auto;
+  }
+
+  .chat-main-column-with-recommendations .chat-thread {
+    min-height: 290px;
+    flex: unset;
+  }
+
+  .chat-layout-with-recommendations .recommendations-panel {
+    height: auto;
+  }
+
   .chat-thread {
     max-height: none;
   }
@@ -1095,6 +1167,15 @@ a {
   .chat-header-actions {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .recommendations-panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .recommendations-panel-header .button {
+    width: 100%;
   }
 
   .hero-trust {
