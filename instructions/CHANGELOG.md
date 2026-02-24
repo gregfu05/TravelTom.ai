@@ -1,5 +1,13 @@
 # Instructions Changelog
 
+## 2026-02-24
+
+- Updated `05-frontend/frontend-architecture.md` to reflect the planner split
+  chat + recommendations rail layout that keeps chat visible while picks are
+  present.
+- Updated `05-frontend/ux-flows.md` with constrained-height recommendation rail
+  behavior, internal scrolling, and the `Show/Hide picks` interaction.
+
 ## 2026-02-23
 
 - Updated `05-frontend/frontend-architecture.md` to reflect implemented
