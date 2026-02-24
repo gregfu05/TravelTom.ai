@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import { ApiClientError, apiClient } from "../api/client";
 import { SessionMessage, useSessionStore } from "../store/session";
@@ -71,7 +71,17 @@ export function ChatView() {
   const [pendingRequest, setPendingRequest] = useState<PendingRequest | null>(
     null,
   );
+  const [isRecommendationsCollapsed, setIsRecommendationsCollapsed] =
+    useState(false);
+
+  const hasRecommendations = latestRecommendations.length > 0;
   const topRecommendations = latestRecommendations.slice(0, 5);
+
+  useEffect(() => {
+    if (!hasRecommendations) {
+      setIsRecommendationsCollapsed(false);
+    }
+  }, [hasRecommendations]);
 
   async function sendMessage(
     rawMessage: string,
@@ -157,118 +167,164 @@ export function ChatView() {
       </div>
 
       <div
-        className="chat-thread"
-        role="log"
-        aria-live="polite"
-        aria-relevant="additions text"
+        className={`chat-layout ${hasRecommendations ? "chat-layout-with-recommendations" : ""}`}
       >
-        {messages.length === 0 ? (
-          <article className="chat-empty">
-            <h3>Start with your destination goals</h3>
-            <p>
-              Example: 7-day trip from NYC in June, budget 2,500 USD, prefers
-              coastal cities and boutique hotels.
-            </p>
-          </article>
-        ) : null}
-
-        {messages.map((message) => (
-          <article
-            key={message.id}
-            className={`chat-message chat-message-${message.role}`}
+        <div
+          className={`chat-main-column ${hasRecommendations ? "chat-main-column-with-recommendations" : ""}`}
+        >
+          <div
+            className="chat-thread"
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions text"
           >
-            <p className="chat-message-role">
-              {message.role === "assistant" ? "TravelTom" : "You"}
-            </p>
-            <p className="chat-message-content">{message.content}</p>
-          </article>
-        ))}
+            {messages.length === 0 ? (
+              <article className="chat-empty">
+                <h3>Start with your destination goals</h3>
+                <p>
+                  Example: 7-day trip from NYC in June, budget 2,500 USD,
+                  prefers coastal cities and boutique hotels.
+                </p>
+              </article>
+            ) : null}
 
-        {isSending ? (
-          <article className="chat-message chat-message-assistant chat-message-loading">
-            <p className="chat-message-role">TravelTom</p>
-            <div className="typing-indicator" aria-label="TravelTom is typing">
-              <span />
-              <span />
-              <span />
+            {messages.map((message) => (
+              <article
+                key={message.id}
+                className={`chat-message chat-message-${message.role}`}
+              >
+                <p className="chat-message-role">
+                  {message.role === "assistant" ? "TravelTom" : "You"}
+                </p>
+                <p className="chat-message-content">{message.content}</p>
+              </article>
+            ))}
+
+            {isSending ? (
+              <article className="chat-message chat-message-assistant chat-message-loading">
+                <p className="chat-message-role">TravelTom</p>
+                <div
+                  className="typing-indicator"
+                  aria-label="TravelTom is typing"
+                >
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </article>
+            ) : null}
+          </div>
+
+          {errorMessage ? (
+            <aside className="chat-error" role="alert">
+              <p>{errorMessage}</p>
+              {pendingRequest ? (
+                <button
+                  className="button button-ghost button-xs"
+                  onClick={handleRetry}
+                  type="button"
+                >
+                  Retry last message
+                </button>
+              ) : null}
+            </aside>
+          ) : null}
+
+          <form className="chat-input-form" onSubmit={handleSubmit}>
+            <label className="sr-only" htmlFor="chat-message-input">
+              Message input
+            </label>
+            <textarea
+              id="chat-message-input"
+              className="chat-input"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Tell TravelTom what kind of trip you want..."
+              rows={3}
+              disabled={isSending}
+              required
+            />
+            <div className="chat-form-row">
+              <p className="chat-form-hint">
+                Be specific with dates, budget, origin city, and trip vibe.
+              </p>
+              <button
+                className="button button-primary"
+                type="submit"
+                disabled={isSending}
+              >
+                {isSending ? "Sending..." : "Send"}
+              </button>
             </div>
-          </article>
+          </form>
+        </div>
+
+        {hasRecommendations ? (
+          <aside className="recommendations-panel" aria-live="polite">
+            <div className="recommendations-panel-header">
+              <div>
+                <p className="eyebrow">Recommendations</p>
+                <p>Top {topRecommendations.length} picks from latest response</p>
+              </div>
+              <button
+                className="button button-ghost button-xs"
+                onClick={() =>
+                  setIsRecommendationsCollapsed((collapsed) => !collapsed)
+                }
+                type="button"
+                aria-expanded={!isRecommendationsCollapsed}
+                aria-controls="recommendation-list"
+              >
+                {isRecommendationsCollapsed ? "Show picks" : "Hide picks"}
+              </button>
+            </div>
+
+            {isRecommendationsCollapsed ? (
+              <p className="recommendations-collapsed-copy">
+                Recommendations are available when you need them.
+              </p>
+            ) : (
+              <ol id="recommendation-list" className="recommendation-list">
+                {topRecommendations.map((item) => (
+                  <li
+                    key={`${item.itemId}-${item.rank}`}
+                    className="recommendation-list-item"
+                  >
+                    <article className="recommendation-card">
+                      <div className="recommendation-card-head">
+                        <p className="recommendation-rank">#{item.rank}</p>
+                        <div className="recommendation-card-badges">
+                          <p className="recommendation-type">{item.itemType}</p>
+                          <p className="recommendation-score">
+                            Score {item.score.toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                      <h3>
+                        {item.metadata?.name
+                          ? String(item.metadata.name)
+                          : item.itemId}
+                      </h3>
+                      <p className="recommendation-subline">
+                        {item.metadata?.city
+                          ? String(item.metadata.city)
+                          : "Location unavailable"}
+                        {item.metadata?.stars
+                          ? ` - ${String(item.metadata.stars)} stars`
+                          : ""}
+                      </p>
+                      <details className="recommendation-details">
+                        <summary>Why this pick</summary>
+                        <p>{item.explanation}</p>
+                      </details>
+                    </article>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </aside>
         ) : null}
       </div>
-
-      {errorMessage ? (
-        <aside className="chat-error" role="alert">
-          <p>{errorMessage}</p>
-          {pendingRequest ? (
-            <button
-              className="button button-ghost button-xs"
-              onClick={handleRetry}
-              type="button"
-            >
-              Retry last message
-            </button>
-          ) : null}
-        </aside>
-      ) : null}
-
-      {latestRecommendations.length > 0 ? (
-        <section className="recommendations-panel" aria-live="polite">
-          <div className="recommendations-panel-header">
-            <p className="eyebrow">Recommendations</p>
-            <p>Top {topRecommendations.length} picks from latest response</p>
-          </div>
-          <ol className="recommendation-list">
-            {topRecommendations.map((item) => (
-              <li key={`${item.itemId}-${item.rank}`} className="recommendation-list-item">
-                <article className="recommendation-card">
-                  <div className="recommendation-card-head">
-                    <p className="recommendation-rank">#{item.rank}</p>
-                    <div className="recommendation-card-badges">
-                      <p className="recommendation-type">{item.itemType}</p>
-                      <p className="recommendation-score">
-                        Score {item.score.toFixed(2)}
-                      </p>
-                    </div>
-                  </div>
-                  <h3>{item.metadata?.name ? String(item.metadata.name) : item.itemId}</h3>
-                  <p className="recommendation-subline">
-                    {item.metadata?.city ? String(item.metadata.city) : "Location unavailable"}
-                    {item.metadata?.stars ? ` • ${String(item.metadata.stars)} stars` : ""}
-                  </p>
-                  <details className="recommendation-details">
-                    <summary>Why this pick</summary>
-                    <p>{item.explanation}</p>
-                  </details>
-                </article>
-              </li>
-            ))}
-          </ol>
-        </section>
-      ) : null}
-
-      <form className="chat-input-form" onSubmit={handleSubmit}>
-        <label className="sr-only" htmlFor="chat-message-input">
-          Message input
-        </label>
-        <textarea
-          id="chat-message-input"
-          className="chat-input"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder="Tell TravelTom what kind of trip you want..."
-          rows={3}
-          disabled={isSending}
-          required
-        />
-        <div className="chat-form-row">
-          <p className="chat-form-hint">
-            Be specific with dates, budget, origin city, and trip vibe.
-          </p>
-          <button className="button button-primary" type="submit" disabled={isSending}>
-            {isSending ? "Sending..." : "Send"}
-          </button>
-        </div>
-      </form>
     </section>
   );
 }
