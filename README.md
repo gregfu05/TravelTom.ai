@@ -46,6 +46,10 @@ alembic -c apps/api/alembic.ini upgrade head
 python -m traveltom.cleaning.cleaning
 ```
 
+Optional: `scripts/seed_catalog.py` will automatically copy
+`traveltom/datasets/business_SB.parquet` to
+`traveltom/datasets/business_SB_Cleaned.parquet` when the cleaned file is missing.
+
 ```bash
 python scripts/seed_catalog.py --truncate
 ```
