@@ -81,7 +81,9 @@ Response:
 
 Implementation notes (current):
 
-- Endpoint lives in `apps/api/app/api/v1/chat.py`.
+- Endpoint lives in `apps/api/app/api/v1/chat.py` (thin router, orchestration + persistence wiring only).
+- Request/response Pydantic schemas live in `apps/api/app/schemas/api/chat.py` (`ChatRequest`, `ChatResponse`, `ChatRecommendation`, `ClientContext`).
+- Session/message/recommendation persistence helpers live in `apps/api/app/services/chat_persistence.py`.
 - `session_id` is treated as an opaque client id and mapped to an internal deterministic UUID for DB persistence.
 - Each call persists:
   - updated `sessions.state_json`

@@ -1,5 +1,19 @@
 # Instructions Changelog
 
+## 2026-02-26
+
+- Refactored `apps/api/app/api/v1/chat.py` into a thin router by extracting:
+  - Chat API Pydantic schemas (`ChatRequest`, `ChatResponse`, `ChatRecommendation`,
+    `ClientContext`) into `apps/api/app/schemas/api/chat.py`.
+  - Session/message/recommendation persistence helpers (`get_or_create_session`,
+    `load_session_state`, `persist_messages`, `persist_recommendation_snapshot`,
+    `session_pk`, `parse_optional_uuid`) into `apps/api/app/services/chat_persistence.py`.
+- Added `schemas/api/` package (`__init__.py`) per the suggested FastAPI layout.
+- Updated `02-backend/services-and-modules.md`: added `chat_persistence.py` to layout
+  and module boundaries; added `schemas/api/chat.py` to layout.
+- Updated `02-backend/api-design.md`: chat endpoint implementation notes now reference
+  the new schema and persistence file locations.
+
 ## 2026-02-24
 
 - Updated `05-frontend/frontend-architecture.md` to reflect the planner split
