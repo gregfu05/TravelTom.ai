@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
 from app.schemas.state import SessionState
-from app.services.orchestrator.extraction import apply_message_state_updates
+from app.services.orchestrator.extraction import (
+    apply_message_state_updates,
+    apply_structured_state_patch,
+)
+from pydantic import ValidationError
 
 
 def test_extracts_core_constraints_from_message() -> None:
@@ -82,3 +87,44 @@ def test_extracts_relative_dates_and_qualitative_budget() -> None:
     assert updated.constraints.party_size is not None
     assert updated.constraints.party_size.adults == 3
     assert updated.constraints.party_size.children == 0
+
+
+def test_apply_structured_state_patch_merges_llm_payload() -> None:
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-1",
+            "constraints": {
+                "destination": "Lisbon",
+                "budget": {"min": 1000, "max": 2200, "currency": "USD"},
+            },
+            "entities": {"destinations": ["Lisbon"]},
+        }
+    )
+
+    updated = apply_structured_state_patch(
+        session_state=state,
+        state_patch={
+            "constraints": {
+                "origin": "NYC",
+                "dates": {"start": "2026-06-10", "end": "2026-06-17"},
+            },
+            "preferences": {"weighted_interests": {"food": 0.9}},
+        },
+    )
+
+    assert updated.constraints.origin == "NYC"
+    assert updated.constraints.destination == "Lisbon"
+    assert updated.constraints.dates is not None
+    assert updated.constraints.trip_length_days == 8
+    assert updated.preferences.weighted_interests["food"] == 0.9
+    assert updated.entities.destinations == ["Lisbon"]
+
+
+def test_apply_structured_state_patch_rejects_invalid_payload() -> None:
+    state = SessionState(session_id="sess-1")
+
+    with pytest.raises(ValidationError):
+        apply_structured_state_patch(
+            session_state=state,
+            state_patch={"constraints": {"budget": {"min": 100, "max": 10}}},
+        )
