@@ -62,7 +62,8 @@ async def chat(
             )
 
             orchestration = orchestrator.handle_message(
-                user_message=request.message, session_state=state,
+                user_message=request.message,
+                session_state=state,
             )
             persisted_state = SessionState.model_validate(orchestration.state)
             session_row.state_json = persisted_state.model_dump(mode="json")
@@ -101,6 +102,11 @@ async def chat(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to process chat message",
         ) from exc
+
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Failed to process chat message",
+    )
 
 
 def _to_chat_response(
