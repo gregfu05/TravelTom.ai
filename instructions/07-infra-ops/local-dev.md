@@ -27,6 +27,8 @@ Store these in a local `.env` file (copy from `.env.example`) and do not hard-co
 1. Start services: `docker compose up -d`
 2. Run migrations: `alembic -c apps/api/alembic.ini upgrade head`
 3. Build cleaned snapshot (optional if already present): `python -m traveltom.cleaning.cleaning`
+   - If skipped and `business_SB_Cleaned.parquet` is missing, the seed script
+     copies `business_SB.parquet` into the cleaned path before seeding.
 4. Seed catalog: `python scripts/seed_catalog.py --truncate`
 5. Start backend and frontend.
 
