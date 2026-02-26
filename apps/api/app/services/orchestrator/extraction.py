@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from datetime import date, timedelta
+from typing import Any
 
 from app.schemas.state import BudgetRange, DateRange, PartySize, SessionState
 
@@ -311,6 +313,35 @@ def extract_query_filters(message: str) -> dict[str, str]:
     return {}
 
 
+def apply_structured_state_patch(
+    *,
+    session_state: SessionState,
+    state_patch: Mapping[str, Any] | None,
+) -> SessionState:
+    """Merge an LLM state patch into `SessionState` with strict validation."""
+
+    if not state_patch:
+        return session_state.model_copy(deep=True)
+
+    base_payload = session_state.model_dump(mode="python")
+    merged_payload = _deep_merge_payload(base_payload, state_patch)
+    next_state = SessionState.model_validate(merged_payload)
+
+    destination = next_state.constraints.destination
+    if destination and all(
+        existing.casefold() != destination.casefold()
+        for existing in next_state.entities.destinations
+    ):
+        next_state.entities.destinations.append(destination)
+
+    if next_state.constraints.dates is not None:
+        next_state.constraints.trip_length_days = (
+            next_state.constraints.dates.end - next_state.constraints.dates.start
+        ).days + 1
+
+    return next_state
+
+
 def _extract_route(message: str) -> tuple[str | None, str | None]:
     match = _ROUTE_PATTERN.search(message)
     if match is None:
@@ -581,3 +612,28 @@ def _extract_weighted_interests(message: str) -> dict[str, float]:
         if any(keyword in lowered for keyword in keywords):
             weights[interest] = 0.8
     return weights
+
+
+def _deep_merge_payload(
+    base_payload: dict[str, Any],
+    patch_payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    merged: dict[str, Any] = dict(base_payload)
+    for key, raw_value in patch_payload.items():
+        value = _normalize_patch_value(raw_value)
+        if value is None:
+            continue
+
+        base_value = merged.get(key)
+        if isinstance(base_value, dict) and isinstance(value, Mapping):
+            merged[key] = _deep_merge_payload(base_value, value)
+            continue
+
+        merged[key] = value
+    return merged
+
+
+def _normalize_patch_value(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="python")
+    return value

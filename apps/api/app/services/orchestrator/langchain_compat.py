@@ -83,3 +83,15 @@ def create_structured_tool(
         description=description,
         args_schema=args_schema,
     )
+
+
+def normalize_structured_payload(payload: Any) -> dict[str, Any]:
+    """Normalize dict-like model output into a plain mapping."""
+
+    if isinstance(payload, dict):
+        return payload
+    if hasattr(payload, "model_dump"):
+        dumped_payload = payload.model_dump(mode="python")
+        if isinstance(dumped_payload, dict):
+            return dumped_payload
+    raise TypeError("Expected dict-like structured output payload")
