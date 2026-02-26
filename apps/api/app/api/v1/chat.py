@@ -106,6 +106,11 @@ async def chat(
             detail="Failed to process chat message",
         ) from exc
 
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Failed to process chat message",
+    )
+
 
 def _to_chat_response(
     *,

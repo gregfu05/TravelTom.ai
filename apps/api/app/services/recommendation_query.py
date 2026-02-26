@@ -36,7 +36,9 @@ async def execute_recommendation_query(
 ) -> RecommendationResponse:
     """Execute recommendation query and normalize response to API schema."""
 
-    tool_request = RecommendationToolQuery.model_validate(request.model_dump(mode="json"))
+    tool_request = RecommendationToolQuery.model_validate(
+        request.model_dump(mode="json")
+    )
     try:
         tool_output = await asyncio.to_thread(recommendation_tool, tool_request)
         validated_output = RecommendationToolOutput.model_validate(tool_output)
@@ -49,4 +51,6 @@ async def execute_recommendation_query(
             "Recommendation service unavailable"
         ) from exc
 
-    return RecommendationResponse.model_validate(validated_output.model_dump(mode="json"))
+    return RecommendationResponse.model_validate(
+        validated_output.model_dump(mode="json")
+    )

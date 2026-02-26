@@ -31,7 +31,7 @@ def load_session_state(
     session_id: str,
     user_id: str | None,
 ) -> SessionState:
-    """Build a validated ``SessionState`` from the persisted JSON and incoming request."""
+    """Build a validated ``SessionState`` from persisted JSON and request data."""
 
     raw_payload: dict[str, Any]
     if isinstance(raw_state, dict):
