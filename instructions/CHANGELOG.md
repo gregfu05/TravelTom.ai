@@ -1,5 +1,48 @@
 # Instructions Changelog
 
+## 2026-02-26
+
+- Refactored `apps/api/app/api/v1/chat.py` into a thin router by extracting:
+  - Chat API Pydantic schemas (`ChatRequest`, `ChatResponse`, `ChatRecommendation`,
+    `ClientContext`) into `apps/api/app/schemas/api/chat.py`.
+  - Session/message/recommendation persistence helpers (`get_or_create_session`,
+    `load_session_state`, `persist_messages`, `persist_recommendation_snapshot`,
+    `session_pk`, `parse_optional_uuid`) into `apps/api/app/services/chat_persistence.py`.
+- Added `schemas/api/` package (`__init__.py`) per the suggested FastAPI layout.
+- Updated `02-backend/services-and-modules.md`: added `chat_persistence.py` to layout
+  and module boundaries; added `schemas/api/chat.py` to layout.
+- Updated `02-backend/api-design.md`: chat endpoint implementation notes now reference
+  the new schema and persistence file locations.
+- Updated `09-implementation-plan/implementation-plan.md` Step 11 to include
+  `schemas/api/chat.py` and `services/chat_persistence.py` in files/tasks, and
+  linked `02-backend/services-and-modules.md` in required doc updates.
+- Refactored remaining API routers to the same thin-endpoint style:
+  - `apps/api/app/api/v1/health.py` now delegates payload construction to
+    `apps/api/app/services/health_status.py` and uses
+    `apps/api/app/schemas/api/health.py`.
+  - `apps/api/app/api/v1/recommendations.py` now delegates tool execution and
+    validation to `apps/api/app/services/recommendation_query.py` and uses
+    `apps/api/app/schemas/api/recommendations.py`.
+- Updated `02-backend/services-and-modules.md` and `02-backend/api-design.md`
+  to document thin-router boundaries for health and recommendations.
+- Updated `09-implementation-plan/implementation-plan.md` Step 2 and Step 12
+  files/tasks to match the extracted schema/service modules.
+- Implemented targeted persistence patterns for chat:
+  - Added `apps/api/app/repositories/chat.py` with a feature-specific
+    `ChatRepository` (session lookup/creation, message writes, recommendation snapshots).
+  - Added `apps/api/app/services/chat_uow.py` with `ChatUnitOfWork` for
+    request-scoped transaction boundaries.
+  - Updated `apps/api/app/api/v1/chat.py` to use repository + unit-of-work
+    instead of direct session operations.
+  - Reduced `apps/api/app/services/chat_persistence.py` to session identity/state
+    helper responsibilities.
+- Updated architecture/docs to reflect repository + UoW boundaries:
+  - `01-architecture/system-overview.md`
+  - `02-backend/services-and-modules.md`
+  - `02-backend/api-design.md`
+  - `09-implementation-plan/implementation-plan.md` (Step 11)
+  - `apps/api/README.md`
+
 ## 2026-02-24
 
 - Updated `05-frontend/frontend-architecture.md` to reflect the planner split

@@ -35,6 +35,12 @@ Response:
 }
 ```
 
+Implementation notes (current):
+
+- Endpoint lives in `apps/api/app/api/v1/health.py` (thin router, HTTP contract only).
+- Health response schema lives in `apps/api/app/schemas/api/health.py`.
+- Health payload construction lives in `apps/api/app/services/health_status.py`.
+
 ### POST /api/v1/chat
 
 Primary chat endpoint. Orchestrates tool calls and returns a response.
@@ -81,7 +87,11 @@ Response:
 
 Implementation notes (current):
 
-- Endpoint lives in `apps/api/app/api/v1/chat.py`.
+- Endpoint lives in `apps/api/app/api/v1/chat.py` (thin router, orchestration + persistence wiring only).
+- Request/response Pydantic schemas live in `apps/api/app/schemas/api/chat.py` (`ChatRequest`, `ChatResponse`, `ChatRecommendation`, `ClientContext`).
+- Chat transaction boundary lives in `apps/api/app/services/chat_uow.py`.
+- Session/message/recommendation persistence lives in `apps/api/app/repositories/chat.py`.
+- Session identity/state helpers live in `apps/api/app/services/chat_persistence.py`.
 - `session_id` is treated as an opaque client id and mapped to an internal deterministic UUID for DB persistence.
 - Each call persists:
   - updated `sessions.state_json`
@@ -134,8 +144,10 @@ Response:
 Notes:
 - `max_results` default is 20.
 - `max_results` hard cap is 50 (debug and evaluation use only).
-- Current implementation lives in `apps/api/app/api/v1/recommendations.py`.
-- Endpoint validates `RecommendationQuery` and `RecommendationToolResponse` with shared Pydantic schemas.
+- Endpoint lives in `apps/api/app/api/v1/recommendations.py` (thin router, DI + HTTP mapping only).
+- API request/response schemas live in `apps/api/app/schemas/api/recommendations.py`.
+- Recommendation tool execution/validation lives in `apps/api/app/services/recommendation_query.py`.
+- Service validates tool payloads using `app/schemas/tools/recommendations.py` contracts.
 - In placeholder mode, results may be an empty list while recommender integration is pending.
 
 ### POST /api/v1/events
