@@ -252,8 +252,8 @@ def build_planning_prompt_context(
         '      "budget": {"min": 0, "max": 0, "currency": "USD"}|null,\n'
         '      "party_size": {"adults": 1, "children": 0}|null\n'
         "    },\n"
-        "    \"preferences\": {\"weighted_interests\": {\"key\": 0.8}, "
-        "\"dislikes\": [\"text\"]},\n"
+        '    "preferences": {"weighted_interests": {"key": 0.8}, '
+        '"dislikes": ["text"]},\n'
         '    "entities": {"destinations": ["string"]},\n'
         '    "status": "explore|refine|itinerary|booking"\n'
         "  },\n"
@@ -293,7 +293,7 @@ def build_response_prompt_context(
 
     return (
         "You are the TravelTom response composer.\n"
-        "Return JSON only in the form {\"assistant_message\": \"...\"}.\n"
+        'Return JSON only in the form {"assistant_message": "..."}.\n'
         "Grounding rules:\n"
         "- Use only the recommendation list provided below.\n"
         "- Do not invent item ids, prices, or availability.\n"
