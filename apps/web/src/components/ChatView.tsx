@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 
 import { ApiClientError, apiClient } from "../api/client";
 import { SessionMessage, useSessionStore } from "../store/session";
@@ -76,12 +76,6 @@ export function ChatView() {
 
   const hasRecommendations = latestRecommendations.length > 0;
   const topRecommendations = latestRecommendations.slice(0, 5);
-
-  useEffect(() => {
-    if (!hasRecommendations) {
-      setIsRecommendationsCollapsed(false);
-    }
-  }, [hasRecommendations]);
 
   async function sendMessage(
     rawMessage: string,
@@ -234,28 +228,28 @@ export function ChatView() {
             <label className="sr-only" htmlFor="chat-message-input">
               Message input
             </label>
-            <textarea
-              id="chat-message-input"
-              className="chat-input"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Tell TravelTom what kind of trip you want..."
-              rows={3}
-              disabled={isSending}
-              required
-            />
-            <div className="chat-form-row">
-              <p className="chat-form-hint">
-                Be specific with dates, budget, origin city, and trip vibe.
-              </p>
+            <div className="chat-input-container">
+              <textarea
+                id="chat-message-input"
+                className="chat-input"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Tell TravelTom what kind of trip you want..."
+                rows={2}
+                disabled={isSending}
+                required
+              />
               <button
-                className="button button-primary"
+                className="button button-primary chat-send-button"
                 type="submit"
                 disabled={isSending}
               >
                 {isSending ? "Sending..." : "Send"}
               </button>
             </div>
+            <p className="chat-form-hint">
+              Be specific with dates, budget, origin city, and trip vibe.
+            </p>
           </form>
         </div>
 
