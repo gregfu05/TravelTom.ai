@@ -28,8 +28,10 @@ apps/api/
       recommender/
       catalog/
       events/
+      chat_persistence.py
     schemas/
       api/
+        chat.py
       events/
       tools/
       state.py
@@ -53,6 +55,10 @@ apps/api/
   - Responsible for catalog CRUD and search.
 - Event logger:
   - Validates and writes events with idempotency.
+- Chat persistence service (`app/services/chat_persistence.py`):
+  - Owns session lookup/creation, message persistence, and recommendation snapshot writes.
+  - Pure data-access helpers consumed by the chat endpoint; no orchestration logic.
+  - Deterministic session-id-to-UUID mapping via `uuid5`.
 
 ## Settings management
 
