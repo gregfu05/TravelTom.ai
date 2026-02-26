@@ -80,6 +80,18 @@ class _FakeOrchestratorService:
         )
 
 
+class _FailingOrchestratorService:
+    def handle_message(
+        self,
+        *,
+        user_message: str,
+        session_state: Any,
+    ) -> OrchestratorResponse:
+        del user_message
+        del session_state
+        raise RuntimeError("orchestrator failure")
+
+
 def _override_db(fake_db: _FakeAsyncSession):
     async def _dependency():
         yield fake_db
@@ -209,3 +221,42 @@ def test_chat_endpoint_allows_empty_recommendations() -> None:
     snapshots = [item for item in fake_db.added if isinstance(item, Recommendation)]
     assert len(snapshots) == 1
     assert snapshots[0].results_json == {"results": []}
+
+
+def test_chat_endpoint_rolls_back_on_orchestrator_failure() -> None:
+    fake_db = _FakeAsyncSession()
+    app.dependency_overrides[get_db] = _override_db(fake_db)
+    app.dependency_overrides[get_orchestrator_service] = lambda: _FailingOrchestratorService()
+
+    try:
+        client = TestClient(app)
+        response = client.post("/api/v1/chat", json=_chat_payload())
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Failed to process chat message"
+    assert fake_db.committed is False
+    assert fake_db.rolled_back is True
+
+
+def test_chat_endpoint_rolls_back_on_invalid_state_payload() -> None:
+    fake_db = _FakeAsyncSession()
+    fake_orchestrator = _FakeOrchestratorService(
+        assistant_message="I found options, but state is malformed.",
+        recommendations=[],
+        state={"session_id": "session-123", "status": "invalid-status"},
+    )
+    app.dependency_overrides[get_db] = _override_db(fake_db)
+    app.dependency_overrides[get_orchestrator_service] = lambda: fake_orchestrator
+
+    try:
+        client = TestClient(app)
+        response = client.post("/api/v1/chat", json=_chat_payload())
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid session state payload"
+    assert fake_db.committed is False
+    assert fake_db.rolled_back is True
