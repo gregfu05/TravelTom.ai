@@ -215,7 +215,8 @@ def _load_catalog_from_database() -> pd.DataFrame:
 async def _fetch_catalog_rows() -> list[dict[str, Any]]:
     connection = await asyncpg.connect(_database_url_for_asyncpg())
     try:
-        rows = await connection.fetch("""
+        rows = await connection.fetch(
+            """
             SELECT
                 id::text AS id,
                 item_type,
@@ -226,7 +227,8 @@ async def _fetch_catalog_rows() -> list[dict[str, Any]]:
                 tags,
                 metadata_json
             FROM catalog_items
-            """)
+            """
+        )
         return [dict(row) for row in rows]
     finally:
         await connection.close()
