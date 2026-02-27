@@ -1,12 +1,14 @@
-"""Tests for orchestrator routing and tool fallback behavior."""
+"""Tests for LLM-first orchestrator behavior and deterministic guardrails."""
 
 from __future__ import annotations
 
 import time
+from typing import Any
 
 from app.schemas.state import SessionState
 from app.schemas.tools.recommendations import (
     RecommendationQuery,
+    RecommendationResult,
     RecommendationToolResponse,
 )
 from app.services.orchestrator.policies import OrchestratorPolicyConfig
@@ -26,12 +28,39 @@ def _base_state() -> SessionState:
     )
 
 
-def test_orchestrator_calls_recommendation_tool_for_recommend_intent() -> None:
-    tool_calls: dict[str, object] = {"count": 0, "query": None}
+def test_orchestrator_uses_llm_plan_for_tool_call_and_state_updates() -> None:
+    tool_count: dict[str, int] = {"value": 0}
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+    planning_payloads: list[dict[str, Any]] = []
+    response_payloads: list[dict[str, Any]] = []
 
-    def tool(query):
-        tool_calls["count"] = int(tool_calls["count"]) + 1
-        tool_calls["query"] = query
+    def planning_model(payload: dict[str, Any]) -> dict[str, Any]:
+        planning_payloads.append(payload)
+        return {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "state_patch": {
+                "constraints": {
+                    "origin": "NYC",
+                    "destination": "Lisbon",
+                    "dates": {"start": "2026-06-10", "end": "2026-06-17"},
+                    "budget": {"min": 1200, "max": 2400, "currency": "USD"},
+                }
+            },
+            "query_controls": {
+                "query": "summer culture trip",
+                "filters": {"item_type": "destination"},
+                "max_results": 4,
+            },
+        }
+
+    def response_model(payload: dict[str, Any]) -> dict[str, str]:
+        response_payloads.append(payload)
+        return {"assistant_message": "Here are the best fits for Lisbon."}
+
+    def tool(query: RecommendationQuery) -> RecommendationToolResponse:
+        tool_count["value"] += 1
+        captured_query["value"] = query
         return RecommendationToolResponse.model_validate(
             {
                 "ranking_version": "heuristic-v1",
@@ -48,26 +77,55 @@ def test_orchestrator_calls_recommendation_tool_for_recommend_intent() -> None:
             }
         )
 
-    service = OrchestratorService(recommendation_tool=tool)
+    service = OrchestratorService(
+        recommendation_tool=tool,
+        planning_model=planning_model,
+        response_model=response_model,
+    )
     response = service.handle_message(
         user_message="recommend me a summer trip",
-        session_state=_base_state(),
+        session_state=SessionState(session_id="sess-new"),
     )
 
-    assert tool_calls["count"] == 1
+    assert len(planning_payloads) == 1
+    assert "TravelTom orchestration planner" in planning_payloads[0]["prompt"]
+    assert tool_count["value"] == 1
+    query = captured_query["value"]
+    assert query is not None
+    assert query.query == "summer culture trip"
+    assert query.constraints.origin == "NYC"
+    assert query.constraints.destination == "Lisbon"
+    assert query.constraints.dates is not None
+    assert query.constraints.budget is not None
+    assert query.constraints.budget.max == 2400.0
+    assert query.filters["item_type"] == "destination"
+    assert query.max_results == 4
+    assert response.assistant_message == "Here are the best fits for Lisbon."
     assert response.recommendations[0].item_id == "dest-lisbon"
-    assert "Top picks" in response.assistant_message
     assert response.state["status"] == "refine"
+    assert len(response_payloads) == 1
+    assert "TravelTom response composer" in response_payloads[0]["prompt"]
 
 
-def test_orchestrator_passes_extracted_constraints_to_tool() -> None:
+def test_orchestrator_applies_guardrail_extraction_when_plan_is_sparse() -> None:
     captured_query: dict[str, RecommendationQuery | None] = {"query": None}
 
-    def tool(query: RecommendationQuery):
+    def planning_model(_payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "state_patch": {},
+            "query_controls": {},
+        }
+
+    def tool(query: RecommendationQuery) -> dict[str, Any]:
         captured_query["query"] = query
         return {"ranking_version": "heuristic-v1", "results": []}
 
-    service = OrchestratorService(recommendation_tool=tool)
+    service = OrchestratorService(
+        recommendation_tool=tool,
+        planning_model=planning_model,
+    )
     response = service.handle_message(
         user_message=(
             "Recommend a trip from NYC to Lisbon from 2026-06-10 to 2026-06-17 "
@@ -86,55 +144,103 @@ def test_orchestrator_passes_extracted_constraints_to_tool() -> None:
     assert query.constraints.budget is not None
     assert query.constraints.budget.min == 1200.0
     assert query.constraints.budget.max == 2400.0
-    assert query.max_results == 5
     assert response.state["constraints"]["destination"] == "Lisbon"
     assert response.state["constraints"]["origin"] == "NYC"
 
 
-def test_orchestrator_extracts_hotel_filter_from_message() -> None:
-    captured_query: dict[str, RecommendationQuery | None] = {"query": None}
-
-    def tool(query: RecommendationQuery):
-        captured_query["query"] = query
-        return {"ranking_version": "heuristic-v1", "results": []}
-
-    service = OrchestratorService(recommendation_tool=tool)
-    service.handle_message(
-        user_message="Recommend me hotels in Santa Barbara",
-        session_state=SessionState(session_id="sess-hotels"),
-    )
-
-    query = captured_query["query"]
-    assert query is not None
-    assert query.filters["item_type"] == "hotel"
-    assert query.constraints.destination == "Santa Barbara"
-
-
-def test_orchestrator_returns_clarification_when_intent_is_unclear() -> None:
+def test_orchestrator_returns_llm_clarification_without_tool_call() -> None:
     tool_calls = {"count": 0}
 
-    def tool(query):
+    def planning_model(_payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "intent": "clarify",
+            "should_call_recommendation_tool": False,
+            "clarification_message": "Could you share destination and dates first?",
+        }
+
+    def tool(_query: RecommendationQuery) -> dict[str, Any]:
         tool_calls["count"] += 1
         return {"ranking_version": "heuristic-v1", "results": []}
 
-    service = OrchestratorService(recommendation_tool=tool)
+    service = OrchestratorService(
+        recommendation_tool=tool,
+        planning_model=planning_model,
+    )
     response = service.handle_message(
         user_message="hello",
-        session_state=_base_state().model_copy(update={"status": "explore"}),
+        session_state=SessionState(session_id="sess-clarify"),
     )
 
     assert tool_calls["count"] == 0
-    assert "optimize for" in response.assistant_message
+    assert response.assistant_message == "Could you share destination and dates first?"
+    assert response.recommendations == []
+    assert response.state["status"] == "explore"
+
+
+def test_orchestrator_falls_back_when_planning_model_raises() -> None:
+    tool_calls = {"count": 0}
+
+    def failing_planner(_payload: dict[str, Any]) -> dict[str, Any]:
+        raise RuntimeError("model unavailable")
+
+    def tool(_query: RecommendationQuery) -> dict[str, Any]:
+        tool_calls["count"] += 1
+        return {"ranking_version": "heuristic-v1", "results": []}
+
+    service = OrchestratorService(
+        recommendation_tool=tool,
+        planning_model=failing_planner,
+    )
+    response = service.handle_message(
+        user_message="recommend a trip",
+        session_state=_base_state(),
+    )
+
+    assert tool_calls["count"] == 1
+    assert "do not have strong matches yet" in response.assistant_message
+    assert response.recommendations == []
+
+
+def test_orchestrator_handles_invalid_planning_payload() -> None:
+    tool_calls = {"count": 0}
+
+    def invalid_planner(_payload: dict[str, Any]) -> dict[str, Any]:
+        return {"intent": "recommend"}
+
+    def tool(_query: RecommendationQuery) -> dict[str, Any]:
+        tool_calls["count"] += 1
+        return {"ranking_version": "heuristic-v1", "results": []}
+
+    service = OrchestratorService(
+        recommendation_tool=tool,
+        planning_model=invalid_planner,
+    )
+    response = service.handle_message(
+        user_message="hello",
+        session_state=SessionState(session_id="sess-invalid-plan"),
+    )
+
+    assert tool_calls["count"] == 0
+    assert "destination" in response.assistant_message
     assert response.recommendations == []
 
 
 def test_orchestrator_handles_tool_timeout_with_retry_prompt() -> None:
-    def slow_tool(query):
+    def planning_model(_payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "state_patch": {},
+            "query_controls": {},
+        }
+
+    def slow_tool(_query: RecommendationQuery) -> dict[str, Any]:
         time.sleep(0.05)
         return {"ranking_version": "heuristic-v1", "results": []}
 
     service = OrchestratorService(
         recommendation_tool=slow_tool,
+        planning_model=planning_model,
         policy_config=OrchestratorPolicyConfig(recommendation_timeout_seconds=0.01),
     )
     response = service.handle_message(
@@ -147,10 +253,21 @@ def test_orchestrator_handles_tool_timeout_with_retry_prompt() -> None:
 
 
 def test_orchestrator_handles_invalid_tool_payload() -> None:
-    def invalid_payload_tool(query):
+    def planning_model(_payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "state_patch": {},
+            "query_controls": {},
+        }
+
+    def invalid_payload_tool(_query: RecommendationQuery) -> dict[str, Any]:
         return {"results": [{"item_id": "x"}]}
 
-    service = OrchestratorService(recommendation_tool=invalid_payload_tool)
+    service = OrchestratorService(
+        recommendation_tool=invalid_payload_tool,
+        planning_model=planning_model,
+    )
     response = service.handle_message(
         user_message="recommend beaches",
         session_state=_base_state(),
@@ -160,25 +277,119 @@ def test_orchestrator_handles_invalid_tool_payload() -> None:
     assert response.recommendations == []
 
 
-def test_orchestrator_requests_more_constraints_on_empty_results() -> None:
-    def empty_results_tool(query):
-        return {"ranking_version": "heuristic-v1", "results": []}
+def test_orchestrator_handles_response_model_validation_errors() -> None:
+    def planning_model(_payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "state_patch": {},
+            "query_controls": {},
+        }
 
-    service = OrchestratorService(recommendation_tool=empty_results_tool)
+    def invalid_response_model(_payload: dict[str, Any]) -> dict[str, Any]:
+        return {"unexpected": "value"}
+
+    def tool(_query: RecommendationQuery) -> dict[str, Any]:
+        return {
+            "ranking_version": "heuristic-v1",
+            "results": [
+                {
+                    "item_id": "dest-lisbon",
+                    "item_type": "destination",
+                    "score": 0.93,
+                    "rank": 1,
+                    "features": {"interest_match": 0.9, "name": "Lisbon"},
+                    "explanation": "Strong match for culture and food.",
+                }
+            ],
+        }
+
+    service = OrchestratorService(
+        recommendation_tool=tool,
+        planning_model=planning_model,
+        response_model=invalid_response_model,
+    )
     response = service.handle_message(
-        user_message="recommend a trip",
-        session_state=_base_state().model_copy(
-            update={
-                "constraints": _base_state().constraints.model_copy(
-                    update={"budget": None}
-                )
-            }
-        ),
+        user_message="recommend me something fun",
+        session_state=_base_state(),
     )
 
-    assert "do not have strong matches yet" in response.assistant_message
-    assert "budget range" in response.assistant_message
-    assert response.state["status"] == "explore"
+    assert "Top picks: Lisbon." in response.assistant_message
+    assert response.recommendations[0].item_id == "dest-lisbon"
+
+
+def test_orchestrator_results_message_falls_back_to_item_id_without_name() -> None:
+    service = OrchestratorService()
+    message = service._build_results_message(
+        [
+            RecommendationResult.model_validate(
+                {
+                    "item_id": "dest-lisbon",
+                    "item_type": "destination",
+                    "score": 0.93,
+                    "rank": 1,
+                    "features": {},
+                    "explanation": "Strong match for culture and food.",
+                }
+            )
+        ]
+    )
+
+    assert "Top picks: dest-lisbon." in message
+
+
+def test_orchestrator_results_message_uses_policy_preview_limit() -> None:
+    service = OrchestratorService(
+        policy_config=OrchestratorPolicyConfig(max_recommendation_results=5)
+    )
+    results = [
+        RecommendationResult.model_validate(
+            {
+                "item_id": f"dest-{index}",
+                "item_type": "destination",
+                "score": 0.9 - (index * 0.01),
+                "rank": index + 1,
+                "features": {"name": f"Place {index}"},
+                "explanation": "Matches your constraints.",
+            }
+        )
+        for index in range(6)
+    ]
+
+    message = service._build_results_message(results)
+
+    assert "Top picks: Place 0, Place 1, Place 2, Place 3, Place 4." in message
+    assert "Place 5" not in message
+
+
+def test_orchestrator_extracts_hotel_filter_from_message() -> None:
+    captured_query: dict[str, RecommendationQuery | None] = {"query": None}
+
+    def planning_model(_payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "state_patch": {},
+            "query_controls": {},
+        }
+
+    def tool(query: RecommendationQuery) -> dict[str, Any]:
+        captured_query["query"] = query
+        return {"ranking_version": "heuristic-v1", "results": []}
+
+    service = OrchestratorService(
+        recommendation_tool=tool,
+        planning_model=planning_model,
+    )
+    service.handle_message(
+        user_message="Recommend me hotels in Santa Barbara",
+        session_state=SessionState(session_id="sess-hotels"),
+    )
+
+    query = captured_query["query"]
+    assert query is not None
+    assert query.filters["item_type"] == "hotel"
+    assert query.constraints.destination == "Santa Barbara"
 
 
 def test_orchestrator_exposes_langchain_runtime_flag() -> None:

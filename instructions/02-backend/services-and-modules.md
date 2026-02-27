@@ -53,8 +53,10 @@ apps/api/
 ## Module boundaries
 
 - Orchestrator service:
-  - Owns LLM interaction and tool orchestration.
+  - Owns LLM planning/composition and tool orchestration.
   - Cannot construct recommendations directly.
+  - Validates structured planner/composer outputs and maps them to existing state/tool schemas.
+  - Keeps deterministic guardrails for fallback planning, state extraction, and query-filter normalization.
 - Recommender service:
   - Owns retrieval and ranking logic.
   - Deterministic outputs with versioned scoring.

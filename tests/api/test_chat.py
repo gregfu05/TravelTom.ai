@@ -11,7 +11,7 @@ from app.db.models.recommendation import Recommendation
 from app.db.models.session import Session
 from app.db.session import get_db
 from app.main import app
-from app.services.orchestrator.service import OrchestratorResponse
+from app.services.orchestrator.schemas import OrchestratorResponse
 from fastapi.testclient import TestClient
 
 

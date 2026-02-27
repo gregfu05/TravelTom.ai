@@ -16,11 +16,33 @@ Services:
 ## Environment variables
 
 - `DATABASE_URL`
-- `OPENAI_API_KEY` or `AZURE_OPENAI_KEY`
-- `OPENAI_ENDPOINT` (if Azure)
 - `APP_ENV=local`
+- `ORCHESTRATOR_LLM_PROVIDER=disabled|ollama|openai`
+- `ORCHESTRATOR_LLM_TIMEOUT_SECONDS` (default `20`)
+- `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`)
+- `OLLAMA_PLANNING_MODEL` (default `llama3.1:8b`)
+- `OLLAMA_RESPONSE_MODEL` (default `llama3.1:8b`)
+- `OLLAMA_TEMPERATURE` (default `0`)
+- `ORCHESTRATOR_OPENAI_BASE_URL` (default `https://api.openai.com/v1`)
+- `ORCHESTRATOR_OPENAI_API_KEY` or `OPENAI_API_KEY` (required when provider is `openai`)
+- `OPENAI_PLANNING_MODEL` (default `gpt-4.1-mini`)
+- `OPENAI_RESPONSE_MODEL` (default `gpt-4.1-mini`)
+- `OPENAI_TEMPERATURE` (default `0`)
 
 Store these in a local `.env` file (copy from `.env.example`) and do not hard-code them in code.
+
+To enable local Ollama orchestration:
+
+1. Run Ollama locally and pull a model (for example `ollama pull llama3.1:8b`).
+2. Set `ORCHESTRATOR_LLM_PROVIDER=ollama` in `.env`.
+3. Restart the API process so cached service dependencies reload.
+
+To enable OpenAI orchestration:
+
+1. Set `ORCHESTRATOR_LLM_PROVIDER=openai` in `.env`.
+2. Set `ORCHESTRATOR_OPENAI_API_KEY` (or `OPENAI_API_KEY`).
+3. Optionally override model and endpoint values.
+4. Restart the API process so cached service dependencies reload.
 
 ## First run
 

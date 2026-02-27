@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 
-import { ApiClientError, apiClient } from "../api/client";
+import { ApiClientError, apiClient, type Recommendation } from "../api/client";
 import { SessionMessage, useSessionStore } from "../store/session";
 
 interface PendingRequest {
@@ -35,6 +35,23 @@ function createMessage(
     content,
     createdAt: new Date().toISOString(),
   };
+}
+
+function stripTopPicksSegment(content: string): string {
+  const marker = "top picks:";
+  const markerIndex = content.toLowerCase().indexOf(marker);
+  if (markerIndex === -1) {
+    return content;
+  }
+  return content.slice(0, markerIndex).trim();
+}
+
+function getRecommendationName(item: Recommendation): string {
+  const name = item.metadata?.name;
+  if (typeof name === "string" && name.trim()) {
+    return name;
+  }
+  return item.itemId;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -76,6 +93,9 @@ export function ChatView() {
 
   const hasRecommendations = latestRecommendations.length > 0;
   const topRecommendations = latestRecommendations.slice(0, 5);
+  const latestAssistantMessageId = [...messages]
+    .reverse()
+    .find((item) => item.role === "assistant")?.id;
 
   useEffect(() => {
     if (!hasRecommendations) {
@@ -188,17 +208,56 @@ export function ChatView() {
               </article>
             ) : null}
 
-            {messages.map((message) => (
-              <article
-                key={message.id}
-                className={`chat-message chat-message-${message.role}`}
-              >
-                <p className="chat-message-role">
-                  {message.role === "assistant" ? "TravelTom" : "You"}
-                </p>
-                <p className="chat-message-content">{message.content}</p>
-              </article>
-            ))}
+            {messages.map((message) => {
+              const isLatestAssistantMessage =
+                message.role === "assistant" &&
+                message.id === latestAssistantMessageId;
+              const shouldRenderRecommendationSummary =
+                isLatestAssistantMessage && topRecommendations.length > 0;
+              const primaryMessage = shouldRenderRecommendationSummary
+                ? stripTopPicksSegment(message.content)
+                : message.content;
+              const displayMessage =
+                primaryMessage || "I found recommendations that match your request.";
+
+              return (
+                <article
+                  key={message.id}
+                  className={`chat-message chat-message-${message.role}`}
+                >
+                  <p className="chat-message-role">
+                    {message.role === "assistant" ? "TravelTom" : "You"}
+                  </p>
+                  <p className="chat-message-content">{displayMessage}</p>
+                  {shouldRenderRecommendationSummary ? (
+                    <section className="chat-message-recommendation-block">
+                      <div className="chat-message-divider" aria-hidden="true" />
+                      <p className="chat-message-list-title">
+                        Recommended options
+                      </p>
+                      <ol
+                        className="chat-message-recommendation-list"
+                        aria-label="Top recommendations"
+                      >
+                        {topRecommendations.map((item) => (
+                          <li
+                            key={`summary-${item.itemId}-${item.rank}`}
+                            className="chat-message-recommendation-item"
+                          >
+                            <span className="chat-message-recommendation-rank">
+                              #{item.rank}
+                            </span>
+                            <span className="chat-message-recommendation-name">
+                              {getRecommendationName(item)}
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    </section>
+                  ) : null}
+                </article>
+              );
+            })}
 
             {isSending ? (
               <article className="chat-message chat-message-assistant chat-message-loading">
@@ -300,11 +359,7 @@ export function ChatView() {
                           </p>
                         </div>
                       </div>
-                      <h3>
-                        {item.metadata?.name
-                          ? String(item.metadata.name)
-                          : item.itemId}
-                      </h3>
+                      <h3>{getRecommendationName(item)}</h3>
                       <p className="recommendation-subline">
                         {item.metadata?.city
                           ? String(item.metadata.city)
