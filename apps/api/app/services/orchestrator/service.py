@@ -445,13 +445,22 @@ class OrchestratorService:
         self,
         results: list[RecommendationResult],
     ) -> str:
+        preview_limit = max(1, self._policy.max_recommendation_results)
         preview_items = ", ".join(
-            f"{item.item_type}:{item.item_id}" for item in results[:3]
+            self._recommendation_display_name(item) for item in results[:preview_limit]
         )
         return (
             f"I found {len(results)} options that fit your request. "
             f"Top picks: {preview_items}."
         )
+
+    def _recommendation_display_name(self, item: RecommendationResult) -> str:
+        name = item.features.get("name")
+        if isinstance(name, str):
+            normalized = name.strip()
+            if normalized:
+                return normalized
+        return item.item_id
 
     def _clarification_response(
         self,

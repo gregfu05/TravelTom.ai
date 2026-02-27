@@ -279,10 +279,20 @@ def build_response_prompt_context(
     """Build prompt context for grounded response composition."""
 
     state_payload = json.dumps(session_state.model_dump(mode="json"), sort_keys=True)
+
+    def _display_name(item: RecommendationResult) -> str:
+        name = item.features.get("name")
+        if isinstance(name, str):
+            normalized = name.strip()
+            if normalized:
+                return normalized
+        return item.item_id
+
     if recommendations:
         recommendation_lines = [
             (
-                f"rank={item.rank}; type={item.item_type}; item_id={item.item_id}; "
+                f"rank={item.rank}; name={_display_name(item)}; "
+                f"type={item.item_type}; item_id={item.item_id}; "
                 f"score={item.score:.4f}; explanation={item.explanation}"
             )
             for item in recommendations
@@ -296,6 +306,7 @@ def build_response_prompt_context(
         'Return JSON only in the form {"assistant_message": "..."}.\n'
         "Grounding rules:\n"
         "- Use only the recommendation list provided below.\n"
+        "- Prefer recommendation names in user-facing text.\n"
         "- Do not invent item ids, prices, or availability.\n"
         "- If no recommendations exist, ask for tighter constraints.\n"
         f"- If you are uncertain, use this exact fallback message: {fallback_message}\n"
