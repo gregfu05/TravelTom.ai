@@ -2,66 +2,63 @@
 
 ## Responsibilities
 
-- Interpret user intent.
-- Extract structured constraints and preferences.
-- Decide next action (clarify vs recommend vs refine).
-- Generate fluent responses grounded in tool outputs.
+- Interpret user intent with an LLM planner.
+- Merge structured planner state updates into persisted `SessionState`.
+- Keep recommendation retrieval tool-first and deterministic.
+- Compose grounded assistant responses from validated tool results.
+- Persist schema-valid state and recommendation snapshots via `/api/v1/chat`.
 
 ## Hard constraints
 
 - The LLM must not invent recommendations.
-- All recommendations come from explicit tool calls.
-- Tool calls are validated with strict schemas.
+- Recommendation items are only returned from `RecommendationToolResponse`.
+- `SessionState`, `RecommendationQuery`, and `RecommendationToolResponse` remain strict Pydantic contracts.
 
-## Orchestrator pattern
+## Runtime modules
 
-- Tool-first routing.
-- Deterministic decision logic.
-- LangChain runnable orchestration.
-- Strict input/output schemas.
-- Persistent session state.
+- `apps/api/app/services/orchestrator/service.py`
+  - LLM-first orchestration path in `OrchestratorService.handle_message`.
+  - Structured planner and response-composer chains.
+  - Deterministic recommendation tool execution with timeout and schema validation.
+- `apps/api/app/services/orchestrator/policies.py`
+  - Structured planner/composer output models.
+  - Prompt-context builders.
+  - Deterministic fallback planner and clarification helpers.
+- `apps/api/app/services/orchestrator/extraction.py`
+  - Deterministic guardrail extraction from raw user text.
+  - Structured state-patch merge helper for LLM planner output.
+- `apps/api/app/services/orchestrator/langchain_compat.py`
+  - LangChain compatibility shims and structured-payload normalization.
 
-## Step 10 implementation snapshot
+## LLM-first orchestration flow
 
-- Runtime modules:
-  - `apps/api/app/services/orchestrator/policies.py`
-  - `apps/api/app/services/orchestrator/service.py`
-  - `apps/api/app/services/orchestrator/extraction.py`
-- Deterministic policy gates:
-  - keyword intent classification (`recommend`, `refine`, `clarify`)
-  - continuation logic for active sessions (`refine|itinerary|booking`)
-- Deterministic state extraction:
-  - parse origin/destination, date ranges, trip length, budget, and party size from user text
-  - merge extracted values into persisted `SessionState` before policy routing and tool calls
-  - persist extracted destinations into `entities.destinations`
-  - extract request-level recommendation filters (for example `item_type=hotel|flight|destination`) from user text
-- Tool execution:
-  - LangChain `StructuredTool` for recommendation calls with schema-validated `RecommendationQuery`
-  - LangChain `RunnableLambda` chain for tool invocation and response parsing
-  - configurable timeout policy (default 4s)
-  - chat policy max results defaults to top 5 per request
-  - strict validation of `RecommendationToolResponse`
-- Placeholder mode:
-  - recommendation tool may return empty `results` while recommender integration is pending
-  - orchestrator must ask for tighter constraints instead of fabricating options
-- Compatibility mode:
-  - if `langchain_core` is unavailable locally, a lightweight fallback shim keeps local tests runnable
-  - production/runtime environments should install `langchain-core`
+1. Build planner prompt context from current `SessionState` + latest user message.
+2. Invoke planner model and validate output as `LLMOrchestrationPlan`.
+3. Apply validated `state_patch` to `SessionState`, then run deterministic extraction guardrails.
+4. If planner says clarify, return planner clarification message (or deterministic fallback copy).
+5. If planner says recommend/refine, map `query_controls` to `RecommendationQuery` and execute recommendation tool.
+6. Validate tool output as `RecommendationToolResponse`.
+7. Build response prompt context from validated tool results and invoke response composer.
+8. If response-composer output is invalid/unavailable, use deterministic fallback copy.
+
+## Deterministic guarantees
+
+- Ranking behavior and `ranking_version` (`heuristic-v1`) are unchanged.
+- Tool timeout, invalid payload, and unexpected tool failures return explicit safe fallback messages.
+- Empty tool results are explicit and return a constraints-tightening message path.
+- Router contract and persistence behavior in `/api/v1/chat` are unchanged.
 
 ## Failure handling
 
-- Validation error: log event and return a user-friendly error.
-- Tool timeout: return a partial response with a retry prompt.
-- Empty results: ask for more constraints.
-
-## Reliability measures
-
-- JSON schema validation.
-- Fallback logic on extraction failure.
-- Timeouts and circuit breakers.
-- Booking claims only after adapter confirmation.
-
-## Skill reference
-
-- Builder skill: [chatbot-orchestration-skill.md](chatbot-orchestration-skill.md)
-
+- Planner failure or invalid planner payload:
+  - Fall back to deterministic guardrail planner.
+- Invalid structured state patch:
+  - Ignore patch and continue with prior state + deterministic extraction guardrails.
+- Tool timeout:
+  - Return retry-safe timeout message.
+- Invalid tool output:
+  - Return invalid-payload fallback message.
+- Empty tool results:
+  - Return explicit no-strong-match fallback and request tighter constraints.
+- Response composer failure/invalid payload:
+  - Return deterministic fallback response text grounded in tool outputs.

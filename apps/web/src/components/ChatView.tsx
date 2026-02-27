@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 
-import { ApiClientError, apiClient } from "../api/client";
+import { ApiClientError, apiClient, type Recommendation } from "../api/client";
 import { SessionMessage, useSessionStore } from "../store/session";
 
 interface PendingRequest {
@@ -46,6 +46,23 @@ function createMessage(
   };
 }
 
+function stripTopPicksSegment(content: string): string {
+  const marker = "top picks:";
+  const markerIndex = content.toLowerCase().indexOf(marker);
+  if (markerIndex === -1) {
+    return content;
+  }
+  return content.slice(0, markerIndex).trim();
+}
+
+function getRecommendationName(item: Recommendation): string {
+  const name = item.metadata?.name;
+  if (typeof name === "string" && name.trim()) {
+    return name;
+  }
+  return item.itemId;
+}
+
 function getErrorMessage(error: unknown): string {
   if (error instanceof ApiClientError) {
     if (error.status === 404) {
@@ -87,6 +104,9 @@ export function ChatView() {
 
   const hasRecommendations = latestRecommendations.length > 0;
   const topRecommendations = latestRecommendations.slice(0, 5);
+  const latestAssistantMessageId = [...messages]
+    .reverse()
+    .find((item) => item.role === "assistant")?.id;
 
   // Detect new recommendations → glow avatar + pulse pill
   useEffect(() => {

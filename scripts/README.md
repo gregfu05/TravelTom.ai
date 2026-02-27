@@ -14,7 +14,7 @@ python scripts/seed_catalog.py --truncate
 ```
 
 The seed script defaults to `traveltom/datasets/business_SB_Cleaned.parquet`.
-If the cleaned file is missing, it is generated from
+If the cleaned file is missing, it is copied from
 `traveltom/datasets/business_SB.parquet` before seeding.
 
 `item_type` classification uses normalized category tags and avoids treating

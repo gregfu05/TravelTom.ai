@@ -38,6 +38,14 @@ All tool inputs and outputs must pass explicit Pydantic validation.
 
 Note: empty recommendation results are valid and expected in placeholder mode.
 
+## Orchestrator usage notes (LLM-first flow)
+
+- Planner output is validated separately and then mapped to `RecommendationQuery`.
+- `ranking_version` remains pinned to `"heuristic-v1"` in orchestrator runtime.
+- `max_results` defaults to policy value (`5` for chat) unless planner-provided value passes schema validation.
+- `filters.item_type` is normalized to `destination|hotel|flight` with deterministic fallback extraction when absent.
+- Any invalid mapped query payload aborts tool execution and returns a safe clarification response.
+
 ## Catalog tool
 
 - `CatalogSearchQuery`

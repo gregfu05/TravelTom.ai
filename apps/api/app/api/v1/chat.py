@@ -8,18 +8,19 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.schemas.api.chat import ChatRecommendation, ChatRequest, ChatResponse
 from app.schemas.state import SessionState
 from app.services.chat_persistence import (
-    get_or_create_session,
     load_session_state,
     parse_optional_uuid,
-    persist_messages,
-    persist_recommendation_snapshot,
     session_pk,
 )
-from app.services.orchestrator.service import OrchestratorResponse, OrchestratorService
+from app.services.chat_uow import ChatUnitOfWork
+from app.services.orchestrator.llm_provider import build_orchestrator_llm_models
+from app.services.orchestrator.schemas import OrchestratorResponse
+from app.services.orchestrator.service import OrchestratorService
 from traveltom.recommendor.recommendor_v1 import recommendation_tool
 
 router = APIRouter()
@@ -29,13 +30,37 @@ router = APIRouter()
 def get_orchestrator_service() -> OrchestratorService:
     """Return a cached orchestrator service instance."""
 
-    return OrchestratorService(recommendation_tool=recommendation_tool)
+    settings = get_settings()
+    llm_models = build_orchestrator_llm_models(
+        provider=settings.orchestrator_llm_provider,
+        ollama_base_url=settings.ollama_base_url,
+        ollama_planning_model=settings.ollama_planning_model,
+        ollama_response_model=settings.ollama_response_model,
+        llm_timeout_seconds=settings.orchestrator_llm_timeout_seconds,
+        ollama_temperature=settings.ollama_temperature,
+        openai_base_url=settings.openai_base_url,
+        openai_api_key=settings.openai_api_key,
+        openai_planning_model=settings.openai_planning_model,
+        openai_response_model=settings.openai_response_model,
+        openai_temperature=settings.openai_temperature,
+    )
+    return OrchestratorService(
+        recommendation_tool=recommendation_tool,
+        planning_model=llm_models.planning_model,
+        response_model=llm_models.response_model,
+    )
+
+
+def get_chat_uow(db: AsyncSession = Depends(get_db)) -> ChatUnitOfWork:
+    """Return chat unit of work bound to the request-scoped DB session."""
+
+    return ChatUnitOfWork(db)
 
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
-    db: AsyncSession = Depends(get_db),
+    uow: ChatUnitOfWork = Depends(get_chat_uow),
     orchestrator: OrchestratorService = Depends(get_orchestrator_service),
 ) -> ChatResponse:
     """Handle a chat message and persist session/message/recommendation records."""
@@ -44,60 +69,64 @@ async def chat(
     user_uuid = parse_optional_uuid(request.user_id)
 
     try:
-        session_row = await get_or_create_session(
-            db=db,
-            pk=pk,
-            request=request,
-            user_uuid=user_uuid,
-        )
-        state = load_session_state(raw_state=session_row.state_json, request=request)
+        async with uow:
+            session_row = await uow.chat_repository.get_or_create_session(
+                pk=pk,
+                session_id=request.session_id,
+                request_user_id=request.user_id,
+                user_uuid=user_uuid,
+            )
+            state = load_session_state(
+                raw_state=session_row.state_json,
+                session_id=request.session_id,
+                user_id=request.user_id,
+            )
 
-        orchestration = orchestrator.handle_message(
-            user_message=request.message,
-            session_state=state,
-        )
-        persisted_state = SessionState.model_validate(orchestration.state)
-        session_row.state_json = persisted_state.model_dump(mode="json")
-        if user_uuid is not None:
-            session_row.user_id = user_uuid
+            orchestration = orchestrator.handle_message(
+                user_message=request.message,
+                session_state=state,
+            )
+            persisted_state = SessionState.model_validate(orchestration.state)
+            session_row.state_json = persisted_state.model_dump(mode="json")
+            if user_uuid is not None:
+                session_row.user_id = user_uuid
 
-        await db.flush()
+            await uow.flush()
 
-        persist_messages(
-            db=db,
-            pk=pk,
-            user_message=request.message,
-            assistant_message=orchestration.assistant_message,
-        )
-        persist_recommendation_snapshot(
-            db=db,
-            pk=pk,
-            message=request.message,
-            recommendations=orchestration.recommendations,
-            ranking_version=persisted_state.last_recommendation_version
-            or "heuristic-v1",
-        )
+            uow.chat_repository.add_messages(
+                pk=pk,
+                user_message=request.message,
+                assistant_message=orchestration.assistant_message,
+            )
+            uow.chat_repository.add_recommendation_snapshot(
+                pk=pk,
+                message=request.message,
+                recommendations=orchestration.recommendations,
+                ranking_version=persisted_state.last_recommendation_version
+                or "heuristic-v1",
+            )
 
-        await db.commit()
+            await uow.commit()
+            return _to_chat_response(
+                request_message_id=request.message_id,
+                orchestration=orchestration,
+            )
     except ValidationError as exc:
-        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid session state payload",
         ) from exc
     except HTTPException:
-        await db.rollback()
         raise
     except Exception as exc:
-        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to process chat message",
         ) from exc
 
-    return _to_chat_response(
-        request_message_id=request.message_id,
-        orchestration=orchestration,
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Failed to process chat message",
     )
 
 

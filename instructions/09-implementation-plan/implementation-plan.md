@@ -43,10 +43,14 @@ Preconditions: Step 1 complete.
 Files to touch:
 - [apps/api/app/main.py](apps/api/app/main.py)
 - [apps/api/app/api/v1/health.py](apps/api/app/api/v1/health.py)
+- [apps/api/app/schemas/api/health.py](apps/api/app/schemas/api/health.py)
+- [apps/api/app/services/health_status.py](apps/api/app/services/health_status.py)
 - [apps/api/app/core/config.py](apps/api/app/core/config.py)
 Implementation tasks:
 - [ ] Initialize FastAPI app and include a router.
-- [ ] Implement `/api/v1/health` returning `{"status": "ok"}`.
+- [ ] Keep `api/v1/health.py` as a thin router (HTTP contract wiring only).
+- [ ] Define health response schema in `schemas/api/health.py`.
+- [ ] Build health payload in `services/health_status.py`.
 - [ ] Add basic settings model.
 Commands to run:
 ```bash
@@ -279,10 +283,18 @@ Rationale: Enables frontend integration for MVP.
 Preconditions: Step 10 complete.
 Files to touch:
 - [apps/api/app/api/v1/chat.py](apps/api/app/api/v1/chat.py)
+- [apps/api/app/schemas/api/chat.py](apps/api/app/schemas/api/chat.py)
+- [apps/api/app/repositories/chat.py](apps/api/app/repositories/chat.py)
+- [apps/api/app/services/chat_uow.py](apps/api/app/services/chat_uow.py)
+- [apps/api/app/services/chat_persistence.py](apps/api/app/services/chat_persistence.py)
 - [apps/api/app/api/v1/__init__.py](apps/api/app/api/v1/__init__.py)
 Implementation tasks:
-- [ ] Implement request validation and session lookup.
-- [ ] Call orchestrator and persist state.
+- [ ] Keep `api/v1/chat.py` as a thin router (dependency wiring + orchestration call only).
+- [ ] Define chat request/response schemas in `schemas/api/chat.py`.
+- [ ] Extract chat data access to a targeted repository in `repositories/chat.py`.
+- [ ] Add chat-specific unit-of-work transaction handling in `services/chat_uow.py`.
+- [ ] Keep session identity/state validation helpers in `services/chat_persistence.py`.
+- [ ] Wire repository + unit of work, state persistence, and response mapping in the endpoint.
 Commands to run:
 ```bash
 python -m pytest tests/api/test_chat.py -q
@@ -293,6 +305,8 @@ Verification:
 - Integration test passes with seeded data.
 Doc updates required:
 - [../02-backend/api-design.md](../02-backend/api-design.md)
+- [../02-backend/services-and-modules.md](../02-backend/services-and-modules.md)
+- [../01-architecture/system-overview.md](../01-architecture/system-overview.md)
 Suggested commit message: `feat(api): add chat endpoint`
 Rollback notes: Remove endpoint and related tests.
 
@@ -303,8 +317,12 @@ Rationale: Useful for debugging and integration tests.
 Preconditions: Step 11 complete.
 Files to touch:
 - [apps/api/app/api/v1/recommendations.py](apps/api/app/api/v1/recommendations.py)
+- [apps/api/app/schemas/api/recommendations.py](apps/api/app/schemas/api/recommendations.py)
+- [apps/api/app/services/recommendation_query.py](apps/api/app/services/recommendation_query.py)
 Implementation tasks:
-- [ ] Add endpoint with validated request schema.
+- [ ] Keep `api/v1/recommendations.py` as a thin router (DI + HTTP error mapping).
+- [ ] Define API request/response schemas in `schemas/api/recommendations.py`.
+- [ ] Execute recommendation tool and validate tool payloads in `services/recommendation_query.py`.
 - [ ] Return ranked results with version.
 Commands to run:
 ```bash
@@ -316,6 +334,7 @@ Verification:
 - Tests pass and results match ranker spec.
 Doc updates required:
 - [../02-backend/api-design.md](../02-backend/api-design.md)
+- [../02-backend/services-and-modules.md](../02-backend/services-and-modules.md)
 Suggested commit message: `feat(api): add recommendations query endpoint`
 Rollback notes: Remove endpoint and tests.
 
