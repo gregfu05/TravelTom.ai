@@ -819,6 +819,7 @@ a {
   margin: 0.45rem 0 0;
   line-height: 1.56;
   color: var(--text);
+  white-space: pre-line;
 }
 
 .chat-message-loading {
