@@ -358,7 +358,10 @@ def test_orchestrator_results_message_uses_policy_preview_limit() -> None:
 
     message = service._build_results_message(results)
 
-    assert "Top picks:\n1. Place 0\n2. Place 1\n3. Place 2\n4. Place 3\n5. Place 4" in message
+    assert (
+        "Top picks:\n1. Place 0\n2. Place 1\n3. Place 2\n4. Place 3\n5. Place 4"
+        in message
+    )
     assert "Place 5" not in message
 
 
