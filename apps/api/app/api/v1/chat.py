@@ -45,12 +45,16 @@ async def chat(
 
     try:
         session_row = await get_or_create_session(
-            db=db, pk=pk, request=request, user_uuid=user_uuid,
+            db=db,
+            pk=pk,
+            request=request,
+            user_uuid=user_uuid,
         )
         state = load_session_state(raw_state=session_row.state_json, request=request)
 
         orchestration = orchestrator.handle_message(
-            user_message=request.message, session_state=state,
+            user_message=request.message,
+            session_state=state,
         )
         persisted_state = SessionState.model_validate(orchestration.state)
         session_row.state_json = persisted_state.model_dump(mode="json")
@@ -60,15 +64,18 @@ async def chat(
         await db.flush()
 
         persist_messages(
-            db=db, pk=pk,
+            db=db,
+            pk=pk,
             user_message=request.message,
             assistant_message=orchestration.assistant_message,
         )
         persist_recommendation_snapshot(
-            db=db, pk=pk,
+            db=db,
+            pk=pk,
             message=request.message,
             recommendations=orchestration.recommendations,
-            ranking_version=persisted_state.last_recommendation_version or "heuristic-v1",
+            ranking_version=persisted_state.last_recommendation_version
+            or "heuristic-v1",
         )
 
         await db.commit()
@@ -89,7 +96,8 @@ async def chat(
         ) from exc
 
     return _to_chat_response(
-        request_message_id=request.message_id, orchestration=orchestration,
+        request_message_id=request.message_id,
+        orchestration=orchestration,
     )
 
 
