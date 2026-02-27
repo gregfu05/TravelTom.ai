@@ -2,6 +2,66 @@
 
 ## 2026-02-26
 
+- Added local Ollama provider wiring for orchestrator structured LLM calls:
+  - New provider module:
+    `apps/api/app/services/orchestrator/llm_provider.py`
+  - Chat DI now builds planner/composer callables from settings in
+    `apps/api/app/api/v1/chat.py`
+  - Added provider configuration in `apps/api/app/core/config.py`
+  - Added new `.env.example` keys:
+    `ORCHESTRATOR_LLM_PROVIDER`, `ORCHESTRATOR_LLM_TIMEOUT_SECONDS`,
+    `OLLAMA_BASE_URL`, `OLLAMA_PLANNING_MODEL`, `OLLAMA_RESPONSE_MODEL`,
+    `OLLAMA_TEMPERATURE`
+  - Added provider unit tests:
+    `tests/orchestrator/test_llm_provider.py`
+  - Updated local dev instructions for Ollama setup in
+    `instructions/07-infra-ops/local-dev.md`
+- Renamed orchestrator provider fallback mode from `heuristic` to `disabled`
+  to avoid confusion with recommender ranking version names.
+- Refactored orchestrator provider implementation for cleaner module boundaries:
+  - Moved `OllamaStructuredClient` out of the provider factory file into
+    `apps/api/app/services/orchestrator/providers/ollama.py`
+  - Added shared provider helpers in
+    `apps/api/app/services/orchestrator/providers/common.py`
+  - Added OpenAI structured client in
+    `apps/api/app/services/orchestrator/providers/openai.py`
+  - Updated provider factory (`llm_provider.py`) to only handle provider
+    selection and binding.
+  - Added OpenAI provider config keys and `.env.example` entries:
+    `ORCHESTRATOR_OPENAI_BASE_URL`, `ORCHESTRATOR_OPENAI_API_KEY`,
+    `OPENAI_PLANNING_MODEL`, `OPENAI_RESPONSE_MODEL`, `OPENAI_TEMPERATURE`
+  - Added provider tests for OpenAI path and required API-key validation.
+
+- Refactored orchestrator runtime to an LLM-first flow in
+  `apps/api/app/services/orchestrator/service.py`:
+  - Added structured planner and response-composer model boundaries.
+  - Planner now drives intent interpretation, clarification strategy, and
+    query-control shaping.
+  - Recommendation execution remains deterministic and tool-backed with
+    unchanged ranking behavior (`heuristic-v1`).
+  - Added explicit fallback handling for planner failure/invalid output,
+    tool timeout, invalid tool payload, empty tool results, and response-model
+    failure/invalid output.
+- Added structured LLM orchestration contracts and prompt-context builders in
+  `apps/api/app/services/orchestrator/policies.py`.
+- Added `apply_structured_state_patch` in
+  `apps/api/app/services/orchestrator/extraction.py` for validated LLM state
+  patch merging, while keeping deterministic extraction as guardrails.
+- Extended `apps/api/app/services/orchestrator/langchain_compat.py` with
+  `normalize_structured_payload` for consistent structured model output handling.
+- Updated orchestrator tests to mock planner/composer/tool boundaries and verify
+  deterministic fallbacks and error-path behavior:
+  - `tests/orchestrator/test_service.py`
+  - `tests/orchestrator/test_extraction.py`
+- Updated orchestrator and backend docs for LLM-first behavior and unchanged API
+  contract:
+  - `04-llm-orchestrator/orchestrator-overview.md`
+  - `04-llm-orchestrator/prompts-and-guardrails.md`
+  - `04-llm-orchestrator/tool-schemas.md`
+  - `04-llm-orchestrator/session-state-schema.md`
+  - `02-backend/api-design.md`
+  - `02-backend/services-and-modules.md`
+
 - Refactored `apps/api/app/api/v1/chat.py` into a thin router by extracting:
   - Chat API Pydantic schemas (`ChatRequest`, `ChatResponse`, `ChatRecommendation`,
     `ClientContext`) into `apps/api/app/schemas/api/chat.py`.
@@ -13,6 +73,35 @@
   and module boundaries; added `schemas/api/chat.py` to layout.
 - Updated `02-backend/api-design.md`: chat endpoint implementation notes now reference
   the new schema and persistence file locations.
+- Updated `09-implementation-plan/implementation-plan.md` Step 11 to include
+  `schemas/api/chat.py` and `services/chat_persistence.py` in files/tasks, and
+  linked `02-backend/services-and-modules.md` in required doc updates.
+- Refactored remaining API routers to the same thin-endpoint style:
+  - `apps/api/app/api/v1/health.py` now delegates payload construction to
+    `apps/api/app/services/health_status.py` and uses
+    `apps/api/app/schemas/api/health.py`.
+  - `apps/api/app/api/v1/recommendations.py` now delegates tool execution and
+    validation to `apps/api/app/services/recommendation_query.py` and uses
+    `apps/api/app/schemas/api/recommendations.py`.
+- Updated `02-backend/services-and-modules.md` and `02-backend/api-design.md`
+  to document thin-router boundaries for health and recommendations.
+- Updated `09-implementation-plan/implementation-plan.md` Step 2 and Step 12
+  files/tasks to match the extracted schema/service modules.
+- Implemented targeted persistence patterns for chat:
+  - Added `apps/api/app/repositories/chat.py` with a feature-specific
+    `ChatRepository` (session lookup/creation, message writes, recommendation snapshots).
+  - Added `apps/api/app/services/chat_uow.py` with `ChatUnitOfWork` for
+    request-scoped transaction boundaries.
+  - Updated `apps/api/app/api/v1/chat.py` to use repository + unit-of-work
+    instead of direct session operations.
+  - Reduced `apps/api/app/services/chat_persistence.py` to session identity/state
+    helper responsibilities.
+- Updated architecture/docs to reflect repository + UoW boundaries:
+  - `01-architecture/system-overview.md`
+  - `02-backend/services-and-modules.md`
+  - `02-backend/api-design.md`
+  - `09-implementation-plan/implementation-plan.md` (Step 11)
+  - `apps/api/README.md`
 
 ## 2026-02-24
 

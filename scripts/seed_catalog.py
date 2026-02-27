@@ -17,6 +17,7 @@ import uuid
 from collections.abc import Iterator
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from shutil import copyfile
 from typing import Any, TypeVar
 
 import numpy as np
@@ -371,14 +372,13 @@ def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
             f"{DEFAULT_RAW_DATASET.resolve()}"
         )
 
-    # Build the cleaned snapshot expected by the recommender and persist it.
-    from traveltom.cleaning.cleaning import clean_business_df
-
-    raw_df = pd.read_parquet(DEFAULT_RAW_DATASET)
-    cleaned_df = clean_business_df(raw_df)
+    # Fast bootstrap fallback: mirror raw snapshot to the cleaned path.
     default_clean_path.parent.mkdir(parents=True, exist_ok=True)
-    cleaned_df.to_parquet(default_clean_path, index=False)
-    return cleaned_df, f"{default_clean_path} (generated from raw snapshot)"
+    copyfile(DEFAULT_RAW_DATASET, default_clean_path)
+    return (
+        pd.read_parquet(default_clean_path),
+        f"{default_clean_path} (copied from raw snapshot)",
+    )
 
 
 if __name__ == "__main__":

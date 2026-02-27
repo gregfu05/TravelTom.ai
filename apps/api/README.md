@@ -9,6 +9,20 @@ See `instructions/02-backend/` for design and API contracts.
 
 - `/api/v1/chat` and `/api/v1/recommendations/query` both use the same deterministic
   recommender implementation in `traveltom/recommendor/recommendor_v1.py`.
+- The health endpoint is intentionally split by responsibility:
+  - API router in `apps/api/app/api/v1/health.py`.
+  - Response schema in `apps/api/app/schemas/api/health.py`.
+  - Health payload helper in `apps/api/app/services/health_status.py`.
+- The chat endpoint is intentionally split by responsibility:
+  - API router and orchestration wiring in `apps/api/app/api/v1/chat.py`.
+  - Request/response schemas in `apps/api/app/schemas/api/chat.py`.
+  - Transaction boundary in `apps/api/app/services/chat_uow.py`.
+  - Session/message/recommendation persistence in `apps/api/app/repositories/chat.py`.
+  - Session identity/state helpers in `apps/api/app/services/chat_persistence.py`.
+- The recommendations endpoint is intentionally split by responsibility:
+  - API router and HTTP mapping in `apps/api/app/api/v1/recommendations.py`.
+  - API request/response schemas in `apps/api/app/schemas/api/recommendations.py`.
+  - Tool execution + response validation in `apps/api/app/services/recommendation_query.py`.
 - The recommender reads candidates from PostgreSQL `catalog_items` (seed this
   table before testing chat recommendations).
 - The orchestrator deterministically extracts constraints from user messages and

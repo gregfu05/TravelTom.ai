@@ -23,15 +23,22 @@ apps/api/
       session.py
       models/
       migrations/
+    repositories/
+      chat.py
     services/
       orchestrator/
       recommender/
       catalog/
       events/
+      health_status.py
+      recommendation_query.py
+      chat_uow.py
       chat_persistence.py
     schemas/
       api/
         chat.py
+        health.py
+        recommendations.py
       events/
       tools/
       state.py
@@ -46,8 +53,10 @@ apps/api/
 ## Module boundaries
 
 - Orchestrator service:
-  - Owns LLM interaction and tool orchestration.
+  - Owns LLM planning/composition and tool orchestration.
   - Cannot construct recommendations directly.
+  - Validates structured planner/composer outputs and maps them to existing state/tool schemas.
+  - Keeps deterministic guardrails for fallback planning, state extraction, and query-filter normalization.
 - Recommender service:
   - Owns retrieval and ranking logic.
   - Deterministic outputs with versioned scoring.
@@ -55,10 +64,23 @@ apps/api/
   - Responsible for catalog CRUD and search.
 - Event logger:
   - Validates and writes events with idempotency.
-- Chat persistence service (`app/services/chat_persistence.py`):
-  - Owns session lookup/creation, message persistence, and recommendation snapshot writes.
-  - Pure data-access helpers consumed by the chat endpoint; no orchestration logic.
-  - Deterministic session-id-to-UUID mapping via `uuid5`.
+- Health status service (`app/services/health_status.py`):
+  - Owns health payload construction for `/health`.
+  - Keeps router logic limited to HTTP wiring.
+- Recommendation query service (`app/services/recommendation_query.py`):
+  - Owns recommendation-tool execution and tool-response validation.
+  - Converts API request/response schemas to/from tool-layer schemas.
+  - Keeps the recommendations router focused on DI and HTTP error mapping.
+- Chat repository (`app/repositories/chat.py`):
+  - Owns chat persistence operations: session lookup/creation, message writes,
+    and recommendation snapshot writes.
+  - Provides feature-specific data access (non-generic repository pattern).
+- Chat unit of work (`app/services/chat_uow.py`):
+  - Owns chat transaction lifecycle (`flush`/`commit`/`rollback`).
+  - Wires the chat repository to a request-scoped DB session.
+- Chat persistence helpers (`app/services/chat_persistence.py`):
+  - Owns deterministic session-id-to-UUID mapping via `uuid5`.
+  - Validates and hydrates persisted state payloads for orchestrator execution.
 
 ## Settings management
 

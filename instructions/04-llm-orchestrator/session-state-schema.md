@@ -50,3 +50,11 @@ Source of truth: `apps/api/app/schemas/state.py`
 - Store canonical state in `sessions.state_json`.
 - Re-validate before save and after read when state is loaded into runtime.
 
+## LLM-first state handling notes
+
+- Planner emits a structured partial state patch (`state_patch`).
+- Runtime merges patch into current state using strict validation (`SessionState.model_validate`).
+- If patch validation fails, orchestration ignores the patch and continues with prior state.
+- Deterministic extraction still runs as a guardrail to enrich missing constraints from user text.
+- Destination values are deduplicated in `entities.destinations`.
+
