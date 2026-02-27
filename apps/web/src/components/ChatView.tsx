@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 
 import { ApiClientError, apiClient } from "../api/client";
 import { SessionMessage, useSessionStore } from "../store/session";
@@ -359,6 +359,15 @@ export function ChatView() {
                 className="chat-input"
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    const message = draft.trim();
+                    if (!message || isSending) return;
+                    setDraft("");
+                    void sendMessage(message, { appendUserMessage: true });
+                  }
+                }}
                 placeholder="Tell Tom what kind of trip you want..."
                 rows={2}
                 disabled={isSending}
