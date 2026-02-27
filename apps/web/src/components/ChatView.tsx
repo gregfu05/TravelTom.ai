@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 
-import { ApiClientError, apiClient } from "../api/client";
+import { ApiClientError, apiClient, type Recommendation } from "../api/client";
 import { SessionMessage, useSessionStore } from "../store/session";
 
 interface PendingRequest {
@@ -46,6 +46,23 @@ function createMessage(
   };
 }
 
+function stripTopPicksSegment(content: string): string {
+  const marker = "top picks:";
+  const markerIndex = content.toLowerCase().indexOf(marker);
+  if (markerIndex === -1) {
+    return content;
+  }
+  return content.slice(0, markerIndex).trim();
+}
+
+function getRecommendationName(item: Recommendation): string {
+  const name = item.metadata?.name;
+  if (typeof name === "string" && name.trim()) {
+    return name;
+  }
+  return item.itemId;
+}
+
 function getErrorMessage(error: unknown): string {
   if (error instanceof ApiClientError) {
     if (error.status === 404) {
@@ -87,6 +104,9 @@ export function ChatView() {
 
   const hasRecommendations = latestRecommendations.length > 0;
   const topRecommendations = latestRecommendations.slice(0, 5);
+  const latestAssistantMessageId = [...messages]
+    .reverse()
+    .find((item) => item.role === "assistant")?.id;
 
   // Detect new recommendations → glow avatar + pulse pill
   useEffect(() => {
@@ -275,6 +295,7 @@ export function ChatView() {
       <div
         className={`chat-layout ${hasRecommendations ? "chat-layout-with-recommendations" : ""}`}
       >
+      </div>
         <div className="chat-main-column">
           <div
             className="chat-thread"
@@ -309,19 +330,80 @@ export function ChatView() {
                 </div>
               </div>
             ) : null}
+##
+            {messages.map((message) => {
+              const isLatestAssistantMessage =
+                message.role === "assistant" &&
+                message.id === latestAssistantMessageId;
 
-            {messages.map((message) => (
-              <article
-                key={message.id}
-                className={`chat-message chat-message-${message.role}`}
-              >
-                <p className="chat-message-role">
-                  {message.role === "assistant" ? "Tom" : "You"}
-                </p>
-                <p className="chat-message-content">{message.content}</p>
-              </article>
-            ))}
+              const shouldRenderRecommendationSummary =
+                isLatestAssistantMessage && topRecommendations.length > 0;
 
+              const primaryMessage = shouldRenderRecommendationSummary
+                ? stripTopPicksSegment(message.content)
+                : message.content;
+
+              const displayMessage =
+                primaryMessage || "I found recommendations that match your request.";
+
+              return (
+                <article
+                  key={message.id}
+                  className={`chat-message chat-message-${message.role}`}
+                >
+                  <p className="chat-message-role">
+                    {message.role === "assistant" ? "TravelTom" : "You"}
+                  </p>
+
+                  <p className="chat-message-content">{displayMessage}</p>
+
+                  {shouldRenderRecommendationSummary ? (
+                    <section className="chat-message-recommendation-block">
+                      <div className="chat-message-divider" aria-hidden="true" />
+
+                      <p className="chat-message-list-title">
+                        Recommended options
+                      </p>
+
+                      <ol
+                        className="chat-message-recommendation-list"
+                        aria-label="Top recommendations"
+                      >
+                        {topRecommendations.map((item) => {
+                          const name = getRecommendationName(item);
+                          const mapUrl =
+                            typeof item.metadata?.map_url === "string"
+                              ? item.metadata.map_url
+                              : undefined;
+
+                          return (
+                            <li
+                              key={`summary-${item.itemId}-${item.rank}`}
+                              className="chat-message-recommendation-item"
+                            >
+                              <span className="chat-message-recommendation-name">
+                                {name}
+                              </span>
+
+                              {mapUrl ? (
+                                <a
+                                  href={mapUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="chat-message-map-link"
+                                >
+                                  View on map
+                                </a>
+                              ) : null}
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    </section>
+                  ) : null}
+                </article>
+              );
+            })}
             {isSending ? (
               <article className="chat-message chat-message-assistant chat-message-loading">
                 <p className="chat-message-role">Tom</p>
@@ -381,7 +463,9 @@ export function ChatView() {
         {/* ── Inline side panel (desktop) ── */}
         {hasRecommendations ? (
           <aside
-            className={`recommendations-panel ${recsJustArrived ? "recommendations-panel-arrive" : ""}`}
+            className={`recommendations-panel ${
+              recsJustArrived ? "recommendations-panel-arrive" : ""
+            }`}
             aria-live="polite"
           >
             <div className="recommendations-panel-header">
@@ -390,10 +474,40 @@ export function ChatView() {
                 <p>Top {topRecommendations.length} from latest response</p>
               </div>
             </div>
-            {renderRecommendationCards()}
+
+            <ol id="recommendation-list" className="recommendation-list">
+              {topRecommendations.map((item) => {
+                const name = getRecommendationName(item);
+                const mapUrl =
+                  typeof item.metadata?.map_url === "string"
+                    ? item.metadata.map_url
+                    : undefined;
+
+                return (
+                  <li
+                    key={`${item.itemId}-${item.rank}`}
+                    className="recommendation-list-item"
+                  >
+                    <article className="recommendation-card">
+                      <h3 className="recommendation-name">{name}</h3>
+
+                      {mapUrl ? (
+                        <a
+                          href={mapUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="recommendation-map-link"
+                        >
+                          View on map
+                        </a>
+                      ) : null}
+                    </article>
+                  </li>
+                );
+              })}
+            </ol>
           </aside>
-        ) : null}
-      </div>
+) : null}
 
       {/* ── Mobile drawer overlay ── */}
       {isDrawerOpen ? (

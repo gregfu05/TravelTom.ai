@@ -8,6 +8,7 @@ from typing import Any
 from app.schemas.state import SessionState
 from app.schemas.tools.recommendations import (
     RecommendationQuery,
+    RecommendationResult,
     RecommendationToolResponse,
 )
 from app.services.orchestrator.policies import OrchestratorPolicyConfig
@@ -297,7 +298,7 @@ def test_orchestrator_handles_response_model_validation_errors() -> None:
                     "item_type": "destination",
                     "score": 0.93,
                     "rank": 1,
-                    "features": {"interest_match": 0.9},
+                    "features": {"interest_match": 0.9, "name": "Lisbon"},
                     "explanation": "Strong match for culture and food.",
                 }
             ],
@@ -313,8 +314,52 @@ def test_orchestrator_handles_response_model_validation_errors() -> None:
         session_state=_base_state(),
     )
 
-    assert "Top picks: destination:dest-lisbon." in response.assistant_message
+    assert "Top picks: Lisbon." in response.assistant_message
     assert response.recommendations[0].item_id == "dest-lisbon"
+
+
+def test_orchestrator_results_message_falls_back_to_item_id_without_name() -> None:
+    service = OrchestratorService()
+    message = service._build_results_message(
+        [
+            RecommendationResult.model_validate(
+                {
+                    "item_id": "dest-lisbon",
+                    "item_type": "destination",
+                    "score": 0.93,
+                    "rank": 1,
+                    "features": {},
+                    "explanation": "Strong match for culture and food.",
+                }
+            )
+        ]
+    )
+
+    assert "Top picks: dest-lisbon." in message
+
+
+def test_orchestrator_results_message_uses_policy_preview_limit() -> None:
+    service = OrchestratorService(
+        policy_config=OrchestratorPolicyConfig(max_recommendation_results=5)
+    )
+    results = [
+        RecommendationResult.model_validate(
+            {
+                "item_id": f"dest-{index}",
+                "item_type": "destination",
+                "score": 0.9 - (index * 0.01),
+                "rank": index + 1,
+                "features": {"name": f"Place {index}"},
+                "explanation": "Matches your constraints.",
+            }
+        )
+        for index in range(6)
+    ]
+
+    message = service._build_results_message(results)
+
+    assert "Top picks: Place 0, Place 1, Place 2, Place 3, Place 4." in message
+    assert "Place 5" not in message
 
 
 def test_orchestrator_extracts_hotel_filter_from_message() -> None:

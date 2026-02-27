@@ -819,12 +819,65 @@ a {
   margin: 0.45rem 0 0;
   line-height: 1.56;
   color: var(--text);
+  white-space: pre-wrap;
+}
+
+.chat-message-recommendation-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.7rem;
+}
+
+.chat-message-divider {
+  width: 100%;
+  height: 1px;
+  background: rgba(16, 34, 54, 0.18);
+}
+
+.chat-message-list-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-700);
+}
+
+.chat-message-recommendation-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.chat-message-recommendation-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.chat-message-recommendation-name {
+  font-weight: 600;
+  color: var(--ink-900);
+}
+
+.chat-message-map-link {
+  font-size: 0.8rem;
+  color: var(--accent-orange);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.chat-message-map-link:hover {
+  text-decoration: underline;
 }
 
 .chat-message-loading {
   min-width: 110px;
 }
-
 /* ── Typing Indicator ── */
 
 .typing-indicator {
