@@ -226,9 +226,9 @@ def test_chat_endpoint_allows_empty_recommendations() -> None:
 def test_chat_endpoint_rolls_back_on_orchestrator_failure() -> None:
     fake_db = _FakeAsyncSession()
     app.dependency_overrides[get_db] = _override_db(fake_db)
-    app.dependency_overrides[
-        get_orchestrator_service
-    ] = lambda: _FailingOrchestratorService()
+    app.dependency_overrides[get_orchestrator_service] = (
+        lambda: _FailingOrchestratorService()
+    )
 
     try:
         client = TestClient(app)
