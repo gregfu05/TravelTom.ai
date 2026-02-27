@@ -814,7 +814,6 @@ a {
   text-transform: uppercase;
   color: var(--primary);
 }
-
 .chat-message-content {
   margin: 0.45rem 0 0;
   line-height: 1.56;
@@ -873,6 +872,10 @@ a {
 
 .chat-message-map-link:hover {
   text-decoration: underline;
+}
+
+.chat-message-loading {
+  min-width: 110px;
 }
 
 .chat-message-loading {

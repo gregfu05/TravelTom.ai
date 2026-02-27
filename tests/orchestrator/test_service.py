@@ -314,7 +314,7 @@ def test_orchestrator_handles_response_model_validation_errors() -> None:
         session_state=_base_state(),
     )
 
-    assert "Top picks: Lisbon." in response.assistant_message
+    assert "Top picks:\n1. Lisbon" in response.assistant_message
     assert response.recommendations[0].item_id == "dest-lisbon"
 
 
@@ -335,7 +335,7 @@ def test_orchestrator_results_message_falls_back_to_item_id_without_name() -> No
         ]
     )
 
-    assert "Top picks: dest-lisbon." in message
+    assert "Top picks:\n1. dest-lisbon" in message
 
 
 def test_orchestrator_results_message_uses_policy_preview_limit() -> None:
@@ -358,7 +358,7 @@ def test_orchestrator_results_message_uses_policy_preview_limit() -> None:
 
     message = service._build_results_message(results)
 
-    assert "Top picks: Place 0, Place 1, Place 2, Place 3, Place 4." in message
+    assert "Top picks:\n1. Place 0\n2. Place 1\n3. Place 2\n4. Place 3\n5. Place 4" in message
     assert "Place 5" not in message
 
 
