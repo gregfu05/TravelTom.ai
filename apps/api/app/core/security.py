@@ -15,6 +15,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
+from app.core.local_auth import (
+    InvalidLocalTokenError,
+    NotLocalTokenError,
+    decode_access_token,
+)
 
 try:
     from fastapi_azure_auth import B2CMultiTenantAuthorizationCodeBearer
@@ -125,20 +130,69 @@ def _require_bearer_token(request: Request) -> None:
         )
 
 
+def _get_bearer_token(request: Request) -> str | None:
+    authorization = request.headers.get("Authorization")
+    if not authorization:
+        return None
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise ApiError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="unauthorized",
+            message="Invalid authorization header",
+        )
+    return token
+
+
 async def require_authenticated_principal(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> AuthenticatedPrincipal | None:
     """Return the authenticated principal when auth is enabled."""
 
-    if not settings.auth_enabled:
-        return None
-
     cached_principal = getattr(request.state, "principal", None)
     if isinstance(cached_principal, AuthenticatedPrincipal):
         return cached_principal
 
-    _require_bearer_token(request)
+    token = _get_bearer_token(request)
+    if token is None:
+        if settings.auth_enabled:
+            _require_bearer_token(request)
+        return None
+
+    if settings.local_auth_enabled:
+        try:
+            claims = decode_access_token(
+                token=token,
+                secret=(settings.local_auth_token_secret or "").strip(),
+            )
+        except NotLocalTokenError:
+            pass
+        except InvalidLocalTokenError as exc:
+            if not settings.auth_enabled:
+                raise ApiError(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    code="unauthorized",
+                    message=str(exc),
+                ) from exc
+        else:
+            principal = AuthenticatedPrincipal(
+                subject=claims.sub,
+                issuer=claims.iss,
+                email=claims.email,
+                scopes=[],
+                raw_claims=claims.model_dump(mode="json"),
+            )
+            request.state.principal = principal
+            return principal
+
+    if not settings.auth_enabled:
+        raise ApiError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="unauthorized",
+            message="Invalid bearer token",
+        )
 
     try:
         scheme = get_azure_b2c_scheme()

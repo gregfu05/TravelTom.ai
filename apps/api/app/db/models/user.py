@@ -26,6 +26,7 @@ class User(Base):
     auth_issuer: Mapped[str | None] = mapped_column(Text, nullable=True)
     external_subject: Mapped[str | None] = mapped_column(Text, nullable=True)
     email: Mapped[str | None] = mapped_column(Text, unique=True, nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
