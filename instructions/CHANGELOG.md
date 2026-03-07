@@ -2,6 +2,17 @@
 
 ## 2026-03-07
 
+- Codified schema-placement rules in the quality instructions:
+  - Shared backend Pydantic contracts must live under `apps/api/app/schemas/`.
+  - Added explicit guidance to keep cross-module schema models out of `core/`,
+    `services/`, repositories, and router modules.
+- Updated backend architecture/docs to reflect the implemented local-auth path:
+  - Added auth endpoint documentation to `02-backend/api-design.md`.
+  - Updated `02-backend/security.md` and `07-infra-ops/local-dev.md` with
+    `LOCAL_AUTH_TOKEN_SECRET`, token TTL, and local signup/login behavior.
+  - Updated `02-backend/services-and-modules.md` and
+    `01-architecture/system-overview.md` to document shared schema placement and
+    local auth service/runtime boundaries.
 - Documented the implemented backend auth path with `AUTH_ENABLED`, Azure AD B2C bearer auth, and chat session ownership enforcement.
 - Updated backend API and module docs for structured error responses, `repositories/users.py`, and deprecated request-body `user_id`.
 - Extended the data model docs with external OIDC identity fields on `users`.

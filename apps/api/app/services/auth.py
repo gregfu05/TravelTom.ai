@@ -14,9 +14,9 @@ from app.core.local_auth import (
     normalize_email,
     verify_password,
 )
-from app.core.security import AuthenticatedPrincipal
 from app.db.models.user import User
 from app.repositories.users import UserRepository
+from app.schemas.auth import AuthenticatedPrincipal
 
 
 @dataclass(frozen=True)

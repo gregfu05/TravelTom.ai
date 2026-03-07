@@ -22,6 +22,8 @@ Services:
 - `AUTH_TENANT_NAME` (required when `AUTH_ENABLED=true`)
 - `AUTH_POLICY_NAME` (required when `AUTH_ENABLED=true`)
 - `AUTH_REQUIRED_SCOPES` (default `user_impersonation`)
+- `LOCAL_AUTH_TOKEN_SECRET` (required for local signup/login and local bearer validation)
+- `LOCAL_AUTH_TOKEN_TTL_SECONDS` (default `604800`)
 - `CHAT_RATE_LIMIT` (default `30/minute`)
 - `ORCHESTRATOR_LLM_PROVIDER=disabled|ollama|openai`
 - `ORCHESTRATOR_LLM_TIMEOUT_SECONDS` (default `20`)
@@ -55,6 +57,13 @@ To enable backend auth locally:
 1. Set `AUTH_ENABLED=true` in `.env`.
 2. Provide Azure AD B2C values for `AUTH_APP_CLIENT_ID`, `AUTH_TENANT_NAME`, and `AUTH_POLICY_NAME`.
 3. Optionally override `AUTH_REQUIRED_SCOPES` and `CHAT_RATE_LIMIT`.
+4. Restart the API process so cached auth dependencies reload.
+
+To enable TravelTom local account auth locally:
+
+1. Set `LOCAL_AUTH_TOKEN_SECRET` in `.env`.
+2. Optionally override `LOCAL_AUTH_TOKEN_TTL_SECONDS`.
+3. Run the latest API migrations so the `users.password_hash` column exists.
 4. Restart the API process so cached auth dependencies reload.
 
 ## First run

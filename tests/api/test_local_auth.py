@@ -18,8 +18,8 @@ from app.db.models.session import Session
 from app.db.models.user import User
 from app.db.session import get_db
 from app.main import app
+from app.schemas.orchestrator import OrchestratorResponse
 from app.services.chat_persistence import session_pk
-from app.services.orchestrator.schemas import OrchestratorResponse
 from fastapi.testclient import TestClient
 
 

@@ -23,6 +23,64 @@ All errors return JSON:
 
 ## Endpoints
 
+### POST /api/v1/auth/signup
+
+Creates a local TravelTom account and returns a bearer token.
+
+Request:
+
+```json
+{
+  "email": "traveler@example.com",
+  "password": "string"
+}
+```
+
+Response:
+
+```json
+{
+  "access_token": "string",
+  "token_type": "bearer",
+  "expires_in": 3600,
+  "user": {
+    "id": "string",
+    "email": "traveler@example.com"
+  }
+}
+```
+
+Implementation notes (current):
+
+- Endpoint lives in `apps/api/app/api/v1/auth.py`.
+- API request/response schemas live in `apps/api/app/schemas/api/auth.py`.
+- Shared auth runtime schemas live in `apps/api/app/schemas/auth.py`.
+- Local account creation and token issuance live in `apps/api/app/services/auth.py`.
+
+### POST /api/v1/auth/login
+
+Authenticates a local TravelTom account and returns a bearer token.
+
+Request and response match `POST /api/v1/auth/signup`.
+
+### GET /api/v1/auth/me
+
+Returns the current authenticated user for a valid bearer token.
+
+Auth:
+
+- Accepts a TravelTom-issued local bearer token.
+- Also accepts Azure AD B2C bearer tokens when backend auth is enabled and configured.
+
+Response:
+
+```json
+{
+  "id": "string",
+  "email": "traveler@example.com"
+}
+```
+
 ### GET /api/v1/health
 
 Liveness check for the API service.
@@ -47,7 +105,8 @@ Primary chat endpoint. Orchestrates tool calls and returns a response.
 
 Auth:
 
-- Requires `Authorization: Bearer <token>` when backend auth is enabled.
+- Accepts `Authorization: Bearer <token>` for TravelTom local bearer tokens.
+- Requires a bearer token when backend auth is enabled.
 - `user_id` is deprecated and ignored when sent; user identity is derived from the bearer token.
 
 Request:
@@ -99,6 +158,8 @@ Implementation notes (current):
 - Chat transaction boundary lives in `apps/api/app/services/chat_uow.py`.
 - Session/message/recommendation persistence lives in `apps/api/app/repositories/chat.py`.
 - Authenticated user resolution lives in `apps/api/app/repositories/users.py`.
+- Shared auth principal schema lives in `apps/api/app/schemas/auth.py`.
+- Shared orchestrator response schema lives in `apps/api/app/schemas/orchestrator.py`.
 - Session identity/state helpers live in `apps/api/app/services/chat_persistence.py`.
 - `session_id` is treated as an opaque client id and mapped to an internal deterministic UUID for DB persistence.
 - When auth is enabled, session ownership is enforced against `sessions.user_id`.
@@ -117,6 +178,7 @@ Deterministic recommendation retrieval and ranking. Internal endpoint used by or
 
 Auth:
 
+- Accepts TravelTom local bearer tokens.
 - Requires `Authorization: Bearer <token>` when backend auth is enabled.
 
 Request:

@@ -48,3 +48,4 @@ If the design document is not available locally, proceed using the assumptions d
 - Relative links are used for internal docs.
 - Mermaid diagrams are used for architecture and flows.
 - All schemas are defined using Pydantic models or JSON Schema where applicable.
+- Shared backend runtime schemas belong under `apps/api/app/schemas/`, not inside `core/`, `services/`, or repository modules.

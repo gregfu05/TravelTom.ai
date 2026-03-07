@@ -11,7 +11,6 @@ from fastapi.security.oauth2 import SecurityScopes
 from limits.storage import MemoryStorage
 from limits.strategies import MovingWindowRateLimiter
 from limits.util import parse as parse_rate_limit
-from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
@@ -20,6 +19,7 @@ from app.core.local_auth import (
     NotLocalTokenError,
     decode_access_token,
 )
+from app.schemas.auth import AuthenticatedPrincipal
 
 try:
     from fastapi_azure_auth import B2CMultiTenantAuthorizationCodeBearer
@@ -27,34 +27,6 @@ try:
 except ImportError:  # pragma: no cover - dependency is installed in runtime env
     B2CMultiTenantAuthorizationCodeBearer = None
     AzureAuthUser = Any
-
-
-class AuthenticatedPrincipal(BaseModel):
-    """Normalized authenticated user identity for backend authorization."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    subject: str = Field(min_length=1)
-    issuer: str = Field(min_length=1)
-    email: str | None = None
-    name: str | None = None
-    object_id: str | None = None
-    tenant_id: str | None = None
-    scopes: list[str] = Field(default_factory=list)
-    raw_claims: dict[str, Any] = Field(default_factory=dict)
-
-    @classmethod
-    def from_azure_user(cls, user: AzureAuthUser) -> "AuthenticatedPrincipal":
-        return cls(
-            subject=user.sub,
-            issuer=user.iss,
-            email=user.email or user.preferred_username,
-            name=user.name,
-            object_id=user.oid,
-            tenant_id=user.tid,
-            scopes=list(user.scp),
-            raw_claims=dict(user.claims),
-        )
 
 
 class ChatRateLimiter:
@@ -235,7 +207,16 @@ async def require_authenticated_principal(
             message="Authentication failed",
         )
 
-    principal = AuthenticatedPrincipal.from_azure_user(azure_user)
+    principal = AuthenticatedPrincipal(
+        subject=azure_user.sub,
+        issuer=azure_user.iss,
+        email=azure_user.email or azure_user.preferred_username,
+        name=azure_user.name,
+        object_id=azure_user.oid,
+        tenant_id=azure_user.tid,
+        scopes=list(azure_user.scp),
+        raw_claims=dict(azure_user.claims),
+    )
     request.state.principal = principal
     return principal
 

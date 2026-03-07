@@ -13,7 +13,7 @@ import secrets
 import time
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from app.schemas.auth import LocalAccessTokenClaims
 
 LOCAL_AUTH_ISSUER = "traveltom-local"
 _SCRYPT_N = 2**14
@@ -34,18 +34,6 @@ class InvalidLocalTokenError(LocalAuthError):
 
 class NotLocalTokenError(LocalAuthError):
     """Raised when a bearer token is not a TravelTom local-auth token."""
-
-
-class LocalAccessTokenClaims(BaseModel):
-    """Claims carried by TravelTom-issued bearer tokens."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    sub: str = Field(min_length=1)
-    iss: str = Field(min_length=1)
-    email: str = Field(min_length=1)
-    iat: int
-    exp: int
 
 
 def normalize_email(email: str) -> str:
