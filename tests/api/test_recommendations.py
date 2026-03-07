@@ -78,6 +78,5 @@ def test_recommendations_query_handles_invalid_tool_response() -> None:
 
     assert response.status_code == 502
     assert (
-        response.json()["error"]["message"]
-        == "Invalid recommendation service response"
+        response.json()["error"]["message"] == "Invalid recommendation service response"
     )

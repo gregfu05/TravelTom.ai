@@ -30,7 +30,6 @@ from traveltom.recommendor.recommendor_v2 import recommendation_tool
 
 router = APIRouter()
 
-
 @lru_cache()
 def get_orchestrator_service() -> OrchestratorService:
     """Return a cached orchestrator service instance."""
@@ -58,8 +57,8 @@ def get_orchestrator_service() -> OrchestratorService:
 
 def get_chat_uow(db: AsyncSession = Depends(get_db)) -> ChatUnitOfWork:
     """Return chat unit of work bound to the request-scoped DB session."""
-
     return ChatUnitOfWork(db)
+
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
@@ -151,6 +150,7 @@ async def chat(
             message="Failed to process chat message",
         ) from exc
 
+
 def _to_chat_response(
     *,
     request_message_id: str,
@@ -169,6 +169,7 @@ def _to_chat_response(
         )
         for item in orchestration.recommendations
     ]
+
     return ChatResponse(
         session_id=orchestration.session_id,
         message_id=request_message_id,
