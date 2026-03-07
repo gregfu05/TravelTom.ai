@@ -9,6 +9,12 @@ from typing import Any, Callable, Literal
 
 from pydantic import BaseModel, ValidationError
 
+from app.schemas.orchestrator import (
+    LLMComposedResponse,
+    LLMOrchestrationPlan,
+    OrchestratorResponse,
+    RecommendationQueryControls,
+)
 from app.schemas.state import SessionState
 from app.schemas.tools.recommendations import (
     RecommendationConstraints,
@@ -28,15 +34,12 @@ from app.services.orchestrator.langchain_compat import (
     normalize_structured_payload,
 )
 from app.services.orchestrator.policies import (
-    LLMComposedResponse,
-    LLMOrchestrationPlan,
     OrchestratorPolicyConfig,
-    RecommendationQueryControls,
     build_clarification_message,
+    build_guardrail_plan,
     build_planning_prompt_context,
     build_response_prompt_context,
 )
-from app.services.orchestrator.schemas import OrchestratorResponse
 
 RecommendationTool = Callable[
     [RecommendationQuery],
@@ -214,7 +217,7 @@ class OrchestratorService:
         user_message: str,
         session_state: SessionState,
     ) -> tuple[LLMOrchestrationPlan, SessionState]:
-        fallback_plan = LLMOrchestrationPlan.from_guardrail(
+        fallback_plan = build_guardrail_plan(
             message=user_message,
             session_state=session_state,
             max_results=self._policy.max_recommendation_results,
@@ -428,7 +431,7 @@ class OrchestratorService:
         user_message = str(payload["user_message"])
         max_results = int(payload["max_results"])
 
-        guardrail_plan = LLMOrchestrationPlan.from_guardrail(
+        guardrail_plan = build_guardrail_plan(
             message=user_message,
             session_state=session_state,
             max_results=max_results,

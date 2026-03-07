@@ -12,7 +12,7 @@ from app.db.models.session import Session
 from app.db.models.user import User
 from app.db.session import get_db
 from app.main import app
-from app.services.orchestrator.schemas import OrchestratorResponse
+from app.schemas.orchestrator import OrchestratorResponse
 from fastapi.testclient import TestClient
 
 

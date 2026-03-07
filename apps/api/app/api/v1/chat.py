@@ -11,12 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.core.security import (
-    AuthenticatedPrincipal,
     enforce_chat_rate_limit,
     require_authenticated_principal,
 )
 from app.db.session import get_db
 from app.schemas.api.chat import ChatRecommendation, ChatRequest, ChatResponse
+from app.schemas.auth import AuthenticatedPrincipal
+from app.schemas.orchestrator import OrchestratorResponse
 from app.schemas.state import SessionState
 from app.services.chat_persistence import (
     load_session_state,
@@ -24,7 +25,6 @@ from app.services.chat_persistence import (
 )
 from app.services.chat_uow import ChatUnitOfWork
 from app.services.orchestrator.llm_provider import build_orchestrator_llm_models
-from app.services.orchestrator.schemas import OrchestratorResponse
 from app.services.orchestrator.service import OrchestratorService
 from traveltom.recommendor.recommendor_v1 import recommendation_tool
 

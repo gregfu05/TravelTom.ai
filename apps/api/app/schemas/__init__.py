@@ -1,1 +1,1 @@
-"""Shared schema models for API and orchestration layers."""
+"""Shared schema models for API and runtime layers."""

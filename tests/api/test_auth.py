@@ -8,7 +8,6 @@ from typing import Any
 from app.api.v1.chat import get_orchestrator_service
 from app.core.config import get_settings
 from app.core.security import (
-    AuthenticatedPrincipal,
     get_azure_b2c_scheme,
     get_chat_rate_limiter,
     require_authenticated_principal,
@@ -17,8 +16,9 @@ from app.db.models.session import Session
 from app.db.models.user import User
 from app.db.session import get_db
 from app.main import app
+from app.schemas.auth import AuthenticatedPrincipal
+from app.schemas.orchestrator import OrchestratorResponse
 from app.services.chat_persistence import session_pk
-from app.services.orchestrator.schemas import OrchestratorResponse
 from fastapi.testclient import TestClient
 
 

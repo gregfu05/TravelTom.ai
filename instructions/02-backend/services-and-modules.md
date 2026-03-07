@@ -7,6 +7,7 @@ apps/api/
   app/
     api/
       v1/
+        auth.py
         health.py
         chat.py
         recommendations.py
@@ -29,6 +30,7 @@ apps/api/
       chat.py
       users.py
     services/
+      auth.py
       orchestrator/
       recommender/
       catalog/
@@ -38,7 +40,10 @@ apps/api/
       chat_uow.py
       chat_persistence.py
     schemas/
+      auth.py
+      orchestrator.py
       api/
+        auth.py
         chat.py
         health.py
         recommendations.py
@@ -81,7 +86,10 @@ apps/api/
   - Provides feature-specific data access (non-generic repository pattern).
 - User repository (`app/repositories/users.py`):
   - Resolves authenticated principals to internal `users` rows.
-  - Owns external OIDC subject lookup and minimal user upsert behavior.
+  - Owns external OIDC subject lookup, local-email lookup, and minimal user upsert behavior.
+- Auth service (`app/services/auth.py`):
+  - Owns local email/password signup, login, and current-user resolution.
+  - Issues TravelTom local bearer tokens from configured runtime secrets.
 - Chat unit of work (`app/services/chat_uow.py`):
   - Owns chat transaction lifecycle (`flush`/`commit`/`rollback`).
   - Wires the chat and user repositories to a request-scoped DB session.
@@ -92,7 +100,10 @@ apps/api/
 - Error helpers (`app/core/errors.py`):
   - Own structured error responses and per-request trace IDs.
 - Security helpers (`app/core/security.py`):
-  - Own Azure AD B2C integration, authenticated principal normalization, and chat rate limiting.
+  - Own bearer-token verification, Azure AD B2C integration, and chat rate limiting.
+- Shared schema modules (`app/schemas/*.py`):
+  - Own cross-module Pydantic contracts used by multiple runtime layers.
+  - Keep auth principals, token claims, state payloads, and orchestrator contracts out of `core/` and `services/` modules.
 
 ## Settings management
 

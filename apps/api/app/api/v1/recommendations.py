@@ -7,11 +7,12 @@ from functools import lru_cache
 from fastapi import APIRouter, Depends
 
 from app.core.errors import ApiError
-from app.core.security import AuthenticatedPrincipal, require_authenticated_principal
+from app.core.security import require_authenticated_principal
 from app.schemas.api.recommendations import (
     RecommendationQuery,
     RecommendationResponse,
 )
+from app.schemas.auth import AuthenticatedPrincipal
 from app.services.recommendation_query import (
     InvalidRecommendationResponseError,
     RecommendationServiceUnavailableError,

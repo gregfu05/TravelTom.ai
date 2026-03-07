@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ApiError
 from app.core.local_auth import LOCAL_AUTH_ISSUER, normalize_email
-from app.core.security import AuthenticatedPrincipal
 from app.db.models.user import User
+from app.schemas.auth import AuthenticatedPrincipal
 
 
 class UserRepository:

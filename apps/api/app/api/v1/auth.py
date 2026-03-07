@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
-from app.core.security import AuthenticatedPrincipal, require_authenticated_principal
+from app.core.security import require_authenticated_principal
 from app.db.session import get_db
 from app.schemas.api.auth import (
     AuthTokenResponse,
@@ -15,6 +15,7 @@ from app.schemas.api.auth import (
     LoginRequest,
     SignupRequest,
 )
+from app.schemas.auth import AuthenticatedPrincipal
 from app.services.auth import AuthService, AuthSessionResult
 
 router = APIRouter(prefix="/auth")

@@ -4,6 +4,7 @@
 
 - Local dev may run with `AUTH_ENABLED=false`.
 - When `AUTH_ENABLED=true`, bearer-token auth is enforced for protected endpoints.
+- Local email/password auth is enabled by configuring `LOCAL_AUTH_TOKEN_SECRET`.
 - Use a single backend API key for internal tools if needed.
 - Chat rate limiting is configured via `CHAT_RATE_LIMIT`.
 - Secrets are stored in environment variables only.
@@ -16,8 +17,12 @@
 
 ## Implemented backend path
 
-- Auth library: `fastapi-azure-auth`.
+- Auth library: `fastapi-azure-auth` for Azure bearer validation.
+- Local bearer-token signing/verification is implemented in-app for TravelTom accounts.
 - Chat rate limiting uses the `limits` library.
+- `POST /api/v1/auth/signup` creates a local account and returns a TravelTom bearer token.
+- `POST /api/v1/auth/login` authenticates a local account and returns a TravelTom bearer token.
+- `GET /api/v1/auth/me` returns the authenticated user for a valid bearer token.
 - `POST /api/v1/chat` requires an authenticated bearer token when auth is enabled.
 - `POST /api/v1/recommendations/query` requires an authenticated bearer token when auth is enabled.
 - `GET /api/v1/health` remains public.
