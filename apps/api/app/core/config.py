@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AliasChoices, Field, computed_field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -113,13 +113,11 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    @computed_field
     @property
     def auth_required_scopes_list(self) -> list[str]:
         raw_scopes = self.auth_required_scopes.replace(",", " ").split()
         return [scope for scope in raw_scopes if scope]
 
-    @computed_field
     @property
     def auth_openid_config_url(self) -> str | None:
         if not self.auth_tenant_name or not self.auth_policy_name:
@@ -132,7 +130,6 @@ class Settings(BaseSettings):
             f"{policy}/v2.0/.well-known/openid-configuration"
         )
 
-    @computed_field
     @property
     def local_auth_enabled(self) -> bool:
         secret = (self.local_auth_token_secret or "").strip()

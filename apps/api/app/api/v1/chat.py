@@ -146,6 +146,8 @@ async def chat(
             message="Failed to process chat message",
         ) from exc
 
+    raise RuntimeError("Chat handler completed without producing a response")
+
 
 def _to_chat_response(
     *,

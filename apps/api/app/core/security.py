@@ -6,13 +6,14 @@ import time
 import uuid
 from datetime import datetime, timezone
 from functools import lru_cache
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends, Request, status
 from fastapi.security.oauth2 import SecurityScopes
 from limits.storage import MemoryStorage
 from limits.strategies import MovingWindowRateLimiter
 from limits.util import parse as parse_rate_limit
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
@@ -24,14 +25,22 @@ from app.core.local_auth import (
 from app.db.session import get_db
 from app.repositories.auth_sessions import AuthSessionRepository
 from app.schemas.auth import AuthenticatedPrincipal, LocalAccessTokenClaims
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from fastapi_azure_auth import (
+        B2CMultiTenantAuthorizationCodeBearer as AzureB2CScheme,
+    )
+
+azure_b2c_scheme_class: type[Any] | None
+FASTAPI_AZURE_AUTH_INSTALLED = True
 
 try:
-    from fastapi_azure_auth import B2CMultiTenantAuthorizationCodeBearer
-    from fastapi_azure_auth.user import User as AzureAuthUser
+    from fastapi_azure_auth import (
+        B2CMultiTenantAuthorizationCodeBearer as azure_b2c_scheme_class,
+    )
 except ImportError:  # pragma: no cover - dependency is installed in runtime env
-    B2CMultiTenantAuthorizationCodeBearer = None
-    AzureAuthUser = Any
+    FASTAPI_AZURE_AUTH_INSTALLED = False
+    azure_b2c_scheme_class = None
 
 
 class ChatRateLimiter:
@@ -59,13 +68,13 @@ class ChatRateLimiter:
 
 
 @lru_cache()
-def get_azure_b2c_scheme() -> B2CMultiTenantAuthorizationCodeBearer | None:
+def get_azure_b2c_scheme() -> AzureB2CScheme | None:
     """Return the configured Azure AD B2C auth scheme."""
 
     settings = get_settings()
     if not settings.auth_enabled:
         return None
-    if B2CMultiTenantAuthorizationCodeBearer is None:
+    if not FASTAPI_AZURE_AUTH_INSTALLED:
         raise RuntimeError("fastapi-azure-auth is not installed")
     if not settings.auth_app_client_id or not settings.auth_openid_config_url:
         raise RuntimeError("Azure AD B2C authentication is not fully configured")
@@ -74,7 +83,8 @@ def get_azure_b2c_scheme() -> B2CMultiTenantAuthorizationCodeBearer | None:
         scope: f"Required TravelTom API scope: {scope}"
         for scope in settings.auth_required_scopes_list
     }
-    return B2CMultiTenantAuthorizationCodeBearer(
+    assert azure_b2c_scheme_class is not None
+    return azure_b2c_scheme_class(
         app_client_id=settings.auth_app_client_id,
         auto_error=True,
         scopes=scopes or None,
@@ -209,9 +219,7 @@ async def require_authenticated_principal(
         detail = getattr(exc, "detail", "Authentication failed")
         message = str(detail or "Authentication failed")
         code = (
-            "forbidden"
-            if status_code == status.HTTP_403_FORBIDDEN
-            else "unauthorized"
+            "forbidden" if status_code == status.HTTP_403_FORBIDDEN else "unauthorized"
         )
         raise ApiError(
             status_code=status_code,

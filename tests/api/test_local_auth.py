@@ -106,8 +106,9 @@ class _FakeAsyncSession:
             right = getattr(criterion, "right", None)
             key = getattr(left, "key", None)
             value = getattr(right, "value", None)
-            if value is None and hasattr(right, "effective_value"):
-                value = right.effective_value
+            effective_value = getattr(right, "effective_value", None)
+            if value is None and effective_value is not None:
+                value = effective_value
             if key is not None:
                 filters[str(key)] = value
         return filters
