@@ -17,6 +17,12 @@ Services:
 
 - `DATABASE_URL`
 - `APP_ENV=local`
+- `AUTH_ENABLED=false|true`
+- `AUTH_APP_CLIENT_ID` (required when `AUTH_ENABLED=true`)
+- `AUTH_TENANT_NAME` (required when `AUTH_ENABLED=true`)
+- `AUTH_POLICY_NAME` (required when `AUTH_ENABLED=true`)
+- `AUTH_REQUIRED_SCOPES` (default `user_impersonation`)
+- `CHAT_RATE_LIMIT` (default `30/minute`)
 - `ORCHESTRATOR_LLM_PROVIDER=disabled|ollama|openai`
 - `ORCHESTRATOR_LLM_TIMEOUT_SECONDS` (default `20`)
 - `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`)
@@ -43,6 +49,13 @@ To enable OpenAI orchestration:
 2. Set `ORCHESTRATOR_OPENAI_API_KEY` (or `OPENAI_API_KEY`).
 3. Optionally override model and endpoint values.
 4. Restart the API process so cached service dependencies reload.
+
+To enable backend auth locally:
+
+1. Set `AUTH_ENABLED=true` in `.env`.
+2. Provide Azure AD B2C values for `AUTH_APP_CLIENT_ID`, `AUTH_TENANT_NAME`, and `AUTH_POLICY_NAME`.
+3. Optionally override `AUTH_REQUIRED_SCOPES` and `CHAT_RATE_LIMIT`.
+4. Restart the API process so cached auth dependencies reload.
 
 ## First run
 

@@ -24,7 +24,10 @@ class ChatRequest(BaseModel):
 
     session_id: str = Field(min_length=1)
     message_id: str = Field(min_length=1)
-    user_id: str | None = None
+    user_id: str | None = Field(
+        default=None,
+        json_schema_extra={"deprecated": True},
+    )
     message: str = Field(min_length=1)
     client_context: ClientContext | None = None
 

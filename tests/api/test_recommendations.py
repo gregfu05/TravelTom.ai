@@ -62,6 +62,7 @@ def test_recommendations_query_rejects_invalid_payload() -> None:
     response = client.post("/api/v1/recommendations/query", json=payload)
 
     assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
 
 
 def test_recommendations_query_handles_invalid_tool_response() -> None:
@@ -76,4 +77,7 @@ def test_recommendations_query_handles_invalid_tool_response() -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "Invalid recommendation service response"
+    assert (
+        response.json()["error"]["message"]
+        == "Invalid recommendation service response"
+    )
