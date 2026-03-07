@@ -9,9 +9,10 @@ If the design document is not available locally, proceed using the assumptions d
 1. Read `00-context/design-summary.md` and `00-context/scope-and-milestones.md` first.
 2. Review architecture docs in `01-architecture/` to understand boundaries and the repo layout.
 3. Use the step-by-step plan in `09-implementation-plan/implementation-plan.md` as the execution checklist.
-4. Update documentation as required by each step. Documentation changes are mandatory.
-5. Keep `CHANGELOG.md` updated whenever these instructions change.
-6. For frontend UI implementation quality, apply `05-frontend/ui-design-skill.md`.
+4. When creating implementation tickets for a coding agent, start from `08-quality/agent-ticket-template.md` so issues are handed off with consistent context, scope, file pointers, and verification criteria.
+5. Update documentation as required by each step. Documentation changes are mandatory.
+6. Keep `CHANGELOG.md` updated whenever these instructions change.
+7. For frontend UI implementation quality, apply `05-frontend/ui-design-skill.md`.
 
 ## Rules of engagement for coding agents
 
