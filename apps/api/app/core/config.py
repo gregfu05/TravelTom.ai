@@ -34,6 +34,15 @@ class Settings(BaseSettings):
         "user_impersonation",
         validation_alias=AliasChoices("AUTH_REQUIRED_SCOPES"),
     )
+    local_auth_token_secret: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LOCAL_AUTH_TOKEN_SECRET"),
+    )
+    local_auth_token_ttl_seconds: int = Field(
+        60 * 60 * 24 * 7,
+        ge=300,
+        validation_alias=AliasChoices("LOCAL_AUTH_TOKEN_TTL_SECONDS"),
+    )
     chat_rate_limit: str = Field(
         "30/minute",
         validation_alias=AliasChoices("CHAT_RATE_LIMIT"),
@@ -117,6 +126,12 @@ class Settings(BaseSettings):
             f"{tenant}.onmicrosoft.com/"
             f"{policy}/v2.0/.well-known/openid-configuration"
         )
+
+    @computed_field
+    @property
+    def local_auth_enabled(self) -> bool:
+        secret = (self.local_auth_token_secret or "").strip()
+        return bool(secret)
 
 
 @lru_cache()
