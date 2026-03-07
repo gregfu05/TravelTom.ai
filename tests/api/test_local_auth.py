@@ -156,10 +156,10 @@ def _override_db(fake_db: _FakeAsyncSession):
     return _dependency
 
 
-def _credentials_payload(*, email: str, raw_secret: str) -> dict[str, str]:
+def _credentials_payload(*, email: str, submitted_value: str) -> dict[str, str]:
     return {
         "email": email,
-        PASSWORD_FIELD: raw_secret,
+        PASSWORD_FIELD: submitted_value,
     }
 
 
@@ -215,7 +215,7 @@ def test_signup_creates_local_account_and_returns_bearer_token(monkeypatch) -> N
             "/api/v1/auth/signup",
             json=_credentials_payload(
                 email="Traveler@Example.com",
-                raw_secret="VeryStrong123",
+                submitted_value="VeryStrong123",
             ),
         )
     finally:
@@ -255,7 +255,7 @@ def test_signup_rejects_duplicate_email(monkeypatch) -> None:
             "/api/v1/auth/signup",
             json=_credentials_payload(
                 email="traveler@example.com",
-                raw_secret="VeryStrong123",
+                submitted_value="VeryStrong123",
             ),
         )
     finally:
@@ -286,7 +286,7 @@ def test_login_returns_bearer_token_for_existing_local_user(monkeypatch) -> None
             "/api/v1/auth/login",
             json=_credentials_payload(
                 email="traveler@example.com",
-                raw_secret="VeryStrong123",
+                submitted_value="VeryStrong123",
             ),
         )
     finally:
@@ -320,7 +320,7 @@ def test_login_rejects_invalid_password(monkeypatch) -> None:
             "/api/v1/auth/login",
             json=_credentials_payload(
                 email="traveler@example.com",
-                raw_secret="WrongPassword",
+                submitted_value="WrongPassword",
             ),
         )
     finally:
