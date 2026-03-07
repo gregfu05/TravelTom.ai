@@ -2,13 +2,30 @@
 
 ## Core tables
 
-### users (present schema, inactive in MVP)
+### users
 
 - id (uuid, pk)
 - auth_issuer (text, nullable)
 - external_subject (text, nullable, unique with auth_issuer)
-- email (text, unique, nullable for MVP)
+- email (text, unique, nullable)
+- password_hash (text, nullable for non-local identities)
 - created_at (timestamptz)
+
+### auth_sessions
+
+- id (uuid, pk)
+- user_id (uuid, fk users.id)
+- auth_issuer (text)
+- expires_at (timestamptz)
+- idle_expires_at (timestamptz)
+- last_seen_at (timestamptz)
+- revoked_at (timestamptz, nullable)
+- revoked_reason (text, nullable)
+- created_at (timestamptz)
+
+Indexes:
+- idx_auth_sessions_user_id
+- idx_auth_sessions_revoked_at
 
 ### sessions
 

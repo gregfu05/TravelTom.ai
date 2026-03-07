@@ -27,6 +27,11 @@ All errors return JSON:
 
 Creates a local TravelTom account and returns a bearer token.
 
+Current scope:
+
+- End-to-end auth/session lifecycle in the current backend build is local only.
+- Azure AD B2C deployment/provider work is deferred.
+
 Request:
 
 ```json
@@ -43,6 +48,7 @@ Response:
   "access_token": "string",
   "token_type": "bearer",
   "expires_in": 3600,
+  "idle_timeout_in": 1800,
   "user": {
     "id": "string",
     "email": "traveler@example.com"
@@ -56,12 +62,24 @@ Implementation notes (current):
 - API request/response schemas live in `apps/api/app/schemas/api/auth.py`.
 - Shared auth runtime schemas live in `apps/api/app/schemas/auth.py`.
 - Local account creation and token issuance live in `apps/api/app/services/auth.py`.
+- Local auth-session persistence lives in `apps/api/app/repositories/auth_sessions.py`.
 
 ### POST /api/v1/auth/login
 
 Authenticates a local TravelTom account and returns a bearer token.
 
 Request and response match `POST /api/v1/auth/signup`.
+
+### POST /api/v1/auth/logout
+
+Revokes the current local TravelTom bearer token.
+
+Auth:
+
+- Requires `Authorization: Bearer <token>`.
+- Available only for TravelTom local bearer tokens.
+
+Response: `204 No Content`
 
 ### GET /api/v1/auth/me
 
@@ -70,7 +88,9 @@ Returns the current authenticated user for a valid bearer token.
 Auth:
 
 - Accepts a TravelTom-issued local bearer token.
-- Also accepts Azure AD B2C bearer tokens when backend auth is enabled and configured.
+- Local tokens must reference an active persisted auth session and may be rejected
+  after logout, absolute expiry, or idle timeout.
+- Azure AD B2C bearer-token support remains deferred for deployment work.
 
 Response:
 
@@ -108,6 +128,8 @@ Auth:
 - Accepts `Authorization: Bearer <token>` for TravelTom local bearer tokens.
 - Requires a bearer token when backend auth is enabled.
 - `user_id` is deprecated and ignored when sent; user identity is derived from the bearer token.
+- Local tokens must reference an active persisted auth session and may be rejected
+  after logout or idle timeout.
 
 Request:
 
@@ -180,6 +202,7 @@ Auth:
 
 - Accepts TravelTom local bearer tokens.
 - Requires `Authorization: Bearer <token>` when backend auth is enabled.
+- Local tokens must reference an active persisted auth session.
 
 Request:
 

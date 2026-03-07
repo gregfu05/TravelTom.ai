@@ -19,6 +19,12 @@ See `instructions/02-backend/` for design and API contracts.
   - Transaction boundary in `apps/api/app/services/chat_uow.py`.
   - Session/message/recommendation persistence in `apps/api/app/repositories/chat.py`.
   - Session identity/state helpers in `apps/api/app/services/chat_persistence.py`.
+- Local auth is currently the implemented end-to-end auth/session lifecycle:
+  - Auth routes live in `apps/api/app/api/v1/auth.py`.
+  - Local token signing and verification live in `apps/api/app/core/local_auth.py`.
+  - Persisted auth-session lifecycle helpers live in
+    `apps/api/app/repositories/auth_sessions.py`.
+  - `POST /api/v1/auth/logout` revokes the current local bearer token.
 - The recommendations endpoint is intentionally split by responsibility:
   - API router and HTTP mapping in `apps/api/app/api/v1/recommendations.py`.
   - API request/response schemas in `apps/api/app/schemas/api/recommendations.py`.

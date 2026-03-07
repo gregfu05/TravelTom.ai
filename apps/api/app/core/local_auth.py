@@ -11,6 +11,7 @@ import os
 import re
 import secrets
 import time
+import uuid
 from typing import Any
 
 from app.schemas.auth import LocalAccessTokenClaims
@@ -104,16 +105,19 @@ def create_access_token(
     email: str,
     secret: str,
     ttl_seconds: int,
+    token_id: str | None = None,
+    issued_at: int | None = None,
 ) -> str:
     """Return a signed bearer token for a local-authenticated user."""
 
-    issued_at = int(time.time())
+    current_issued_at = issued_at if issued_at is not None else int(time.time())
     claims = LocalAccessTokenClaims(
+        jti=token_id or str(uuid.uuid4()),
         sub=subject,
         iss=LOCAL_AUTH_ISSUER,
         email=normalize_email(email),
-        iat=issued_at,
-        exp=issued_at + ttl_seconds,
+        iat=current_issued_at,
+        exp=current_issued_at + ttl_seconds,
     )
     header_segment = _urlsafe_json({"alg": "HS256", "typ": "JWT"})
     payload_segment = _urlsafe_json(claims.model_dump(mode="json"))

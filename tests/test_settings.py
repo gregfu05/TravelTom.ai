@@ -17,6 +17,7 @@ def test_settings_use_environment_aliases(monkeypatch) -> None:
     monkeypatch.setenv("AUTH_REQUIRED_SCOPES", "user_impersonation api.read")
     monkeypatch.setenv("LOCAL_AUTH_TOKEN_SECRET", "local-secret")
     monkeypatch.setenv("LOCAL_AUTH_TOKEN_TTL_SECONDS", "7200")
+    monkeypatch.setenv("LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS", "1800")
 
     settings = get_settings()
 
@@ -27,6 +28,7 @@ def test_settings_use_environment_aliases(monkeypatch) -> None:
     assert settings.auth_openid_config_url is not None
     assert settings.local_auth_enabled is True
     assert settings.local_auth_token_ttl_seconds == 7200
+    assert settings.local_auth_token_idle_timeout_seconds == 1800
     get_settings.cache_clear()
 
 

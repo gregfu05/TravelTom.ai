@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import time
+import uuid
+from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any
 
@@ -19,7 +21,10 @@ from app.core.local_auth import (
     NotLocalTokenError,
     decode_access_token,
 )
-from app.schemas.auth import AuthenticatedPrincipal
+from app.db.session import get_db
+from app.repositories.auth_sessions import AuthSessionRepository
+from app.schemas.auth import AuthenticatedPrincipal, LocalAccessTokenClaims
+from sqlalchemy.ext.asyncio import AsyncSession
 
 try:
     from fastapi_azure_auth import B2CMultiTenantAuthorizationCodeBearer
@@ -119,6 +124,7 @@ def _get_bearer_token(request: Request) -> str | None:
 
 async def require_authenticated_principal(
     request: Request,
+    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> AuthenticatedPrincipal | None:
     """Return the authenticated principal when auth is enabled."""
@@ -149,6 +155,17 @@ async def require_authenticated_principal(
                     message=str(exc),
                 ) from exc
         else:
+            auth_sessions = AuthSessionRepository(db)
+            auth_session = await _validate_local_auth_session(
+                claims=claims,
+                repository=auth_sessions,
+            )
+            auth_sessions.touch(
+                auth_session,
+                now=_utc_now(),
+                idle_timeout_seconds=settings.local_auth_token_idle_timeout_seconds,
+            )
+            await db.commit()
             principal = AuthenticatedPrincipal(
                 subject=claims.sub,
                 issuer=claims.iss,
@@ -157,6 +174,8 @@ async def require_authenticated_principal(
                 raw_claims=claims.model_dump(mode="json"),
             )
             request.state.principal = principal
+            request.state.local_auth_claims = claims
+            request.state.local_auth_session_id = str(auth_session.id)
             return principal
 
     if not settings.auth_enabled:
@@ -219,6 +238,55 @@ async def require_authenticated_principal(
     )
     request.state.principal = principal
     return principal
+
+
+async def _validate_local_auth_session(
+    *,
+    claims: LocalAccessTokenClaims,
+    repository: AuthSessionRepository,
+):
+    """Validate the persisted local auth-session referenced by the bearer token."""
+
+    try:
+        session_id = uuid.UUID(claims.jti)
+    except ValueError as exc:
+        raise ApiError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="unauthorized",
+            message="Invalid bearer token",
+        ) from exc
+
+    auth_session = await repository.get_by_id(session_id)
+    now = _utc_now()
+    if auth_session is None or str(auth_session.user_id) != claims.sub:
+        raise ApiError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="unauthorized",
+            message="Authenticated session does not exist",
+        )
+    if repository.is_revoked(auth_session):
+        raise ApiError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="unauthorized",
+            message="Bearer token has been logged out",
+        )
+    if repository.is_expired(auth_session, now=now):
+        raise ApiError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="unauthorized",
+            message="Bearer token has expired",
+        )
+    if repository.is_idle_expired(auth_session, now=now):
+        raise ApiError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="unauthorized",
+            message="Bearer token timed out due to inactivity",
+        )
+    return auth_session
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 async def enforce_chat_rate_limit(
