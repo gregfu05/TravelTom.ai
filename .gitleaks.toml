@@ -1,0 +1,10 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Local auth test fixture credentials"
+paths = ['''tests/api/test_local_auth.py''']
+regexes = [
+  '''"password"\s*:\s*"VeryStrong123"''',
+  '''"password"\s*:\s*"WrongPassword"''',
+]
