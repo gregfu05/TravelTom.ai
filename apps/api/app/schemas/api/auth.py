@@ -47,4 +47,5 @@ class AuthTokenResponse(BaseModel):
     access_token: str
     token_type: Literal["bearer"] = "bearer"
     expires_in: int
+    idle_timeout_in: int
     user: AuthUserResponse

@@ -40,3 +40,16 @@ Decision:
 
 Change control:
 - Revisit when account auth and privacy controls are completed.
+
+## 4. Local auth token lifecycle
+
+Status: Provisional default (active).
+
+Decision:
+- Current end-to-end backend auth/session lifecycle is local TravelTom auth only.
+- Absolute local bearer-token expiry default: `604800` seconds.
+- Idle timeout default: `43200` seconds.
+- Logout revokes only the current local bearer token.
+
+Change control:
+- Revisit when deployment/provider auth work is scheduled.

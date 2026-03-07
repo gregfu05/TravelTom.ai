@@ -1,5 +1,6 @@
 """ORM models for the TravelTom API."""
 
+from app.db.models.auth_session import AuthSession
 from app.db.models.catalog_item import CatalogItem
 from app.db.models.embedding import Embedding
 from app.db.models.event import Event
@@ -9,6 +10,7 @@ from app.db.models.session import Session
 from app.db.models.user import User
 
 __all__ = [
+    "AuthSession",
     "CatalogItem",
     "Embedding",
     "Event",

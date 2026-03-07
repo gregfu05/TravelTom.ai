@@ -45,7 +45,9 @@ flowchart LR
 
 - Frontend (React): Chat UI, recommendation lists, shortlist manager, itinerary view, booking stub.
 - Backend (FastAPI): API gateway, orchestration, deterministic recommendation, catalog access, event logging.
-- Backend security: TravelTom local bearer auth, optional Azure AD B2C bearer auth, route-level authorization, and chat rate limiting.
+- Backend security: TravelTom local bearer auth with persisted auth sessions,
+  route-level authorization, and chat rate limiting. Azure AD B2C deployment
+  integration remains a later concern.
 - Backend persistence boundaries: feature-scoped repositories and unit-of-work transactions (chat implemented first).
 - Shared runtime contracts: cross-module Pydantic schemas live under `apps/api/app/schemas/`.
 - Recommendation Service: Deterministic retrieval + ranking. Implemented as an internal module in the API service.

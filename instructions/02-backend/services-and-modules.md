@@ -27,6 +27,7 @@ apps/api/
       models/
       migrations/
     repositories/
+      auth_sessions.py
       chat.py
       users.py
     services/
@@ -87,9 +88,13 @@ apps/api/
 - User repository (`app/repositories/users.py`):
   - Resolves authenticated principals to internal `users` rows.
   - Owns external OIDC subject lookup, local-email lookup, and minimal user upsert behavior.
+- Auth-session repository (`app/repositories/auth_sessions.py`):
+  - Persists local bearer-token sessions used for logout and timeout enforcement.
+  - Owns lookup, idle-timeout extension, and revocation of local auth sessions.
 - Auth service (`app/services/auth.py`):
-  - Owns local email/password signup, login, and current-user resolution.
+  - Owns local email/password signup, login, logout, and current-user resolution.
   - Issues TravelTom local bearer tokens from configured runtime secrets.
+  - Creates persisted local auth sessions before token issuance.
 - Chat unit of work (`app/services/chat_uow.py`):
   - Owns chat transaction lifecycle (`flush`/`commit`/`rollback`).
   - Wires the chat and user repositories to a request-scoped DB session.
@@ -100,7 +105,9 @@ apps/api/
 - Error helpers (`app/core/errors.py`):
   - Own structured error responses and per-request trace IDs.
 - Security helpers (`app/core/security.py`):
-  - Own bearer-token verification, Azure AD B2C integration, and chat rate limiting.
+  - Own local bearer-token verification, auth-session timeout checks, logout-aware
+    token rejection, and chat rate limiting.
+  - Deployment/provider auth integration remains a later concern.
 - Shared schema modules (`app/schemas/*.py`):
   - Own cross-module Pydantic contracts used by multiple runtime layers.
   - Keep auth principals, token claims, state payloads, and orchestrator contracts out of `core/` and `services/` modules.

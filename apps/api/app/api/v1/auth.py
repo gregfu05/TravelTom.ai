@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -15,7 +15,7 @@ from app.schemas.api.auth import (
     LoginRequest,
     SignupRequest,
 )
-from app.schemas.auth import AuthenticatedPrincipal
+from app.schemas.auth import AuthenticatedPrincipal, LocalAccessTokenClaims
 from app.services.auth import AuthService, AuthSessionResult
 
 router = APIRouter(prefix="/auth")
@@ -74,11 +74,39 @@ async def current_user(
     return AuthUserResponse(id=str(user.id), email=user.email or "")
 
 
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    request: Request,
+    principal: AuthenticatedPrincipal | None = Depends(require_authenticated_principal),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> Response:
+    """Revoke the current local bearer token."""
+
+    if principal is None:
+        raise ApiError(
+            status_code=401,
+            code="unauthorized",
+            message="Missing bearer token",
+        )
+
+    claims = getattr(request.state, "local_auth_claims", None)
+    if not isinstance(claims, LocalAccessTokenClaims):
+        raise ApiError(
+            status_code=400,
+            code="bad_request",
+            message="Logout is only available for local auth sessions",
+        )
+
+    await auth_service.logout_local_session(claims=claims)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 def _to_auth_response(result: AuthSessionResult) -> AuthTokenResponse:
     """Map an auth service result to the public API response contract."""
 
     return AuthTokenResponse(
         access_token=result.access_token,
         expires_in=result.expires_in,
+        idle_timeout_in=result.idle_timeout_in,
         user=AuthUserResponse(id=str(result.user.id), email=result.user.email or ""),
     )

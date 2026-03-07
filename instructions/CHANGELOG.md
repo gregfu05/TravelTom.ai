@@ -17,6 +17,14 @@
 - Updated backend API and module docs for structured error responses, `repositories/users.py`, and deprecated request-body `user_id`.
 - Extended the data model docs with external OIDC identity fields on `users`.
 - Updated the architecture overview to include backend auth and rate limiting in the request path.
+- Added local auth-session persistence and lifecycle controls:
+  - Added `auth_sessions` persistence model and Alembic migration.
+  - Local bearer tokens now carry a persisted `jti` and are checked against
+    absolute expiry, idle timeout, and logout revocation state.
+  - Added `POST /api/v1/auth/logout`.
+  - Added `LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS` configuration and `.env.example` entry.
+- Updated backend docs to state that the current end-to-end auth/session lifecycle
+  is local-only and Azure AD B2C deployment/provider work is deferred.
 
 ## 2026-02-26
 

@@ -43,6 +43,11 @@ class Settings(BaseSettings):
         ge=300,
         validation_alias=AliasChoices("LOCAL_AUTH_TOKEN_TTL_SECONDS"),
     )
+    local_auth_token_idle_timeout_seconds: int = Field(
+        60 * 60 * 12,
+        ge=300,
+        validation_alias=AliasChoices("LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS"),
+    )
     chat_rate_limit: str = Field(
         "30/minute",
         validation_alias=AliasChoices("CHAT_RATE_LIMIT"),

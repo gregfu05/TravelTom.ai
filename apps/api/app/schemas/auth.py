@@ -27,6 +27,7 @@ class LocalAccessTokenClaims(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    jti: str = Field(min_length=1)
     sub: str = Field(min_length=1)
     iss: str = Field(min_length=1)
     email: str = Field(min_length=1)
