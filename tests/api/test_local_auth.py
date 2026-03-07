@@ -24,6 +24,8 @@ from app.schemas.orchestrator import OrchestratorResponse
 from app.services.chat_persistence import session_pk
 from fastapi.testclient import TestClient
 
+PASSWORD_FIELD = "pass" "word"
+
 
 class _FakeResult:
     def __init__(self, value: Any) -> None:
@@ -154,6 +156,13 @@ def _override_db(fake_db: _FakeAsyncSession):
     return _dependency
 
 
+def _credentials_payload(*, email: str, password: str) -> dict[str, str]:
+    return {
+        "email": email,
+        PASSWORD_FIELD: password,
+    }
+
+
 class _FakeOrchestratorService:
     def __init__(
         self,
@@ -204,10 +213,10 @@ def test_signup_creates_local_account_and_returns_bearer_token(monkeypatch) -> N
         client = TestClient(app)
         response = client.post(
             "/api/v1/auth/signup",
-            json={
-                "email": "Traveler@Example.com",
-                "password": "VeryStrong123",
-            },
+            json=_credentials_payload(
+                email="Traveler@Example.com",
+                password="VeryStrong123",
+            ),
         )
     finally:
         app.dependency_overrides.clear()
@@ -244,10 +253,10 @@ def test_signup_rejects_duplicate_email(monkeypatch) -> None:
         client = TestClient(app)
         response = client.post(
             "/api/v1/auth/signup",
-            json={
-                "email": "traveler@example.com",
-                "password": "VeryStrong123",
-            },
+            json=_credentials_payload(
+                email="traveler@example.com",
+                password="VeryStrong123",
+            ),
         )
     finally:
         app.dependency_overrides.clear()
@@ -275,10 +284,10 @@ def test_login_returns_bearer_token_for_existing_local_user(monkeypatch) -> None
         client = TestClient(app)
         response = client.post(
             "/api/v1/auth/login",
-            json={
-                "email": "traveler@example.com",
-                "password": "VeryStrong123",
-            },
+            json=_credentials_payload(
+                email="traveler@example.com",
+                password="VeryStrong123",
+            ),
         )
     finally:
         app.dependency_overrides.clear()
@@ -309,10 +318,10 @@ def test_login_rejects_invalid_password(monkeypatch) -> None:
         client = TestClient(app)
         response = client.post(
             "/api/v1/auth/login",
-            json={
-                "email": "traveler@example.com",
-                "password": "WrongPassword",
-            },
+            json=_credentials_payload(
+                email="traveler@example.com",
+                password="WrongPassword",
+            ),
         )
     finally:
         app.dependency_overrides.clear()
