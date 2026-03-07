@@ -14,17 +14,6 @@ def session_pk(session_id: str) -> uuid.UUID:
     return uuid.uuid5(uuid.NAMESPACE_URL, f"traveltom-session:{session_id}")
 
 
-def parse_optional_uuid(value: str | None) -> uuid.UUID | None:
-    """Parse a string to UUID, returning *None* on empty or invalid input."""
-
-    if not value:
-        return None
-    try:
-        return uuid.UUID(value)
-    except ValueError:
-        return None
-
-
 def load_session_state(
     *,
     raw_state: Any,
@@ -40,7 +29,9 @@ def load_session_state(
         raw_payload = {}
 
     raw_payload["session_id"] = session_id
-    if user_id is not None:
+    if user_id is None:
+        raw_payload.pop("user_id", None)
+    else:
         raw_payload["user_id"] = user_id
 
     return SessionState.model_validate(raw_payload)

@@ -16,6 +16,8 @@ apps/api/
         itineraries.py
     core/
       config.py
+      errors.py
+      security.py
       logging.py
       telemetry.py
     db/
@@ -25,6 +27,7 @@ apps/api/
       migrations/
     repositories/
       chat.py
+      users.py
     services/
       orchestrator/
       recommender/
@@ -49,6 +52,7 @@ apps/api/
 
 - Use FastAPI dependency injection for DB sessions, configuration, and service instances.
 - Centralize service construction in `app/core/config.py` and `app/services/__init__.py`.
+- Keep auth and rate-limit dependencies in `app/core/security.py`.
 
 ## Module boundaries
 
@@ -75,12 +79,20 @@ apps/api/
   - Owns chat persistence operations: session lookup/creation, message writes,
     and recommendation snapshot writes.
   - Provides feature-specific data access (non-generic repository pattern).
+- User repository (`app/repositories/users.py`):
+  - Resolves authenticated principals to internal `users` rows.
+  - Owns external OIDC subject lookup and minimal user upsert behavior.
 - Chat unit of work (`app/services/chat_uow.py`):
   - Owns chat transaction lifecycle (`flush`/`commit`/`rollback`).
-  - Wires the chat repository to a request-scoped DB session.
+  - Wires the chat and user repositories to a request-scoped DB session.
 - Chat persistence helpers (`app/services/chat_persistence.py`):
   - Owns deterministic session-id-to-UUID mapping via `uuid5`.
   - Validates and hydrates persisted state payloads for orchestrator execution.
+  - Sanitizes deprecated client-controlled `user_id` values from state hydration.
+- Error helpers (`app/core/errors.py`):
+  - Own structured error responses and per-request trace IDs.
+- Security helpers (`app/core/security.py`):
+  - Own Azure AD B2C integration, authenticated principal normalization, and chat rate limiting.
 
 ## Settings management
 

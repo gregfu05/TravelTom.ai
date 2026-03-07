@@ -7,6 +7,7 @@ from types import TracebackType
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.chat import ChatRepository
+from app.repositories.users import UserRepository
 
 
 class ChatUnitOfWork:
@@ -15,6 +16,7 @@ class ChatUnitOfWork:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self.chat_repository = ChatRepository(session)
+        self.user_repository = UserRepository(session)
         self._committed = False
 
     async def __aenter__(self) -> ChatUnitOfWork:

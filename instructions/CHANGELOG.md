@@ -1,5 +1,12 @@
 # Instructions Changelog
 
+## 2026-03-07
+
+- Documented the implemented backend auth path with `AUTH_ENABLED`, Azure AD B2C bearer auth, and chat session ownership enforcement.
+- Updated backend API and module docs for structured error responses, `repositories/users.py`, and deprecated request-body `user_id`.
+- Extended the data model docs with external OIDC identity fields on `users`.
+- Updated the architecture overview to include backend auth and rate limiting in the request path.
+
 ## 2026-02-26
 
 - Added local Ollama provider wiring for orchestrator structured LLM calls:

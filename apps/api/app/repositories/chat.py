@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import ApiError
 from app.db.models.message import Message
 from app.db.models.recommendation import Recommendation
 from app.db.models.session import Session
@@ -26,8 +27,7 @@ class ChatRepository:
         *,
         pk: uuid.UUID,
         session_id: str,
-        request_user_id: str | None,
-        user_uuid: uuid.UUID | None,
+        owner_user_id: uuid.UUID | None,
     ) -> Session:
         """Return existing session row or create a new one with default state."""
 
@@ -38,15 +38,32 @@ class ChatRepository:
 
         state_payload = SessionState(
             session_id=session_id,
-            user_id=request_user_id,
+            user_id=str(owner_user_id) if owner_user_id is not None else None,
         ).model_dump(mode="json")
         session_row = Session(
             id=pk,
-            user_id=user_uuid,
+            user_id=owner_user_id,
             state_json=state_payload,
         )
         self._session.add(session_row)
         return session_row
+
+    @staticmethod
+    def ensure_session_owner(
+        *,
+        session_row: Session,
+        owner_user_id: uuid.UUID | None,
+    ) -> None:
+        """Ensure the authenticated user owns the session."""
+
+        if owner_user_id is None:
+            return
+        if session_row.user_id is None or session_row.user_id != owner_user_id:
+            raise ApiError(
+                status_code=403,
+                code="forbidden",
+                message="Session does not belong to the authenticated user",
+            )
 
     def add_messages(
         self,

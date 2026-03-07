@@ -5,6 +5,8 @@
 ### users (present schema, inactive in MVP)
 
 - id (uuid, pk)
+- auth_issuer (text, nullable)
+- external_subject (text, nullable, unique with auth_issuer)
 - email (text, unique, nullable for MVP)
 - created_at (timestamptz)
 
