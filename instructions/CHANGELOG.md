@@ -2,6 +2,8 @@
 
 ## 2026-03-07
 
+- Added `08-quality/agent-ticket-template.md` as the canonical ticket/prompt format for handing work to coding agents.
+- Updated `README.md` to direct instruction authors to the new ticket template when creating implementation tickets.
 - Codified schema-placement rules in the quality instructions:
   - Shared backend Pydantic contracts must live under `apps/api/app/schemas/`.
   - Added explicit guidance to keep cross-module schema models out of `core/`,
