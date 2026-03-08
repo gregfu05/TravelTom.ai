@@ -52,7 +52,6 @@ export interface ChatRequest {
   sessionId: string;
   messageId: string;
   message: string;
-  userId?: string;
   clientContext?: ClientContext;
 }
 
@@ -162,7 +161,6 @@ export const apiClient = {
       session_id: input.sessionId,
       message_id: input.messageId,
       message: input.message,
-      user_id: input.userId,
       client_context: input.clientContext,
     };
 

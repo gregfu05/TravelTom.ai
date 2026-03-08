@@ -14,6 +14,44 @@ class Settings(BaseSettings):
         "local", validation_alias=AliasChoices("APP_ENV", "ENVIRONMENT")
     )
     database_url: str = Field(..., validation_alias="DATABASE_URL")
+    auth_enabled: bool = Field(
+        False,
+        validation_alias=AliasChoices("AUTH_ENABLED"),
+    )
+    auth_app_client_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AUTH_APP_CLIENT_ID"),
+    )
+    auth_tenant_name: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AUTH_TENANT_NAME"),
+    )
+    auth_policy_name: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AUTH_POLICY_NAME"),
+    )
+    auth_required_scopes: str = Field(
+        "user_impersonation",
+        validation_alias=AliasChoices("AUTH_REQUIRED_SCOPES"),
+    )
+    local_auth_token_secret: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LOCAL_AUTH_TOKEN_SECRET"),
+    )
+    local_auth_token_ttl_seconds: int = Field(
+        60 * 60 * 24 * 7,
+        ge=300,
+        validation_alias=AliasChoices("LOCAL_AUTH_TOKEN_TTL_SECONDS"),
+    )
+    local_auth_token_idle_timeout_seconds: int = Field(
+        60 * 60 * 12,
+        ge=300,
+        validation_alias=AliasChoices("LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS"),
+    )
+    chat_rate_limit: str = Field(
+        "30/minute",
+        validation_alias=AliasChoices("CHAT_RATE_LIMIT"),
+    )
     orchestrator_llm_provider: Literal["disabled", "ollama", "openai"] = Field(
         "disabled",
         validation_alias=AliasChoices("ORCHESTRATOR_LLM_PROVIDER"),
@@ -74,6 +112,28 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
     )
+
+    @property
+    def auth_required_scopes_list(self) -> list[str]:
+        raw_scopes = self.auth_required_scopes.replace(",", " ").split()
+        return [scope for scope in raw_scopes if scope]
+
+    @property
+    def auth_openid_config_url(self) -> str | None:
+        if not self.auth_tenant_name or not self.auth_policy_name:
+            return None
+        tenant = self.auth_tenant_name
+        policy = self.auth_policy_name
+        return (
+            f"https://{tenant}.b2clogin.com/"
+            f"{tenant}.onmicrosoft.com/"
+            f"{policy}/v2.0/.well-known/openid-configuration"
+        )
+
+    @property
+    def local_auth_enabled(self) -> bool:
+        secret = (self.local_auth_token_secret or "").strip()
+        return bool(secret)
 
 
 @lru_cache()

@@ -17,6 +17,15 @@ Services:
 
 - `DATABASE_URL`
 - `APP_ENV=local`
+- `AUTH_ENABLED=false|true`
+- `AUTH_APP_CLIENT_ID` (reserved for later Azure AD B2C deployment work)
+- `AUTH_TENANT_NAME` (reserved for later Azure AD B2C deployment work)
+- `AUTH_POLICY_NAME` (reserved for later Azure AD B2C deployment work)
+- `AUTH_REQUIRED_SCOPES` (default `user_impersonation`, reserved for later provider integration)
+- `LOCAL_AUTH_TOKEN_SECRET` (required for local signup/login and local bearer validation)
+- `LOCAL_AUTH_TOKEN_TTL_SECONDS` (default `604800`)
+- `LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS` (default `43200`)
+- `CHAT_RATE_LIMIT` (default `30/minute`)
 - `ORCHESTRATOR_LLM_PROVIDER=disabled|ollama|openai`
 - `ORCHESTRATOR_LLM_TIMEOUT_SECONDS` (default `20`)
 - `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`)
@@ -43,6 +52,30 @@ To enable OpenAI orchestration:
 2. Set `ORCHESTRATOR_OPENAI_API_KEY` (or `OPENAI_API_KEY`).
 3. Optionally override model and endpoint values.
 4. Restart the API process so cached service dependencies reload.
+
+To enable backend auth locally:
+
+1. Set `AUTH_ENABLED=true` in `.env`.
+2. For the current backend scope, use TravelTom local bearer tokens from
+   `POST /api/v1/auth/signup` or `POST /api/v1/auth/login`.
+3. Optionally override `CHAT_RATE_LIMIT`.
+4. Restart the API process so cached auth dependencies reload.
+
+To enable TravelTom local account auth locally:
+
+1. Set `LOCAL_AUTH_TOKEN_SECRET` in `.env`.
+2. Optionally override `LOCAL_AUTH_TOKEN_TTL_SECONDS`.
+3. Optionally override `LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS`.
+4. Run the latest API migrations so the `users.password_hash` and `auth_sessions`
+   tables exist.
+5. Restart the API process so cached auth dependencies reload.
+
+Local auth lifecycle notes:
+
+- The current backend build supports local email/password auth end-to-end.
+- `POST /api/v1/auth/logout` revokes the current local bearer token.
+- Local bearer tokens expire by absolute TTL and by inactivity timeout.
+- Azure AD B2C deployment/provider wiring is deferred until later deployment work.
 
 ## First run
 

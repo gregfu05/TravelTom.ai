@@ -10,6 +10,7 @@ flowchart LR
 
   subgraph Backend[FastAPI API Service]
     API[API Gateway]
+    SEC[Auth and Rate Limit]
     ORCH[LLM Orchestrator]
     REC[Recommendation Service]
     CAT[Catalog Service]
@@ -27,11 +28,12 @@ flowchart LR
   end
 
   UI --> API
-  API --> ORCH
+  API --> SEC
+  SEC --> ORCH
   ORCH --> REC
   ORCH --> CAT
   ORCH --> LLM
-  API --> EVT
+  SEC --> EVT
   REC --> PG
   REC --> VEC
   CAT --> PG
@@ -43,7 +45,11 @@ flowchart LR
 
 - Frontend (React): Chat UI, recommendation lists, shortlist manager, itinerary view, booking stub.
 - Backend (FastAPI): API gateway, orchestration, deterministic recommendation, catalog access, event logging.
+- Backend security: TravelTom local bearer auth with persisted auth sessions,
+  route-level authorization, and chat rate limiting. Azure AD B2C deployment
+  integration remains a later concern.
 - Backend persistence boundaries: feature-scoped repositories and unit-of-work transactions (chat implemented first).
+- Shared runtime contracts: cross-module Pydantic schemas live under `apps/api/app/schemas/`.
 - Recommendation Service: Deterministic retrieval + ranking. Implemented as an internal module in the API service.
 - LLM Orchestrator: Tool-first routing and response generation. It does not create recommendations.
 - Data: PostgreSQL for operational data; pgvector (MVP and fallback) and Azure AI Search (final primary) via abstraction.

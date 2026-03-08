@@ -9,9 +9,10 @@ from app.api.v1.chat import get_orchestrator_service
 from app.db.models.message import Message
 from app.db.models.recommendation import Recommendation
 from app.db.models.session import Session
+from app.db.models.user import User
 from app.db.session import get_db
 from app.main import app
-from app.services.orchestrator.schemas import OrchestratorResponse
+from app.schemas.orchestrator import OrchestratorResponse
 from fastapi.testclient import TestClient
 
 
@@ -24,20 +25,32 @@ class _FakeResult:
 
 
 class _FakeAsyncSession:
-    def __init__(self, existing_session: Session | None = None) -> None:
+    def __init__(
+        self,
+        existing_session: Session | None = None,
+        existing_user: User | None = None,
+    ) -> None:
         self.existing_session = existing_session
+        self.existing_user = existing_user
         self.added: list[Any] = []
         self.committed = False
         self.rolled_back = False
         self.flushed = False
 
-    async def execute(self, _statement: Any) -> _FakeResult:
-        return _FakeResult(self.existing_session)
+    async def execute(self, statement: Any) -> _FakeResult:
+        entity = statement.column_descriptions[0].get("entity")
+        if entity is Session:
+            return _FakeResult(self.existing_session)
+        if entity is User:
+            return _FakeResult(self.existing_user)
+        return _FakeResult(None)
 
     def add(self, obj: Any) -> None:
         self.added.append(obj)
         if isinstance(obj, Session):
             self.existing_session = obj
+        if isinstance(obj, User):
+            self.existing_user = obj
 
     async def commit(self) -> None:
         self.committed = True
@@ -160,9 +173,12 @@ def test_chat_endpoint_returns_expected_shape_and_persists_records() -> None:
     assert fake_db.flushed is True
     assert fake_db.committed is True
 
-    assert any(isinstance(item, Session) for item in fake_db.added)
+    sessions = [item for item in fake_db.added if isinstance(item, Session)]
+    assert len(sessions) == 1
     assert sum(isinstance(item, Message) for item in fake_db.added) == 2
     assert sum(isinstance(item, Recommendation) for item in fake_db.added) == 1
+    assert sessions[0].user_id is None
+    assert sessions[0].state_json["user_id"] is None
 
 
 def test_chat_endpoint_rejects_invalid_payload() -> None:
@@ -182,6 +198,7 @@ def test_chat_endpoint_rejects_invalid_payload() -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
     assert fake_db.committed is False
 
 
@@ -237,7 +254,7 @@ def test_chat_endpoint_rolls_back_on_orchestrator_failure() -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 500
-    assert response.json()["detail"] == "Failed to process chat message"
+    assert response.json()["error"]["message"] == "Failed to process chat message"
     assert fake_db.committed is False
     assert fake_db.rolled_back is True
 
@@ -259,6 +276,6 @@ def test_chat_endpoint_rolls_back_on_invalid_state_payload() -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Invalid session state payload"
+    assert response.json()["error"]["message"] == "Invalid session state payload"
     assert fake_db.committed is False
     assert fake_db.rolled_back is True

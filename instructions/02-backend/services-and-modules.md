@@ -7,6 +7,7 @@ apps/api/
   app/
     api/
       v1/
+        auth.py
         health.py
         chat.py
         recommendations.py
@@ -16,6 +17,8 @@ apps/api/
         itineraries.py
     core/
       config.py
+      errors.py
+      security.py
       logging.py
       telemetry.py
     db/
@@ -24,8 +27,11 @@ apps/api/
       models/
       migrations/
     repositories/
+      auth_sessions.py
       chat.py
+      users.py
     services/
+      auth.py
       orchestrator/
       recommender/
       catalog/
@@ -35,7 +41,10 @@ apps/api/
       chat_uow.py
       chat_persistence.py
     schemas/
+      auth.py
+      orchestrator.py
       api/
+        auth.py
         chat.py
         health.py
         recommendations.py
@@ -49,6 +58,7 @@ apps/api/
 
 - Use FastAPI dependency injection for DB sessions, configuration, and service instances.
 - Centralize service construction in `app/core/config.py` and `app/services/__init__.py`.
+- Keep auth and rate-limit dependencies in `app/core/security.py`.
 
 ## Module boundaries
 
@@ -75,12 +85,32 @@ apps/api/
   - Owns chat persistence operations: session lookup/creation, message writes,
     and recommendation snapshot writes.
   - Provides feature-specific data access (non-generic repository pattern).
+- User repository (`app/repositories/users.py`):
+  - Resolves authenticated principals to internal `users` rows.
+  - Owns external OIDC subject lookup, local-email lookup, and minimal user upsert behavior.
+- Auth-session repository (`app/repositories/auth_sessions.py`):
+  - Persists local bearer-token sessions used for logout and timeout enforcement.
+  - Owns lookup, idle-timeout extension, and revocation of local auth sessions.
+- Auth service (`app/services/auth.py`):
+  - Owns local email/password signup, login, logout, and current-user resolution.
+  - Issues TravelTom local bearer tokens from configured runtime secrets.
+  - Creates persisted local auth sessions before token issuance.
 - Chat unit of work (`app/services/chat_uow.py`):
   - Owns chat transaction lifecycle (`flush`/`commit`/`rollback`).
-  - Wires the chat repository to a request-scoped DB session.
+  - Wires the chat and user repositories to a request-scoped DB session.
 - Chat persistence helpers (`app/services/chat_persistence.py`):
   - Owns deterministic session-id-to-UUID mapping via `uuid5`.
   - Validates and hydrates persisted state payloads for orchestrator execution.
+  - Sanitizes deprecated client-controlled `user_id` values from state hydration.
+- Error helpers (`app/core/errors.py`):
+  - Own structured error responses and per-request trace IDs.
+- Security helpers (`app/core/security.py`):
+  - Own local bearer-token verification, auth-session timeout checks, logout-aware
+    token rejection, and chat rate limiting.
+  - Deployment/provider auth integration remains a later concern.
+- Shared schema modules (`app/schemas/*.py`):
+  - Own cross-module Pydantic contracts used by multiple runtime layers.
+  - Keep auth principals, token claims, state payloads, and orchestrator contracts out of `core/` and `services/` modules.
 
 ## Settings management
 

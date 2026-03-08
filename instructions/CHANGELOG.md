@@ -1,5 +1,31 @@
 # Instructions Changelog
 
+## 2026-03-07
+
+- Codified schema-placement rules in the quality instructions:
+  - Shared backend Pydantic contracts must live under `apps/api/app/schemas/`.
+  - Added explicit guidance to keep cross-module schema models out of `core/`,
+    `services/`, repositories, and router modules.
+- Updated backend architecture/docs to reflect the implemented local-auth path:
+  - Added auth endpoint documentation to `02-backend/api-design.md`.
+  - Updated `02-backend/security.md` and `07-infra-ops/local-dev.md` with
+    `LOCAL_AUTH_TOKEN_SECRET`, token TTL, and local signup/login behavior.
+  - Updated `02-backend/services-and-modules.md` and
+    `01-architecture/system-overview.md` to document shared schema placement and
+    local auth service/runtime boundaries.
+- Documented the implemented backend auth path with `AUTH_ENABLED`, Azure AD B2C bearer auth, and chat session ownership enforcement.
+- Updated backend API and module docs for structured error responses, `repositories/users.py`, and deprecated request-body `user_id`.
+- Extended the data model docs with external OIDC identity fields on `users`.
+- Updated the architecture overview to include backend auth and rate limiting in the request path.
+- Added local auth-session persistence and lifecycle controls:
+  - Added `auth_sessions` persistence model and Alembic migration.
+  - Local bearer tokens now carry a persisted `jti` and are checked against
+    absolute expiry, idle timeout, and logout revocation state.
+  - Added `POST /api/v1/auth/logout`.
+  - Added `LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS` configuration and `.env.example` entry.
+- Updated backend docs to state that the current end-to-end auth/session lifecycle
+  is local-only and Azure AD B2C deployment/provider work is deferred.
+
 ## 2026-02-26
 
 - Added local Ollama provider wiring for orchestrator structured LLM calls:

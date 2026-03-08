@@ -4,22 +4,27 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.errors import ApiError
+from app.core.security import (
+    enforce_chat_rate_limit,
+    require_authenticated_principal,
+)
 from app.db.session import get_db
 from app.schemas.api.chat import ChatRecommendation, ChatRequest, ChatResponse
+from app.schemas.auth import AuthenticatedPrincipal
+from app.schemas.orchestrator import OrchestratorResponse
 from app.schemas.state import SessionState
 from app.services.chat_persistence import (
     load_session_state,
-    parse_optional_uuid,
     session_pk,
 )
 from app.services.chat_uow import ChatUnitOfWork
 from app.services.orchestrator.llm_provider import build_orchestrator_llm_models
-from app.services.orchestrator.schemas import OrchestratorResponse
 from app.services.orchestrator.service import OrchestratorService
 from traveltom.recommendor.recommendor_v1 import recommendation_tool
 
@@ -60,26 +65,39 @@ def get_chat_uow(db: AsyncSession = Depends(get_db)) -> ChatUnitOfWork:
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
+    _: None = Depends(enforce_chat_rate_limit),
+    principal: AuthenticatedPrincipal | None = Depends(require_authenticated_principal),
     uow: ChatUnitOfWork = Depends(get_chat_uow),
     orchestrator: OrchestratorService = Depends(get_orchestrator_service),
 ) -> ChatResponse:
     """Handle a chat message and persist session/message/recommendation records."""
 
     pk = session_pk(request.session_id)
-    user_uuid = parse_optional_uuid(request.user_id)
 
     try:
         async with uow:
+            owner_user_id = None
+            state_user_id = None
+            if principal is not None:
+                user_row = await uow.user_repository.get_or_create_from_principal(
+                    principal
+                )
+                owner_user_id = user_row.id
+                state_user_id = str(user_row.id)
+
             session_row = await uow.chat_repository.get_or_create_session(
                 pk=pk,
                 session_id=request.session_id,
-                request_user_id=request.user_id,
-                user_uuid=user_uuid,
+                owner_user_id=owner_user_id,
+            )
+            uow.chat_repository.ensure_session_owner(
+                session_row=session_row,
+                owner_user_id=owner_user_id,
             )
             state = load_session_state(
                 raw_state=session_row.state_json,
                 session_id=request.session_id,
-                user_id=request.user_id,
+                user_id=state_user_id,
             )
 
             orchestration = orchestrator.handle_message(
@@ -87,9 +105,11 @@ async def chat(
                 session_state=state,
             )
             persisted_state = SessionState.model_validate(orchestration.state)
+            persisted_state.session_id = request.session_id
+            persisted_state.user_id = state_user_id
             session_row.state_json = persisted_state.model_dump(mode="json")
-            if user_uuid is not None:
-                session_row.user_id = user_uuid
+            if owner_user_id is not None:
+                session_row.user_id = owner_user_id
 
             await uow.flush()
 
@@ -111,23 +131,22 @@ async def chat(
                 request_message_id=request.message_id,
                 orchestration=orchestration,
             )
-    except ValidationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid session state payload",
-        ) from exc
-    except HTTPException:
+    except ApiError:
         raise
+    except ValidationError as exc:
+        raise ApiError(
+            status_code=400,
+            code="invalid_session_state",
+            message="Invalid session state payload",
+        ) from exc
     except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to process chat message",
+        raise ApiError(
+            status_code=500,
+            code="chat_processing_failed",
+            message="Failed to process chat message",
         ) from exc
 
-    raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Failed to process chat message",
-    )
+    raise RuntimeError("Chat handler completed without producing a response")
 
 
 def _to_chat_response(

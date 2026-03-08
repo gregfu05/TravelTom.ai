@@ -53,6 +53,10 @@ For PRs touching Python code, reviewers must verify:
 ## API schema conventions
 
 - Pydantic models for all request/response bodies.
+- Shared Pydantic contract models must live under `apps/api/app/schemas/`.
+- Use `schemas/api/` for HTTP request/response contracts, `schemas/tools/` for tool contracts, and root `schemas/*.py` modules for shared runtime contracts such as auth, state, and orchestrator payloads.
+- Do not define cross-module schema models in `core/`, `services/`, `repositories/`, or router modules.
+- Module-local Pydantic models are acceptable only when they stay private to that module and are not imported as shared contracts.
 - JSON field names use snake_case in backend and are mapped to camelCase in frontend.
 - All responses include `trace_id` in error cases.
 
