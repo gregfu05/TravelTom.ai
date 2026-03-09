@@ -1,5 +1,15 @@
 # Instructions Changelog
 
+## 2026-03-09
+
+- Added compose-based local DB bootstrap under `infra/docker/`:
+  - `docker-compose.yml` now defines local `postgres` + one-shot `migrate`.
+  - `docker-compose.seed.yml` adds a one-shot `seed` overlay.
+  - `Dockerfile` provides the shared Python utility image used by both jobs.
+  - Local Postgres bootstrap now enables `pgvector` with an init SQL script.
+- Updated `07-infra-ops/local-dev.md` and `infra/docker/README.md` with exact
+  compose workflows for DB + migrations and DB + migrations + seed.
+
 ## 2026-03-07
 
 - Added `08-quality/agent-ticket-template.md` as the canonical ticket/prompt format for handing work to coding agents.

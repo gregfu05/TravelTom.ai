@@ -1,0 +1,47 @@
+name: traveltom-local
+
+services:
+  postgres:
+    image: ${PGVECTOR_IMAGE:-pgvector/pgvector:pg16}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-traveltom}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-traveltom}
+      POSTGRES_DB: ${POSTGRES_DB:-traveltom}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+    image: ${TRAVELTOM_PYTHON_IMAGE:-traveltom-local-python:latest}
+    working_dir: /workspace
+    env_file:
+      - ../../.env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-traveltom}:${POSTGRES_PASSWORD:-traveltom}@postgres:5432/${POSTGRES_DB:-traveltom}"
+    volumes:
+      - ../..:/workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - alembic
+      - -c
+      - apps/api/alembic.ini
+      - upgrade
+      - head
+    restart: "no"
+
+volumes:
+  postgres_data:

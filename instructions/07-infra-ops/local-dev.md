@@ -9,9 +9,9 @@
 ## Docker Compose (MVP)
 
 Services:
-- API service
 - Postgres
-- pgvector extension enabled
+- one-shot Alembic migration job
+- optional one-shot catalog seed overlay
 
 ## Environment variables
 
@@ -79,12 +79,20 @@ Local auth lifecycle notes:
 
 ## First run
 
-1. Start services: `docker compose up -d`
-2. Run migrations: `alembic -c apps/api/alembic.ini upgrade head`
+1. Copy `.env.example` to `.env` and keep `DATABASE_URL` aligned with your local
+   Postgres port and credentials.
+2. Start local Postgres and automatically apply Alembic migrations:
+   `docker compose -f infra/docker/docker-compose.yml up --build`
+   - Add `-d` if you want the stack to stay up in the background.
 3. Build cleaned snapshot (optional if already present): `python -m traveltom.cleaning.cleaning`
    - If skipped and `business_SB_Cleaned.parquet` is missing, the seed script
      copies `business_SB.parquet` into the cleaned path before seeding.
-4. Seed catalog: `python scripts/seed_catalog.py --truncate`
+4. Seed catalog with the compose overlay when you want full local bootstrap:
+   `docker compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.seed.yml up --build`
+   - This waits for Postgres health, runs migrations, then runs
+     `python scripts/seed_catalog.py --truncate` once and exits.
+   - You can still run the script manually from repo root if you only need to
+     reseed an already-running database.
 5. Start backend and frontend.
 
 Optional pre-check:
@@ -95,6 +103,15 @@ Optional pre-check:
 - Alembic path error (`Path doesn't exist: migrations`):
   - Run from repo root with config path:
     `alembic -c apps/api/alembic.ini upgrade head`
+- Docker compose migration or seed job cannot connect to Postgres:
+  - Verify the `postgres` container is healthy with
+    `docker compose -f infra/docker/docker-compose.yml ps`.
+  - If you changed local DB credentials or port, keep `.env` `DATABASE_URL` and
+    compose overrides (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`,
+    `POSTGRES_PORT`) aligned.
+  - If `pgvector` was added after an older local volume was created, reset the
+    stack and volume:
+    `docker compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.seed.yml down -v`
 - Mypy duplicate module errors (for example `traveltom` in `build/lib`):
   - Generated build artifacts are excluded by project mypy config.
   - If artifacts were created before pulling latest changes, rerun

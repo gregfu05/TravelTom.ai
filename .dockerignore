@@ -1,0 +1,15 @@
+.git
+.github
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.venv
+venv
+build
+dist
+traveltom.egg-info
+__pycache__
+*.py[cod]
+.env
+.env.local
+traveltom/datasets
