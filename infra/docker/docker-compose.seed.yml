@@ -1,0 +1,20 @@
+services:
+  seed:
+    image: ${TRAVELTOM_PYTHON_IMAGE:-traveltom-local-python:latest}
+    working_dir: /workspace
+    env_file:
+      - ../../.env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-traveltom}:${POSTGRES_PASSWORD:-traveltom}@postgres:5432/${POSTGRES_DB:-traveltom}"
+    volumes:
+      - ../..:/workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    command:
+      - python
+      - scripts/seed_catalog.py
+      - --truncate
+    restart: "no"
