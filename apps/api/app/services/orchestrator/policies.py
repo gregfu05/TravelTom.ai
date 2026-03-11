@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from typing import Literal
 
 from app.schemas.orchestrator import (
     Intent,
     LLMOrchestrationPlan,
+    OrchestrationDecision,
+    OrchestratorPolicyConfig,
     RecommendationQueryControls,
 )
 from app.schemas.state import SessionState
@@ -33,23 +34,11 @@ _REFINE_KEYWORDS = (
     "compare",
     "another option",
 )
-
-
-@dataclass(frozen=True)
-class OrchestratorPolicyConfig:
-    """Static policy settings for orchestrator runtime behavior."""
-
-    recommendation_timeout_seconds: float = 4.0
-    max_recommendation_results: int = 5
-
-
-@dataclass(frozen=True)
-class OrchestrationDecision:
-    """Output of deterministic guardrail logic before tool execution."""
-
-    intent: Intent
-    should_call_recommendation_tool: bool
-    reason: str
+_TRAVELTOM_PERSONA = (
+    "TravelTom is a warm, expert travel assistant: grounded, concise, and helpful. "
+    "Sound natural and conversational without being chatty. Be proactive about "
+    "missing details, but never overstate certainty."
+)
 
 
 def classify_intent(message: str) -> Intent:
@@ -106,11 +95,80 @@ def build_clarification_message(session_state: SessionState) -> str:
 
     missing = missing_core_constraints(session_state)
     if not missing:
-        return "Tell me what to optimize for, like cheaper options or fewer layovers."
+        return (
+            "I can help narrow this down. Tell me what you want to optimize for, "
+            "like lower cost, fewer layovers, or a different vibe."
+        )
     if len(missing) == 1:
-        return f"Please share your {missing[0]} so I can suggest options."
+        return f"I can suggest grounded options once I have your {missing[0]}."
     joined = ", ".join(missing[:-1]) + f", and {missing[-1]}"
-    return f"Please share your {joined} so I can suggest options."
+    return f"I can suggest grounded options once I have your {joined}."
+
+
+def build_empty_message(session_state: SessionState) -> str:
+    """Build deterministic copy for an empty user message."""
+
+    del session_state
+    return (
+        "I can help plan this trip. Share where you want to go, when you want to "
+        "travel, and your budget, and I will take it from there."
+    )
+
+
+def build_invalid_request_message(session_state: SessionState) -> str:
+    """Build deterministic copy for requests that fail query validation."""
+
+    missing = missing_core_constraints(session_state)
+    if not missing:
+        return (
+            "I still need one more concrete travel detail before I can run a safe "
+            "search. Try sharing destination, dates, or budget in one message."
+        )
+    joined = (
+        ", ".join(missing[:-1]) + f", and {missing[-1]}"
+        if len(missing) > 1
+        else missing[0]
+    )
+    return (
+        "I am not ready to run the search yet. Share your "
+        f"{joined} and I will turn that into recommendations."
+    )
+
+
+def build_empty_results_message(session_state: SessionState) -> str:
+    """Build deterministic copy for empty recommendation results."""
+
+    return (
+        "I am not seeing strong matches with those constraints yet. "
+        f"{build_clarification_message(session_state)}"
+    )
+
+
+def build_tool_timeout_message() -> str:
+    """Build deterministic copy for recommendation timeouts."""
+
+    return (
+        "I could not finish the search in time. Please try again in a moment and "
+        "I will pick up from the same trip details."
+    )
+
+
+def build_invalid_tool_payload_message() -> str:
+    """Build deterministic copy for invalid recommendation payloads."""
+
+    return (
+        "I received an invalid recommendation payload, so I stopped rather than "
+        "guess. Please retry and I will fetch the results again."
+    )
+
+
+def build_tool_failure_message() -> str:
+    """Build deterministic copy for unexpected recommendation failures."""
+
+    return (
+        "I hit a temporary search issue. Please retry in a moment and I will "
+        "continue from the same plan."
+    )
 
 
 def build_guardrail_plan(
@@ -185,7 +243,7 @@ def build_response_prompt_context(
     user_message: str,
     recommendations: list[RecommendationResult],
     fallback_message: str,
-    outcome: Literal["results", "empty_results"],
+    outcome: Literal["clarification", "results", "empty_results", "invalid_request"],
 ) -> str:
     """Build prompt context for grounded response composition."""
 
@@ -212,8 +270,28 @@ def build_response_prompt_context(
     else:
         recommendation_block = "NO_RESULTS"
 
+    outcome_instructions = {
+        "clarification": (
+            "Ask for the missing travel details in a warm, direct way. "
+            "Do not claim that any recommendation search has been run."
+        ),
+        "results": (
+            "Summarize the strongest matches naturally and mention only items from "
+            "the recommendation records."
+        ),
+        "empty_results": (
+            "Explain that there are no strong matches yet and guide the user toward "
+            "tightening or adjusting constraints."
+        ),
+        "invalid_request": (
+            "Explain that you need more concrete trip details before running a safe "
+            "search, and ask for those details plainly."
+        ),
+    }
+
     return (
         "You are the TravelTom response composer.\n"
+        f"{_TRAVELTOM_PERSONA}\n"
         'Return JSON only in the form {"assistant_message": "..."}.\n'
         "Grounding rules:\n"
         "- Use only the recommendation list provided below.\n"
@@ -222,6 +300,7 @@ def build_response_prompt_context(
         "- If no recommendations exist, ask for tighter constraints.\n"
         f"- If you are uncertain, use this exact fallback message: {fallback_message}\n"
         f"Outcome: {outcome}\n"
+        f"Outcome guidance: {outcome_instructions[outcome]}\n"
         f"Current session state JSON: {state_payload}\n"
         f"Latest user message: {user_message}\n"
         f"Recommendation records:\n{recommendation_block}"

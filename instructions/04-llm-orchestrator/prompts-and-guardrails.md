@@ -33,6 +33,13 @@ Composer context is built from:
 - Latest user message.
 - Validated recommendation result list (or explicit `NO_RESULTS`).
 - Explicit deterministic fallback copy.
+- Explicit response outcome (`clarification`, `invalid_request`, `results`, `empty_results`).
+
+Composer persona:
+
+- TravelTom sounds like a warm expert travel assistant.
+- Replies should be natural, concise, and proactive about missing details.
+- The tone should stay grounded and consistent even when no recommendation results exist.
 
 Composer must return:
 
@@ -41,6 +48,13 @@ Composer must return:
 ```
 
 If composer output is invalid or composer invocation fails, orchestration returns the provided deterministic fallback message.
+
+Normal response-composed paths:
+
+- Clarification prompts after planner says not to call the tool.
+- Invalid-request guidance when `RecommendationQuery` validation fails.
+- Grounded results summaries from validated recommendation items.
+- Empty-results guidance when the tool returns no strong matches.
 
 ## Deterministic guardrails kept in runtime
 
@@ -54,12 +68,19 @@ If composer output is invalid or composer invocation fails, orchestration return
 - Planner failure/invalid output:
   - Use deterministic fallback planner.
 - Invalid request after schema mapping:
-  - Ask for destination, dates, and budget.
+  - Ask for the missing travel details in conversational branded copy.
 - Tool timeout:
-  - Return retry-safe timeout prompt.
+  - Return retry-safe deterministic prompt.
 - Invalid tool output:
-  - Return safe invalid-payload prompt.
+  - Return safe deterministic invalid-payload prompt.
 - Empty tool results:
   - Return explicit no-strong-match message and ask for tighter constraints.
 - Composer failure/invalid output:
-  - Use deterministic results/clarification fallback copy.
+  - Use deterministic fallback copy written in the same persona as the composer prompt.
+
+Hard grounding rules for composed replies:
+
+- Never invent recommendation items, prices, availability, or destination facts.
+- Mention recommendations only if they appear in validated `RecommendationToolResponse.results`.
+- If there are no results, do not imply that hidden or unavailable options exist.
+- Tool timeout, invalid tool payload, and unexpected tool failures remain deterministic and do not depend on the response composer.

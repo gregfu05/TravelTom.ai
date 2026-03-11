@@ -12,6 +12,7 @@ from pydantic import BaseModel, ValidationError
 from app.schemas.orchestrator import (
     LLMComposedResponse,
     LLMOrchestrationPlan,
+    OrchestratorPolicyConfig,
     OrchestratorResponse,
     RecommendationQueryControls,
 )
@@ -34,11 +35,16 @@ from app.services.orchestrator.langchain_compat import (
     normalize_structured_payload,
 )
 from app.services.orchestrator.policies import (
-    OrchestratorPolicyConfig,
     build_clarification_message,
+    build_empty_message,
+    build_empty_results_message,
     build_guardrail_plan,
+    build_invalid_request_message,
+    build_invalid_tool_payload_message,
     build_planning_prompt_context,
     build_response_prompt_context,
+    build_tool_failure_message,
+    build_tool_timeout_message,
 )
 
 RecommendationTool = Callable[
@@ -107,11 +113,15 @@ class OrchestratorService:
 
         message = user_message.strip()
         if not message:
+            fallback_message = build_empty_message(session_state)
             return self._clarification_response(
                 session_state=session_state,
-                assistant_message=(
-                    "Tell me where and when you want to travel, plus your budget, "
-                    "and I can suggest options."
+                assistant_message=self._compose_assistant_message(
+                    session_state=session_state,
+                    user_message=message,
+                    recommendations=[],
+                    fallback_message=fallback_message,
+                    outcome="clarification",
                 ),
             )
 
@@ -120,12 +130,18 @@ class OrchestratorService:
             session_state=session_state,
         )
         if not plan.should_call_recommendation_tool:
-            clarification_message = (
+            fallback_message = (
                 plan.clarification_message or build_clarification_message(planned_state)
             )
             return self._clarification_response(
                 session_state=planned_state,
-                assistant_message=clarification_message,
+                assistant_message=self._compose_assistant_message(
+                    session_state=planned_state,
+                    user_message=message,
+                    recommendations=[],
+                    fallback_message=fallback_message,
+                    outcome="clarification",
+                ),
             )
 
         query = self._build_recommendation_query(
@@ -134,11 +150,15 @@ class OrchestratorService:
             query_controls=plan.query_controls,
         )
         if query is None:
+            fallback_message = build_invalid_request_message(planned_state)
             return self._safe_error_response(
                 session_state=planned_state,
-                assistant_message=(
-                    "I could not validate your request yet. Please share destination, "
-                    "dates, and budget so I can continue."
+                assistant_message=self._compose_assistant_message(
+                    session_state=planned_state,
+                    user_message=message,
+                    recommendations=[],
+                    fallback_message=fallback_message,
+                    outcome="invalid_request",
                 ),
             )
 
@@ -147,26 +167,17 @@ class OrchestratorService:
         except FuturesTimeoutError:
             return self._safe_error_response(
                 session_state=planned_state,
-                assistant_message=(
-                    "I could not finish the recommendation lookup in time. "
-                    "Please try again in a moment."
-                ),
+                assistant_message=build_tool_timeout_message(),
             )
         except ValidationError:
             return self._safe_error_response(
                 session_state=planned_state,
-                assistant_message=(
-                    "I received an invalid recommendation payload. Please retry and "
-                    "I will fetch results again."
-                ),
+                assistant_message=build_invalid_tool_payload_message(),
             )
         except Exception:
             return self._safe_error_response(
                 session_state=planned_state,
-                assistant_message=(
-                    "I hit a temporary tool error. Please retry and I will continue "
-                    "from this plan."
-                ),
+                assistant_message=build_tool_failure_message(),
             )
 
         next_state = planned_state.model_copy(deep=True)
@@ -175,10 +186,7 @@ class OrchestratorService:
 
         if not recommendation_response.results:
             next_state.status = "explore"
-            fallback_message = (
-                "I do not have strong matches yet. "
-                f"{build_clarification_message(next_state)}"
-            )
+            fallback_message = build_empty_results_message(next_state)
             assistant_message = self._compose_assistant_message(
                 session_state=next_state,
                 user_message=message,
@@ -327,7 +335,9 @@ class OrchestratorService:
         user_message: str,
         recommendations: list[RecommendationResult],
         fallback_message: str,
-        outcome: Literal["results", "empty_results"],
+        outcome: Literal[
+            "clarification", "results", "empty_results", "invalid_request"
+        ],
     ) -> str:
         try:
             composed = self._response_chain.invoke(
@@ -454,8 +464,8 @@ class OrchestratorService:
             for i, item in enumerate(results[:preview_limit], start=1)
         )
         return (
-            f"I found {len(results)} options that fit your request. "
-            f"Top picks:\n{preview_items}"
+            f"I found {len(results)} grounded option(s) that fit what you asked for. "
+            f"My top picks are:\n{preview_items}"
         )
 
     def _recommendation_display_name(self, item: RecommendationResult) -> str:

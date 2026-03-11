@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,17 +19,11 @@ from app.db.models.auth_session import AuthSession
 from app.db.models.user import User
 from app.repositories.auth_sessions import AuthSessionRepository
 from app.repositories.users import UserRepository
-from app.schemas.auth import AuthenticatedPrincipal, LocalAccessTokenClaims
-
-
-@dataclass(frozen=True)
-class AuthSessionResult:
-    """Response payload pieces for a successful local-auth exchange."""
-
-    access_token: str
-    expires_in: int
-    idle_timeout_in: int
-    user: User
+from app.schemas.auth import (
+    AuthSessionResult,
+    AuthenticatedPrincipal,
+    LocalAccessTokenClaims,
+)
 
 
 class AuthService:
@@ -169,7 +162,8 @@ class AuthService:
             access_token=access_token,
             expires_in=self._settings.local_auth_token_ttl_seconds,
             idle_timeout_in=self._settings.local_auth_token_idle_timeout_seconds,
-            user=user,
+            user_id=str(user.id),
+            email=user.email,
         )
 
     def _local_auth_secret(self) -> str:

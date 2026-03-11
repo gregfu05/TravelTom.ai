@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -33,3 +34,14 @@ class LocalAccessTokenClaims(BaseModel):
     email: str = Field(min_length=1)
     iat: int
     exp: int
+
+
+@dataclass(frozen=True)
+class AuthSessionResult:
+    """Internal auth-service result mapped to API auth responses."""
+
+    access_token: str
+    expires_in: int
+    idle_timeout_in: int
+    user_id: str
+    email: str

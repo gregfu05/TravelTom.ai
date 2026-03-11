@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from dataclasses import dataclass
+from typing import Any, Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -11,6 +12,32 @@ from app.schemas.tools.recommendations import RecommendationResult
 
 Intent = Literal["recommend", "refine", "clarify"]
 SessionStatus = Literal["explore", "refine", "itinerary", "booking"]
+StructuredModel = Callable[[dict[str, Any]], dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class OrchestratorPolicyConfig:
+    """Static policy settings for orchestrator runtime behavior."""
+
+    recommendation_timeout_seconds: float = 4.0
+    max_recommendation_results: int = 5
+
+
+@dataclass(frozen=True)
+class OrchestrationDecision:
+    """Output of deterministic guardrail logic before tool execution."""
+
+    intent: Intent
+    should_call_recommendation_tool: bool
+    reason: str
+
+
+@dataclass(frozen=True)
+class OrchestratorLLMModels:
+    """Container for orchestrator structured model callables."""
+
+    planning_model: StructuredModel | None
+    response_model: StructuredModel | None
 
 
 class ConstraintPatch(BaseModel):

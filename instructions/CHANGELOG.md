@@ -1,5 +1,14 @@
 # Instructions Changelog
 
+## 2026-03-12
+
+- Updated orchestrator docs to reflect the broader response-composition path:
+  - `04-llm-orchestrator/orchestrator-overview.md` now documents composed
+    clarification and invalid-request replies alongside results and empty-results.
+  - `04-llm-orchestrator/prompts-and-guardrails.md` now defines the TravelTom
+    warm-expert persona, composed outcome types, and the deterministic failure
+    paths that still bypass the composer.
+
 ## 2026-03-09
 
 - Added compose-based local DB bootstrap under `infra/docker/`:

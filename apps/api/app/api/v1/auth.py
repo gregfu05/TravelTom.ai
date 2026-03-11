@@ -15,8 +15,12 @@ from app.schemas.api.auth import (
     LoginRequest,
     SignupRequest,
 )
-from app.schemas.auth import AuthenticatedPrincipal, LocalAccessTokenClaims
-from app.services.auth import AuthService, AuthSessionResult
+from app.schemas.auth import (
+    AuthSessionResult,
+    AuthenticatedPrincipal,
+    LocalAccessTokenClaims,
+)
+from app.services.auth import AuthService
 
 router = APIRouter(prefix="/auth")
 
@@ -108,5 +112,5 @@ def _to_auth_response(result: AuthSessionResult) -> AuthTokenResponse:
         access_token=result.access_token,
         expires_in=result.expires_in,
         idle_timeout_in=result.idle_timeout_in,
-        user=AuthUserResponse(id=str(result.user.id), email=result.user.email or ""),
+        user=AuthUserResponse(id=result.user_id, email=result.email),
     )

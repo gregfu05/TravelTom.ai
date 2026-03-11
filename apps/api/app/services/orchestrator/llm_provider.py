@@ -2,24 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Callable, Literal
+from typing import Literal
 
+from app.schemas.orchestrator import OrchestratorLLMModels
 from app.services.orchestrator.providers import (
     OllamaStructuredClient,
     OpenAIStructuredClient,
 )
 
-StructuredModel = Callable[[dict[str, Any]], dict[str, Any]]
 ProviderName = Literal["disabled", "ollama", "openai"]
-
-
-@dataclass(frozen=True)
-class OrchestratorLLMModels:
-    """Container for orchestrator structured model callables."""
-
-    planning_model: StructuredModel | None
-    response_model: StructuredModel | None
 
 
 def build_orchestrator_llm_models(

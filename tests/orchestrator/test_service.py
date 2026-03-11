@@ -5,13 +5,13 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from app.schemas.orchestrator import OrchestratorPolicyConfig
 from app.schemas.state import SessionState
 from app.schemas.tools.recommendations import (
     RecommendationQuery,
     RecommendationResult,
     RecommendationToolResponse,
 )
-from app.services.orchestrator.policies import OrchestratorPolicyConfig
 from app.services.orchestrator.service import OrchestratorService
 
 
@@ -105,6 +105,7 @@ def test_orchestrator_uses_llm_plan_for_tool_call_and_state_updates() -> None:
     assert response.state["status"] == "refine"
     assert len(response_payloads) == 1
     assert "TravelTom response composer" in response_payloads[0]["prompt"]
+    assert "warm, expert travel assistant" in response_payloads[0]["prompt"]
 
 
 def test_orchestrator_applies_guardrail_extraction_when_plan_is_sparse() -> None:
@@ -150,6 +151,7 @@ def test_orchestrator_applies_guardrail_extraction_when_plan_is_sparse() -> None
 
 def test_orchestrator_returns_llm_clarification_without_tool_call() -> None:
     tool_calls = {"count": 0}
+    response_payloads: list[dict[str, Any]] = []
 
     def planning_model(_payload: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -162,9 +164,16 @@ def test_orchestrator_returns_llm_clarification_without_tool_call() -> None:
         tool_calls["count"] += 1
         return {"ranking_version": "heuristic-v1", "results": []}
 
+    def response_model(payload: dict[str, Any]) -> dict[str, str]:
+        response_payloads.append(payload)
+        return {
+            "assistant_message": "Happy to help. Share your destination and dates first."
+        }
+
     service = OrchestratorService(
         recommendation_tool=tool,
         planning_model=planning_model,
+        response_model=response_model,
     )
     response = service.handle_message(
         user_message="hello",
@@ -172,9 +181,17 @@ def test_orchestrator_returns_llm_clarification_without_tool_call() -> None:
     )
 
     assert tool_calls["count"] == 0
-    assert response.assistant_message == "Could you share destination and dates first?"
+    assert (
+        response.assistant_message
+        == "Happy to help. Share your destination and dates first."
+    )
     assert response.recommendations == []
     assert response.state["status"] == "explore"
+    assert len(response_payloads) == 1
+    assert response_payloads[0]["outcome"] == "clarification"
+    assert response_payloads[0]["fallback_message"] == (
+        "Could you share destination and dates first?"
+    )
 
 
 def test_orchestrator_falls_back_when_planning_model_raises() -> None:
@@ -197,7 +214,7 @@ def test_orchestrator_falls_back_when_planning_model_raises() -> None:
     )
 
     assert tool_calls["count"] == 1
-    assert "do not have strong matches yet" in response.assistant_message
+    assert "not seeing strong matches" in response.assistant_message
     assert response.recommendations == []
 
 
@@ -248,7 +265,7 @@ def test_orchestrator_handles_tool_timeout_with_retry_prompt() -> None:
         session_state=_base_state(),
     )
 
-    assert "in time" in response.assistant_message
+    assert "search in time" in response.assistant_message
     assert response.recommendations == []
 
 
@@ -275,6 +292,71 @@ def test_orchestrator_handles_invalid_tool_payload() -> None:
 
     assert "invalid recommendation payload" in response.assistant_message
     assert response.recommendations == []
+
+
+def test_orchestrator_uses_response_model_for_empty_message() -> None:
+    response_payloads: list[dict[str, Any]] = []
+
+    def response_model(payload: dict[str, Any]) -> dict[str, str]:
+        response_payloads.append(payload)
+        return {
+            "assistant_message": (
+                "I can help with that. Tell me where you want to go, your dates, "
+                "and your budget."
+            )
+        }
+
+    service = OrchestratorService(response_model=response_model)
+    response = service.handle_message(
+        user_message="   ",
+        session_state=SessionState(session_id="sess-empty"),
+    )
+
+    assert response.assistant_message == (
+        "I can help with that. Tell me where you want to go, your dates, and your budget."
+    )
+    assert response.recommendations == []
+    assert len(response_payloads) == 1
+    assert response_payloads[0]["outcome"] == "clarification"
+
+
+def test_orchestrator_uses_response_model_for_invalid_request() -> None:
+    response_payloads: list[dict[str, Any]] = []
+
+    def planning_model(_payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "state_patch": {"constraints": {"destination": "Lisbon"}},
+            "query_controls": {},
+        }
+
+    def response_model(payload: dict[str, Any]) -> dict[str, str]:
+        response_payloads.append(payload)
+        return {
+            "assistant_message": (
+                "I just need your travel dates and budget before I run the search."
+            )
+        }
+
+    service = OrchestratorService(
+        planning_model=planning_model,
+        response_model=response_model,
+    )
+    service._build_constraints_payload = lambda _state: {  # type: ignore[method-assign]
+        "dates": {"start": "not-a-date", "end": "still-not-a-date"}
+    }
+    response = service.handle_message(
+        user_message="find me something in Lisbon",
+        session_state=SessionState(session_id="sess-invalid-request"),
+    )
+
+    assert response.assistant_message == (
+        "I just need your travel dates and budget before I run the search."
+    )
+    assert response.recommendations == []
+    assert len(response_payloads) == 1
+    assert response_payloads[0]["outcome"] == "invalid_request"
 
 
 def test_orchestrator_handles_response_model_validation_errors() -> None:
@@ -314,7 +396,7 @@ def test_orchestrator_handles_response_model_validation_errors() -> None:
         session_state=_base_state(),
     )
 
-    assert "Top picks:\n1. Lisbon" in response.assistant_message
+    assert "My top picks are:\n1. Lisbon" in response.assistant_message
     assert response.recommendations[0].item_id == "dest-lisbon"
 
 
@@ -335,7 +417,7 @@ def test_orchestrator_results_message_falls_back_to_item_id_without_name() -> No
         ]
     )
 
-    assert "Top picks:\n1. dest-lisbon" in message
+    assert "My top picks are:\n1. dest-lisbon" in message
 
 
 def test_orchestrator_results_message_uses_policy_preview_limit() -> None:
@@ -359,7 +441,7 @@ def test_orchestrator_results_message_uses_policy_preview_limit() -> None:
     message = service._build_results_message(results)
 
     assert (
-        "Top picks:\n1. Place 0\n2. Place 1\n3. Place 2\n4. Place 3\n5. Place 4"
+        "My top picks are:\n1. Place 0\n2. Place 1\n3. Place 2\n4. Place 3\n5. Place 4"
         in message
     )
     assert "Place 5" not in message
