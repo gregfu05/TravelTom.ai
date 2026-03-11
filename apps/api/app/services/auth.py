@@ -20,8 +20,8 @@ from app.db.models.user import User
 from app.repositories.auth_sessions import AuthSessionRepository
 from app.repositories.users import UserRepository
 from app.schemas.auth import (
-    AuthSessionResult,
     AuthenticatedPrincipal,
+    AuthSessionResult,
     LocalAccessTokenClaims,
 )
 

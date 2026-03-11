@@ -167,7 +167,9 @@ def test_orchestrator_returns_llm_clarification_without_tool_call() -> None:
     def response_model(payload: dict[str, Any]) -> dict[str, str]:
         response_payloads.append(payload)
         return {
-            "assistant_message": "Happy to help. Share your destination and dates first."
+            "assistant_message": (
+                "Happy to help. Share your destination and dates first."
+            )
         }
 
     service = OrchestratorService(
@@ -313,7 +315,8 @@ def test_orchestrator_uses_response_model_for_empty_message() -> None:
     )
 
     assert response.assistant_message == (
-        "I can help with that. Tell me where you want to go, your dates, and your budget."
+        "I can help with that. Tell me where you want to go, your dates, "
+        "and your budget."
     )
     assert response.recommendations == []
     assert len(response_payloads) == 1
@@ -343,9 +346,14 @@ def test_orchestrator_uses_response_model_for_invalid_request() -> None:
         planning_model=planning_model,
         response_model=response_model,
     )
-    service._build_constraints_payload = lambda _state: {  # type: ignore[method-assign]
-        "dates": {"start": "not-a-date", "end": "still-not-a-date"}
-    }
+
+    def invalid_constraints_payload(session_state: SessionState) -> dict[str, Any]:
+        _ = session_state
+        return {
+            "dates": {"start": "not-a-date", "end": "still-not-a-date"}
+        }
+
+    service._build_constraints_payload = invalid_constraints_payload  # type: ignore[method-assign]
     response = service.handle_message(
         user_message="find me something in Lisbon",
         session_state=SessionState(session_id="sess-invalid-request"),

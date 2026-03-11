@@ -16,8 +16,8 @@ from app.schemas.api.auth import (
     SignupRequest,
 )
 from app.schemas.auth import (
-    AuthSessionResult,
     AuthenticatedPrincipal,
+    AuthSessionResult,
     LocalAccessTokenClaims,
 )
 from app.services.auth import AuthService
