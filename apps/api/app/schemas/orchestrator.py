@@ -1,18 +1,20 @@
-"""Shared schema models for orchestrator planning and responses."""
+"""Shared schema models for orchestration responses and runtime payloads."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.state import BudgetRange, DateRange, PartySize
-from app.schemas.tools.recommendations import RecommendationResult
+from app.schemas.tools.recommendations import (
+    RecommendationResult,
+    RecommendationToolResponse,
+)
 
 Intent = Literal["recommend", "refine", "clarify"]
 SessionStatus = Literal["explore", "refine", "itinerary", "booking"]
-StructuredModel = Callable[[dict[str, Any]], dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -30,14 +32,6 @@ class OrchestrationDecision:
     intent: Intent
     should_call_recommendation_tool: bool
     reason: str
-
-
-@dataclass(frozen=True)
-class OrchestratorLLMModels:
-    """Container for orchestrator structured model callables."""
-
-    planning_model: StructuredModel | None
-    response_model: StructuredModel | None
 
 
 class ConstraintPatch(BaseModel):
@@ -126,6 +120,17 @@ class LLMComposedResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     assistant_message: str = Field(min_length=1)
+
+
+class RecommendationToolRuntimePayload(BaseModel):
+    """Normalized artifact returned by the LangChain recommendation tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["success", "timeout", "invalid_payload", "failure"]
+    response: RecommendationToolResponse | None = None
+    error_code: str | None = None
+    error_message: str | None = None
 
 
 class OrchestratorResponse(BaseModel):

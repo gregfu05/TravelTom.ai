@@ -5,7 +5,6 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from app.api.v1.chat import get_orchestrator_service
 from app.core.config import get_settings
 from app.core.security import (
     get_azure_b2c_scheme,
@@ -19,6 +18,7 @@ from app.main import app
 from app.schemas.auth import AuthenticatedPrincipal
 from app.schemas.orchestrator import OrchestratorResponse
 from app.services.chat_persistence import session_pk
+from app.services.travel_tom_agent import get_travel_tom_agent
 from fastapi.testclient import TestClient
 
 
@@ -75,7 +75,7 @@ def _override_db(fake_db: _FakeAsyncSession):
     return _dependency
 
 
-class _FakeOrchestratorService:
+class _FakeTravelTomAgent:
     def __init__(
         self,
         *,
@@ -85,7 +85,7 @@ class _FakeOrchestratorService:
         self.assistant_message = assistant_message
         self.state = state
 
-    def handle_message(
+    def handle_chat(
         self,
         *,
         user_message: str,
@@ -172,7 +172,7 @@ def test_chat_ignores_body_user_id_and_persists_authenticated_owner(
 ) -> None:
     _enable_auth(monkeypatch)
     fake_db = _FakeAsyncSession()
-    fake_orchestrator = _FakeOrchestratorService(
+    fake_agent = _FakeTravelTomAgent(
         assistant_message="Here are a few ideas.",
         state={
             "state_version": "v1",
@@ -190,7 +190,7 @@ def test_chat_ignores_body_user_id_and_persists_authenticated_owner(
     )
 
     app.dependency_overrides[get_db] = _override_db(fake_db)
-    app.dependency_overrides[get_orchestrator_service] = lambda: fake_orchestrator
+    app.dependency_overrides[get_travel_tom_agent] = lambda: fake_agent
     app.dependency_overrides[require_authenticated_principal] = lambda: _principal()
 
     try:
@@ -240,7 +240,7 @@ def test_chat_rejects_other_users_session(monkeypatch) -> None:
 def test_chat_rate_limit_is_enforced(monkeypatch) -> None:
     _enable_auth(monkeypatch, chat_rate_limit="2/minute")
     fake_db = _FakeAsyncSession()
-    fake_orchestrator = _FakeOrchestratorService(
+    fake_agent = _FakeTravelTomAgent(
         assistant_message="Limited chat response.",
         state={
             "state_version": "v1",
@@ -258,7 +258,7 @@ def test_chat_rate_limit_is_enforced(monkeypatch) -> None:
     )
 
     app.dependency_overrides[get_db] = _override_db(fake_db)
-    app.dependency_overrides[get_orchestrator_service] = lambda: fake_orchestrator
+    app.dependency_overrides[get_travel_tom_agent] = lambda: fake_agent
     app.dependency_overrides[require_authenticated_principal] = lambda: _principal()
 
     try:

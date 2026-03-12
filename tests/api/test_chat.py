@@ -5,7 +5,6 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from app.api.v1.chat import get_orchestrator_service
 from app.db.models.message import Message
 from app.db.models.recommendation import Recommendation
 from app.db.models.session import Session
@@ -13,6 +12,7 @@ from app.db.models.user import User
 from app.db.session import get_db
 from app.main import app
 from app.schemas.orchestrator import OrchestratorResponse
+from app.services.travel_tom_agent import get_travel_tom_agent
 from fastapi.testclient import TestClient
 
 
@@ -62,7 +62,7 @@ class _FakeAsyncSession:
         self.rolled_back = True
 
 
-class _FakeOrchestratorService:
+class _FakeTravelTomAgent:
     def __init__(
         self,
         *,
@@ -74,7 +74,7 @@ class _FakeOrchestratorService:
         self.recommendations = recommendations
         self.state = state
 
-    def handle_message(
+    def handle_chat(
         self,
         *,
         user_message: str,
@@ -93,8 +93,8 @@ class _FakeOrchestratorService:
         )
 
 
-class _FailingOrchestratorService:
-    def handle_message(
+class _FailingTravelTomAgent:
+    def handle_chat(
         self,
         *,
         user_message: str,
@@ -128,7 +128,7 @@ def _chat_payload() -> dict[str, Any]:
 
 def test_chat_endpoint_returns_expected_shape_and_persists_records() -> None:
     fake_db = _FakeAsyncSession()
-    fake_orchestrator = _FakeOrchestratorService(
+    fake_agent = _FakeTravelTomAgent(
         assistant_message="I found 1 strong option for Lisbon.",
         recommendations=[
             {
@@ -155,7 +155,7 @@ def test_chat_endpoint_returns_expected_shape_and_persists_records() -> None:
         },
     )
     app.dependency_overrides[get_db] = _override_db(fake_db)
-    app.dependency_overrides[get_orchestrator_service] = lambda: fake_orchestrator
+    app.dependency_overrides[get_travel_tom_agent] = lambda: fake_agent
 
     try:
         client = TestClient(app)
@@ -204,7 +204,7 @@ def test_chat_endpoint_rejects_invalid_payload() -> None:
 
 def test_chat_endpoint_allows_empty_recommendations() -> None:
     fake_db = _FakeAsyncSession()
-    fake_orchestrator = _FakeOrchestratorService(
+    fake_agent = _FakeTravelTomAgent(
         assistant_message="I need more detail to find strong matches.",
         recommendations=[],
         state={
@@ -222,7 +222,7 @@ def test_chat_endpoint_allows_empty_recommendations() -> None:
         },
     )
     app.dependency_overrides[get_db] = _override_db(fake_db)
-    app.dependency_overrides[get_orchestrator_service] = lambda: fake_orchestrator
+    app.dependency_overrides[get_travel_tom_agent] = lambda: fake_agent
 
     try:
         client = TestClient(app)
@@ -243,9 +243,7 @@ def test_chat_endpoint_allows_empty_recommendations() -> None:
 def test_chat_endpoint_rolls_back_on_orchestrator_failure() -> None:
     fake_db = _FakeAsyncSession()
     app.dependency_overrides[get_db] = _override_db(fake_db)
-    app.dependency_overrides[get_orchestrator_service] = (
-        lambda: _FailingOrchestratorService()
-    )
+    app.dependency_overrides[get_travel_tom_agent] = lambda: _FailingTravelTomAgent()
 
     try:
         client = TestClient(app)
@@ -261,13 +259,13 @@ def test_chat_endpoint_rolls_back_on_orchestrator_failure() -> None:
 
 def test_chat_endpoint_rolls_back_on_invalid_state_payload() -> None:
     fake_db = _FakeAsyncSession()
-    fake_orchestrator = _FakeOrchestratorService(
+    fake_agent = _FakeTravelTomAgent(
         assistant_message="I found options, but state is malformed.",
         recommendations=[],
         state={"session_id": "session-123", "status": "invalid-status"},
     )
     app.dependency_overrides[get_db] = _override_db(fake_db)
-    app.dependency_overrides[get_orchestrator_service] = lambda: fake_orchestrator
+    app.dependency_overrides[get_travel_tom_agent] = lambda: fake_agent
 
     try:
         client = TestClient(app)

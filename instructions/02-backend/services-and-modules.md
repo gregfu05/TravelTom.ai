@@ -32,6 +32,7 @@ apps/api/
       users.py
     services/
       auth.py
+      travel_tom_agent.py
       orchestrator/
       recommender/
       catalog/
@@ -63,10 +64,20 @@ apps/api/
 ## Module boundaries
 
 - Orchestrator service:
-  - Owns LLM planning/composition and tool orchestration.
-  - Cannot construct recommendations directly.
-  - Validates structured planner/composer outputs and maps them to existing state/tool schemas.
+  - Owns LangChain-agent transcript normalization and deterministic fallback logic.
+  - Does not own route wiring or LangChain tool registration.
   - Keeps deterministic guardrails for fallback planning, state extraction, and query-filter normalization.
+  - Converts validated tool artifacts into route-safe `OrchestratorResponse` payloads.
+- TravelTom agent service (`app/services/travel_tom_agent.py`):
+  - Owns the route-facing backend agent abstraction used by `/chat` and `/recommendations/query`.
+  - Owns LangChain-native `create_agent` construction for explicit `chat` and
+    `direct_recommendation` modes.
+  - Owns `@tool` registration for the shared deterministic recommendation tool.
+  - Delegates transcript normalization and fallback logic to `OrchestratorService`.
+  - Wraps deterministic recommendation execution without changing recommender logic.
+- Orchestrator model provider (`app/services/orchestrator/llm_provider.py`):
+  - Owns LangChain-native model construction for OpenAI and Ollama chat agents.
+  - Owns deterministic in-process models for disabled chat mode and direct recommendation mode.
 - Recommender service:
   - Owns retrieval and ranking logic.
   - Deterministic outputs with versioned scoring.
@@ -78,9 +89,9 @@ apps/api/
   - Owns health payload construction for `/health`.
   - Keeps router logic limited to HTTP wiring.
 - Recommendation query service (`app/services/recommendation_query.py`):
-  - Owns recommendation-tool execution and tool-response validation.
-  - Converts API request/response schemas to/from tool-layer schemas.
-  - Keeps the recommendations router focused on DI and HTTP error mapping.
+  - Owns shared recommendation execution error types and request/response
+    normalization helpers used by agent-backed deterministic flows.
+  - Keeps recommendation error normalization separate from route HTTP mapping.
 - Chat repository (`app/repositories/chat.py`):
   - Owns chat persistence operations: session lookup/creation, message writes,
     and recommendation snapshot writes.

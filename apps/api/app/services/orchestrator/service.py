@@ -1,38 +1,31 @@
-"""LLM-first orchestration service with deterministic recommendation guarantees."""
+"""LangChain-agent orchestration helpers and deterministic fallback logic."""
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FuturesTimeoutError
+import json
 from datetime import datetime, timezone
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Sequence
 
-from pydantic import BaseModel, ValidationError
+from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from pydantic import ValidationError
 
+from app.schemas.api.recommendations import (
+    RecommendationQuery as ApiRecommendationQuery,
+)
 from app.schemas.orchestrator import (
-    LLMComposedResponse,
-    LLMOrchestrationPlan,
     OrchestratorPolicyConfig,
     OrchestratorResponse,
-    RecommendationQueryControls,
+    RecommendationToolRuntimePayload,
 )
 from app.schemas.state import SessionState
 from app.schemas.tools.recommendations import (
-    RecommendationConstraints,
     RecommendationQuery,
     RecommendationResult,
     RecommendationToolResponse,
 )
 from app.services.orchestrator.extraction import (
     apply_message_state_updates,
-    apply_structured_state_patch,
     extract_query_filters,
-)
-from app.services.orchestrator.langchain_compat import (
-    LANGCHAIN_AVAILABLE,
-    create_runnable_lambda,
-    create_structured_tool,
-    normalize_structured_payload,
 )
 from app.services.orchestrator.policies import (
     build_clarification_message,
@@ -41,19 +34,60 @@ from app.services.orchestrator.policies import (
     build_guardrail_plan,
     build_invalid_request_message,
     build_invalid_tool_payload_message,
-    build_planning_prompt_context,
-    build_response_prompt_context,
     build_tool_failure_message,
     build_tool_timeout_message,
 )
 
-RecommendationTool = Callable[
-    [RecommendationQuery],
-    RecommendationToolResponse | dict[str, Any],
-]
-StructuredModel = Callable[[dict[str, Any]], dict[str, Any] | BaseModel | str]
+RecommendationExecutor = Callable[[RecommendationQuery], RecommendationToolResponse]
+AgentExecutor = Callable[[list[dict[str, str]]], dict[str, Any]]
 
 _VALID_ITEM_TYPES = {"destination", "hotel", "flight"}
+_STATE_CONTEXT_PREFIX = "TRAVELTOM_SESSION_STATE_JSON:"
+_DIRECT_QUERY_PREFIX = "TRAVELTOM_DIRECT_RECOMMENDATION_QUERY_JSON:"
+
+
+def build_runtime_state_message(session_state: SessionState) -> str:
+    """Serialize session state for agent-visible runtime context."""
+
+    payload = session_state.model_dump(mode="json")
+    return f"{_STATE_CONTEXT_PREFIX}\n{json.dumps(payload, sort_keys=True)}"
+
+
+def extract_runtime_state(messages: Sequence[BaseMessage]) -> SessionState | None:
+    """Extract session state from runtime context messages."""
+
+    for message in messages:
+        if getattr(message, "type", None) != "system":
+            continue
+        content = getattr(message, "content", "")
+        if not isinstance(content, str) or not content.startswith(
+            _STATE_CONTEXT_PREFIX
+        ):
+            continue
+        raw_payload = content.removeprefix(_STATE_CONTEXT_PREFIX).strip()
+        return SessionState.model_validate_json(raw_payload)
+    return None
+
+
+def build_direct_query_message(request: ApiRecommendationQuery) -> str:
+    """Serialize a deterministic recommendation request for agent input."""
+
+    payload = request.model_dump(mode="json")
+    return f"{_DIRECT_QUERY_PREFIX}\n{json.dumps(payload, sort_keys=True)}"
+
+
+def extract_direct_query(messages: Sequence[BaseMessage]) -> RecommendationQuery | None:
+    """Extract a direct recommendation query from agent messages."""
+
+    for message in reversed(messages):
+        if getattr(message, "type", None) != "human":
+            continue
+        content = getattr(message, "content", "")
+        if not isinstance(content, str) or not content.startswith(_DIRECT_QUERY_PREFIX):
+            continue
+        raw_payload = content.removeprefix(_DIRECT_QUERY_PREFIX).strip()
+        return RecommendationQuery.model_validate_json(raw_payload)
+    return None
 
 
 def placeholder_recommendation_tool(
@@ -68,131 +102,196 @@ def placeholder_recommendation_tool(
 
 
 class OrchestratorService:
-    """Coordinate LLM planning/composition and deterministic tool execution."""
+    """Coordinate chat-agent invocation and deterministic fallback behavior."""
 
     def __init__(
         self,
-        recommendation_tool: RecommendationTool | None = None,
         policy_config: OrchestratorPolicyConfig | None = None,
-        planning_model: StructuredModel | None = None,
-        response_model: StructuredModel | None = None,
     ) -> None:
-        self._recommendation_handler = (
-            recommendation_tool or placeholder_recommendation_tool
-        )
         self._policy = policy_config or OrchestratorPolicyConfig()
-        self._planning_model = planning_model or self._default_planning_model
-        self._response_model = response_model or self._default_response_model
-        self._uses_langchain = LANGCHAIN_AVAILABLE
 
-        self._recommendation_structured_tool = create_structured_tool(
-            func=self._recommendation_tool_adapter,
-            name="recommendation_query",
-            description="Run deterministic TravelTom recommendation retrieval.",
-            args_schema=RecommendationQuery,
-        )
-        self._recommendation_chain = create_runnable_lambda(
-            self._invoke_recommendation_chain
-        )
-        self._planning_chain = create_runnable_lambda(self._invoke_planning_chain)
-        self._response_chain = create_runnable_lambda(self._invoke_response_chain)
+    def build_chat_messages(
+        self,
+        *,
+        user_message: str,
+        session_state: SessionState,
+    ) -> list[dict[str, str]]:
+        """Build per-request agent inputs with hidden state context."""
 
-    @property
-    def uses_langchain(self) -> bool:
-        """Return whether langchain_core runtime is available."""
-
-        return self._uses_langchain
+        return [
+            {
+                "role": "system",
+                "content": build_runtime_state_message(session_state),
+            },
+            {
+                "role": "user",
+                "content": user_message,
+            },
+        ]
 
     def handle_message(
         self,
         *,
         user_message: str,
         session_state: SessionState,
+        agent_executor: AgentExecutor,
+        recommendation_executor: RecommendationExecutor | None = None,
     ) -> OrchestratorResponse:
-        """Run LLM-first orchestration for a single user message."""
+        """Run the chat agent and normalize the transcript into API output."""
 
         message = user_message.strip()
         if not message:
-            fallback_message = build_empty_message(session_state)
             return self._clarification_response(
                 session_state=session_state,
-                assistant_message=self._compose_assistant_message(
-                    session_state=session_state,
-                    user_message=message,
-                    recommendations=[],
-                    fallback_message=fallback_message,
-                    outcome="clarification",
-                ),
+                assistant_message=build_empty_message(session_state),
             )
 
-        plan, planned_state = self._resolve_plan(
-            user_message=message,
+        prepared_state = apply_message_state_updates(
+            message=message,
             session_state=session_state,
         )
-        if not plan.should_call_recommendation_tool:
-            fallback_message = (
-                plan.clarification_message or build_clarification_message(planned_state)
-            )
-            return self._clarification_response(
-                session_state=planned_state,
-                assistant_message=self._compose_assistant_message(
-                    session_state=planned_state,
-                    user_message=message,
-                    recommendations=[],
-                    fallback_message=fallback_message,
-                    outcome="clarification",
-                ),
-            )
-
-        query = self._build_recommendation_query(
-            user_message=message,
-            session_state=planned_state,
-            query_controls=plan.query_controls,
-        )
-        if query is None:
-            fallback_message = build_invalid_request_message(planned_state)
-            return self._safe_error_response(
-                session_state=planned_state,
-                assistant_message=self._compose_assistant_message(
-                    session_state=planned_state,
-                    user_message=message,
-                    recommendations=[],
-                    fallback_message=fallback_message,
-                    outcome="invalid_request",
-                ),
-            )
 
         try:
-            recommendation_response = self._recommendation_chain.invoke(query)
-        except FuturesTimeoutError:
-            return self._safe_error_response(
-                session_state=planned_state,
-                assistant_message=build_tool_timeout_message(),
-            )
-        except ValidationError:
-            return self._safe_error_response(
-                session_state=planned_state,
-                assistant_message=build_invalid_tool_payload_message(),
+            agent_result = agent_executor(
+                self.build_chat_messages(
+                    user_message=message,
+                    session_state=prepared_state,
+                )
             )
         except Exception:
+            return self._fallback_from_agent_failure(
+                user_message=message,
+                session_state=prepared_state,
+                recommendation_executor=recommendation_executor,
+            )
+
+        return self._response_from_agent_result(
+            user_message=message,
+            session_state=prepared_state,
+            agent_result=agent_result,
+        )
+
+    def response_from_direct_agent_result(
+        self,
+        *,
+        agent_result: dict[str, Any],
+    ) -> RecommendationToolRuntimePayload:
+        """Extract the tool payload from a deterministic recommendation agent."""
+
+        tool_message = self._last_recommendation_tool_message(agent_result)
+        if tool_message is None:
+            return RecommendationToolRuntimePayload(
+                status="failure",
+                error_code="missing_tool_call",
+                error_message="Agent did not execute recommendation_query",
+            )
+
+        artifact = getattr(tool_message, "artifact", None)
+        if artifact is not None:
+            return RecommendationToolRuntimePayload.model_validate(artifact)
+
+        return RecommendationToolRuntimePayload(
+            status="failure",
+            error_code="missing_tool_payload",
+            error_message="Recommendation tool did not return a runtime payload",
+        )
+
+    def build_recommendation_query(
+        self,
+        *,
+        user_message: str,
+        session_state: SessionState,
+        max_results: int | None = None,
+    ) -> RecommendationQuery | None:
+        """Build a normalized recommendation query from state and user text."""
+
+        payload: dict[str, Any] = {
+            "session_id": session_state.session_id,
+            "query": user_message,
+            "constraints": self._build_constraints_payload(session_state),
+            "filters": self._merge_query_filters(user_message=user_message),
+            "max_results": max_results or self._policy.max_recommendation_results,
+            "ranking_version": "heuristic-v1",
+        }
+        try:
+            return RecommendationQuery.model_validate(payload)
+        except ValidationError:
+            return None
+
+    def build_results_message(
+        self,
+        results: list[RecommendationResult],
+    ) -> str:
+        """Build deterministic grounded copy from recommendation results."""
+
+        preview_limit = max(1, self._policy.max_recommendation_results)
+        preview_items = "\n".join(
+            f"{i}. {self._recommendation_display_name(item)}"
+            for i, item in enumerate(results[:preview_limit], start=1)
+        )
+        return (
+            f"I found {len(results)} grounded option(s) that fit what you asked for. "
+            f"My top picks are:\n{preview_items}"
+        )
+
+    def _response_from_agent_result(
+        self,
+        *,
+        user_message: str,
+        session_state: SessionState,
+        agent_result: dict[str, Any],
+    ) -> OrchestratorResponse:
+        messages = self._messages_from_agent_result(agent_result)
+        final_ai_message = self._last_final_ai_message(messages)
+        tool_message = self._last_recommendation_tool_message(agent_result)
+
+        if tool_message is None:
+            fallback = build_clarification_message(session_state)
+            assistant_message = self._assistant_message_or_fallback(
+                final_ai_message,
+                fallback,
+            )
+            return self._clarification_response(
+                session_state=session_state,
+                assistant_message=assistant_message,
+            )
+
+        if getattr(tool_message, "status", "success") == "error":
             return self._safe_error_response(
-                session_state=planned_state,
+                session_state=session_state,
+                assistant_message=build_invalid_request_message(session_state),
+            )
+
+        runtime_payload = RecommendationToolRuntimePayload.model_validate(
+            getattr(tool_message, "artifact", None)
+        )
+        if runtime_payload.status == "timeout":
+            return self._safe_error_response(
+                session_state=session_state,
+                assistant_message=build_tool_timeout_message(),
+            )
+        if runtime_payload.status == "invalid_payload":
+            return self._safe_error_response(
+                session_state=session_state,
+                assistant_message=build_invalid_tool_payload_message(),
+            )
+        if runtime_payload.status != "success" or runtime_payload.response is None:
+            return self._safe_error_response(
+                session_state=session_state,
                 assistant_message=build_tool_failure_message(),
             )
 
-        next_state = planned_state.model_copy(deep=True)
+        recommendation_response = runtime_payload.response
+        next_state = session_state.model_copy(deep=True)
         next_state.last_message_at = datetime.now(timezone.utc)
         next_state.last_recommendation_version = recommendation_response.ranking_version
 
         if not recommendation_response.results:
             next_state.status = "explore"
-            fallback_message = build_empty_results_message(next_state)
-            assistant_message = self._compose_assistant_message(
-                session_state=next_state,
-                user_message=message,
-                recommendations=[],
-                fallback_message=fallback_message,
-                outcome="empty_results",
+            fallback = build_empty_results_message(next_state)
+            assistant_message = self._assistant_message_or_fallback(
+                final_ai_message,
+                fallback,
             )
             return OrchestratorResponse(
                 session_id=next_state.session_id,
@@ -203,13 +302,10 @@ class OrchestratorService:
             )
 
         next_state.status = "refine"
-        fallback_message = self._build_results_message(recommendation_response.results)
-        assistant_message = self._compose_assistant_message(
-            session_state=next_state,
-            user_message=message,
-            recommendations=recommendation_response.results,
-            fallback_message=fallback_message,
-            outcome="results",
+        fallback = self.build_results_message(recommendation_response.results)
+        assistant_message = self._assistant_message_or_fallback(
+            final_ai_message,
+            fallback,
         )
         return OrchestratorResponse(
             session_id=next_state.session_id,
@@ -219,71 +315,83 @@ class OrchestratorService:
             state=next_state.model_dump(mode="json"),
         )
 
-    def _resolve_plan(
+    def _fallback_from_agent_failure(
         self,
         *,
         user_message: str,
         session_state: SessionState,
-    ) -> tuple[LLMOrchestrationPlan, SessionState]:
+        recommendation_executor: RecommendationExecutor | None,
+    ) -> OrchestratorResponse:
         fallback_plan = build_guardrail_plan(
             message=user_message,
             session_state=session_state,
             max_results=self._policy.max_recommendation_results,
         )
-        try:
-            llm_plan = self._planning_chain.invoke(
-                {
-                    "user_message": user_message,
-                    "session_state": session_state,
-                    "max_results": self._policy.max_recommendation_results,
-                }
-            )
-        except (ValidationError, TypeError):
-            llm_plan = fallback_plan
-        except Exception:
-            llm_plan = fallback_plan
-
-        state_patch = llm_plan.state_patch.model_dump(mode="python", exclude_none=True)
-        try:
-            patched_state = apply_structured_state_patch(
+        if not fallback_plan.should_call_recommendation_tool:
+            return self._clarification_response(
                 session_state=session_state,
-                state_patch=state_patch,
+                assistant_message=(
+                    fallback_plan.clarification_message
+                    or build_clarification_message(session_state)
+                ),
+            )
+
+        if recommendation_executor is None:
+            return self._safe_error_response(
+                session_state=session_state,
+                assistant_message=build_tool_failure_message(),
+            )
+
+        query = self.build_recommendation_query(
+            user_message=user_message,
+            session_state=session_state,
+            max_results=fallback_plan.query_controls.max_results,
+        )
+        if query is None:
+            return self._safe_error_response(
+                session_state=session_state,
+                assistant_message=build_invalid_request_message(session_state),
+            )
+
+        try:
+            recommendation_response = RecommendationToolResponse.model_validate(
+                recommendation_executor(query)
             )
         except ValidationError:
-            patched_state = session_state.model_copy(deep=True)
+            return self._safe_error_response(
+                session_state=session_state,
+                assistant_message=build_invalid_tool_payload_message(),
+            )
+        except Exception:
+            return self._safe_error_response(
+                session_state=session_state,
+                assistant_message=build_tool_failure_message(),
+            )
 
-        # Deterministic extraction remains as a guardrail when LLM misses fields.
-        extracted_state = apply_message_state_updates(
-            message=user_message,
-            session_state=patched_state,
-        )
-        return llm_plan, extracted_state
+        next_state = session_state.model_copy(deep=True)
+        next_state.last_message_at = datetime.now(timezone.utc)
+        next_state.last_recommendation_version = recommendation_response.ranking_version
 
-    def _build_recommendation_query(
-        self,
-        *,
-        user_message: str,
-        session_state: SessionState,
-        query_controls: RecommendationQueryControls,
-    ) -> RecommendationQuery | None:
-        normalized_query = query_controls.query or user_message
-        filters = self._merge_query_filters(
-            user_message=user_message,
-            llm_filters=query_controls.filters,
+        if not recommendation_response.results:
+            next_state.status = "explore"
+            return OrchestratorResponse(
+                session_id=next_state.session_id,
+                assistant_message=build_empty_results_message(next_state),
+                recommendations=[],
+                itinerary=next_state.itinerary.model_dump(),
+                state=next_state.model_dump(mode="json"),
+            )
+
+        next_state.status = "refine"
+        return OrchestratorResponse(
+            session_id=next_state.session_id,
+            assistant_message=self.build_results_message(
+                recommendation_response.results
+            ),
+            recommendations=recommendation_response.results,
+            itinerary=next_state.itinerary.model_dump(),
+            state=next_state.model_dump(mode="json"),
         )
-        payload: dict[str, Any] = {
-            "session_id": session_state.session_id,
-            "query": normalized_query,
-            "constraints": self._build_constraints_payload(session_state),
-            "filters": filters,
-            "max_results": query_controls.max_results
-            or self._policy.max_recommendation_results,
-            "ranking_version": "heuristic-v1",
-        }
-        try:
-            return RecommendationQuery.model_validate(payload)
-        except ValidationError:
-            return None
 
     def _build_constraints_payload(self, session_state: SessionState) -> dict[str, Any]:
         constraints: dict[str, Any] = {}
@@ -309,14 +417,12 @@ class OrchestratorService:
         self,
         *,
         user_message: str,
-        llm_filters: dict[str, Any],
     ) -> dict[str, str]:
-        llm_item_type = self._normalize_item_type(llm_filters.get("item_type"))
-        guardrail_item_type = extract_query_filters(user_message).get("item_type")
-        selected_item_type = llm_item_type or guardrail_item_type
-        if selected_item_type is None:
+        item_type = extract_query_filters(user_message).get("item_type")
+        normalized_item_type = self._normalize_item_type(item_type)
+        if normalized_item_type is None:
             return {}
-        return {"item_type": selected_item_type}
+        return {"item_type": normalized_item_type}
 
     def _normalize_item_type(self, item_type: Any) -> str | None:
         if not isinstance(item_type, str):
@@ -328,146 +434,6 @@ class OrchestratorService:
             return normalized
         return None
 
-    def _compose_assistant_message(
-        self,
-        *,
-        session_state: SessionState,
-        user_message: str,
-        recommendations: list[RecommendationResult],
-        fallback_message: str,
-        outcome: Literal[
-            "clarification", "results", "empty_results", "invalid_request"
-        ],
-    ) -> str:
-        try:
-            composed = self._response_chain.invoke(
-                {
-                    "session_state": session_state,
-                    "user_message": user_message,
-                    "recommendations": recommendations,
-                    "fallback_message": fallback_message,
-                    "outcome": outcome,
-                }
-            )
-        except (ValidationError, TypeError):
-            return fallback_message
-        except Exception:
-            return fallback_message
-        return composed.assistant_message
-
-    def _call_recommendation_tool(
-        self,
-        query: RecommendationQuery,
-    ) -> RecommendationToolResponse | dict[str, Any]:
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(self._recommendation_handler, query)
-            return future.result(timeout=self._policy.recommendation_timeout_seconds)
-
-    def _invoke_recommendation_chain(
-        self,
-        query: RecommendationQuery,
-    ) -> RecommendationToolResponse:
-        payload = query.model_dump(mode="python")
-        tool_output = self._recommendation_structured_tool.invoke(payload)
-        return RecommendationToolResponse.model_validate(tool_output)
-
-    def _recommendation_tool_adapter(
-        self,
-        session_id: str,
-        query: str,
-        constraints: RecommendationConstraints | None = None,
-        filters: dict[str, Any] | None = None,
-        max_results: int = 20,
-        ranking_version: str = "heuristic-v1",
-    ) -> dict[str, Any]:
-        recommendation_query = RecommendationQuery.model_validate(
-            {
-                "session_id": session_id,
-                "query": query,
-                "constraints": constraints or RecommendationConstraints(),
-                "filters": filters or {},
-                "max_results": max_results,
-                "ranking_version": ranking_version,
-            }
-        )
-        tool_output = self._call_recommendation_tool(recommendation_query)
-        validated_output = RecommendationToolResponse.model_validate(tool_output)
-        return validated_output.model_dump(mode="json")
-
-    def _invoke_planning_chain(self, payload: dict[str, Any]) -> LLMOrchestrationPlan:
-        prompt_context = build_planning_prompt_context(
-            session_state=payload["session_state"],
-            user_message=payload["user_message"],
-            max_results=payload["max_results"],
-        )
-        model_output = self._planning_model(
-            {
-                "prompt": prompt_context,
-                "session_state": payload["session_state"],
-                "user_message": payload["user_message"],
-                "max_results": payload["max_results"],
-            }
-        )
-        if isinstance(model_output, str):
-            raise TypeError("Planning model must return structured JSON output")
-        normalized_payload = normalize_structured_payload(model_output)
-        return LLMOrchestrationPlan.model_validate(normalized_payload)
-
-    def _invoke_response_chain(self, payload: dict[str, Any]) -> LLMComposedResponse:
-        prompt_context = build_response_prompt_context(
-            session_state=payload["session_state"],
-            user_message=payload["user_message"],
-            recommendations=payload["recommendations"],
-            fallback_message=payload["fallback_message"],
-            outcome=payload["outcome"],
-        )
-        model_output = self._response_model(
-            {
-                "prompt": prompt_context,
-                "session_state": payload["session_state"],
-                "user_message": payload["user_message"],
-                "recommendations": payload["recommendations"],
-                "fallback_message": payload["fallback_message"],
-                "outcome": payload["outcome"],
-            }
-        )
-        if isinstance(model_output, str):
-            return LLMComposedResponse(assistant_message=model_output)
-        normalized_payload = normalize_structured_payload(model_output)
-        return LLMComposedResponse.model_validate(normalized_payload)
-
-    def _default_planning_model(self, payload: dict[str, Any]) -> dict[str, Any]:
-        session_state = payload["session_state"]
-        user_message = str(payload["user_message"])
-        max_results = int(payload["max_results"])
-
-        guardrail_plan = build_guardrail_plan(
-            message=user_message,
-            session_state=session_state,
-            max_results=max_results,
-        ).model_dump(mode="python")
-        guardrail_plan["query_controls"]["filters"] = extract_query_filters(
-            user_message
-        )
-        return guardrail_plan
-
-    def _default_response_model(self, payload: dict[str, Any]) -> dict[str, str]:
-        return {"assistant_message": str(payload["fallback_message"])}
-
-    def _build_results_message(
-        self,
-        results: list[RecommendationResult],
-    ) -> str:
-        preview_limit = max(1, self._policy.max_recommendation_results)
-        preview_items = "\n".join(
-            f"{i}. {self._recommendation_display_name(item)}"
-            for i, item in enumerate(results[:preview_limit], start=1)
-        )
-        return (
-            f"I found {len(results)} grounded option(s) that fit what you asked for. "
-            f"My top picks are:\n{preview_items}"
-        )
-
     def _recommendation_display_name(self, item: RecommendationResult) -> str:
         name = item.features.get("name")
         if isinstance(name, str):
@@ -475,6 +441,48 @@ class OrchestratorService:
             if normalized:
                 return normalized
         return item.item_id
+
+    def _assistant_message_or_fallback(
+        self,
+        final_ai_message: AIMessage | None,
+        fallback_message: str,
+    ) -> str:
+        if final_ai_message is None:
+            return fallback_message
+        content = final_ai_message.text.strip()
+        return content or fallback_message
+
+    def _messages_from_agent_result(
+        self,
+        agent_result: dict[str, Any],
+    ) -> list[BaseMessage]:
+        raw_messages = agent_result.get("messages")
+        if not isinstance(raw_messages, list):
+            return []
+        return [message for message in raw_messages if isinstance(message, BaseMessage)]
+
+    def _last_final_ai_message(
+        self,
+        messages: Sequence[BaseMessage],
+    ) -> AIMessage | None:
+        for message in reversed(messages):
+            if not isinstance(message, AIMessage):
+                continue
+            if message.tool_calls:
+                continue
+            return message
+        return None
+
+    def _last_recommendation_tool_message(
+        self,
+        agent_result: dict[str, Any],
+    ) -> ToolMessage | None:
+        for message in reversed(self._messages_from_agent_result(agent_result)):
+            if not isinstance(message, ToolMessage):
+                continue
+            if message.name == "recommendation_query":
+                return message
+        return None
 
     def _clarification_response(
         self,

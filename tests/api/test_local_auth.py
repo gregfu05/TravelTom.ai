@@ -6,7 +6,6 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from app.api.v1.chat import get_orchestrator_service
 from app.core.config import get_settings
 from app.core.local_auth import (
     LOCAL_AUTH_ISSUER,
@@ -22,6 +21,7 @@ from app.db.session import get_db
 from app.main import app
 from app.schemas.orchestrator import OrchestratorResponse
 from app.services.chat_persistence import session_pk
+from app.services.travel_tom_agent import get_travel_tom_agent
 from fastapi.testclient import TestClient
 
 PASSWORD_FIELD = "pass" "word"
@@ -163,7 +163,7 @@ def _credentials_payload(*, email: str, submitted_value: str) -> dict[str, str]:
     }
 
 
-class _FakeOrchestratorService:
+class _FakeTravelTomAgent:
     def __init__(
         self,
         *,
@@ -173,7 +173,7 @@ class _FakeOrchestratorService:
         self.assistant_message = assistant_message
         self.state = state
 
-    def handle_message(
+    def handle_chat(
         self,
         *,
         user_message: str,
@@ -391,7 +391,7 @@ def test_chat_accepts_local_bearer_token_when_auth_is_enabled(monkeypatch) -> No
             session_id=token_id,
         ),
     )
-    fake_orchestrator = _FakeOrchestratorService(
+    fake_agent = _FakeTravelTomAgent(
         assistant_message="Here are a few ideas.",
         state={
             "state_version": "v1",
@@ -416,7 +416,7 @@ def test_chat_accepts_local_bearer_token_when_auth_is_enabled(monkeypatch) -> No
     )
 
     app.dependency_overrides[get_db] = _override_db(fake_db)
-    app.dependency_overrides[get_orchestrator_service] = lambda: fake_orchestrator
+    app.dependency_overrides[get_travel_tom_agent] = lambda: fake_agent
 
     try:
         client = TestClient(app)

@@ -2,10 +2,10 @@
 
 ## Responsibilities
 
-- Interpret user intent with an LLM planner.
-- Merge structured planner state updates into persisted `SessionState`.
+- Run `/api/v1/chat` through a real LangChain `create_agent` loop.
+- Supply LangChain `@tool` recommendation tools from the shared backend service layer.
 - Keep recommendation retrieval tool-first and deterministic.
-- Compose grounded assistant responses from validated state and tool outputs.
+- Normalize agent transcripts into grounded assistant responses and validated tool-backed recommendations.
 - Persist schema-valid state and recommendation snapshots via `/api/v1/chat`.
 
 ## Hard constraints
@@ -16,53 +16,73 @@
 
 ## Runtime modules
 
+- `apps/api/app/services/travel_tom_agent.py`
+  - Shared route-facing `TravelTomAgent` entrypoint for backend agent behavior.
+  - Owns LangChain-native `create_agent` construction for chat and direct recommendation paths.
+  - Registers the recommendation tool with LangChain's `@tool` decorator.
+  - Exposes `handle_chat` and `handle_recommendation_query` for `/chat` and
+    `/recommendations/query`.
 - `apps/api/app/services/orchestrator/service.py`
-  - LLM-first orchestration path in `OrchestratorService.handle_message`.
-  - Structured planner and response-composer chains.
-  - Unified response-composition entry point for clarification, invalid-request,
-    results, and empty-results outcomes.
-  - Deterministic recommendation tool execution with timeout and schema validation.
+  - Normalizes LangChain agent transcripts into `OrchestratorResponse`.
+  - Builds per-request state context, deterministic fallback queries, and
+    tool/error handling.
+  - Keeps deterministic extraction, query shaping, and safe fallback copy.
 - `apps/api/app/services/orchestrator/policies.py`
-  - Prompt-context builders and TravelTom conversational persona guidance.
-  - Deterministic fallback planner and branded safe-fallback copy helpers.
+  - Shared guardrails and deterministic fallback copy helpers.
 - `apps/api/app/services/orchestrator/extraction.py`
   - Deterministic guardrail extraction from raw user text.
-  - Structured state-patch merge helper for LLM planner output.
-- `apps/api/app/services/orchestrator/langchain_compat.py`
-  - LangChain compatibility shims and structured-payload normalization.
+- `apps/api/app/services/orchestrator/llm_provider.py`
+  - Builds LangChain-native OpenAI and Ollama chat models.
+  - Provides deterministic in-process models for disabled chat mode and direct
+    recommendation mode.
 
-## LLM-first orchestration flow
+## Chat agent flow
 
-1. Build planner prompt context from current `SessionState` + latest user message.
-2. Invoke planner model and validate output as `LLMOrchestrationPlan`.
-3. Apply validated `state_patch` to `SessionState`, then run deterministic extraction guardrails.
-4. If planner says clarify, return planner clarification message (or deterministic fallback copy).
-5. If planner says recommend/refine, map `query_controls` to `RecommendationQuery` and execute recommendation tool.
-6. Validate tool output as `RecommendationToolResponse`.
-7. Build response prompt context from validated state + tool results and invoke response composer for normal user-facing reply paths (`clarification`, `invalid_request`, `results`, `empty_results`).
-8. If response-composer output is invalid/unavailable, use deterministic fallback copy written in the same TravelTom persona.
+1. `/api/v1/chat` resolves the shared `TravelTomAgent` and calls `handle_chat`.
+2. `OrchestratorService` applies deterministic state extraction and builds a hidden
+   runtime context message from the validated `SessionState`.
+3. The shared chat agent, created with LangChain `create_agent`, receives:
+   - one chat model (`ChatOpenAI`, `ChatOllama`, or the deterministic disabled model)
+   - one `@tool` recommendation tool
+   - a bounded system prompt that allows only clarification or grounded tool use
+4. If the agent calls `recommendation_query`, the tool validates the request,
+   executes the recommender, validates `RecommendationToolResponse`, and returns a
+   runtime artifact describing success or failure.
+5. `OrchestratorService` reads the final agent transcript, ignores any invented
+   recommendation content, and emits `OrchestratorResponse` using only validated
+   tool artifacts plus deterministic fallback copy when needed.
+
+## Direct recommendation flow
+
+1. `/api/v1/recommendations/query` resolves the same shared `TravelTomAgent`.
+2. The route calls `handle_recommendation_query`.
+3. A separate deterministic `create_agent` instance forces a single
+   `recommendation_query` tool call from the serialized request payload.
+4. The route returns the validated `RecommendationResponse` extracted from the
+   tool artifact without model-authored recommendation text or session mutation.
 
 ## Deterministic guarantees
 
 - Ranking behavior and `ranking_version` (`heuristic-v1`) are unchanged.
-- Recommendation grounding is unchanged: the composer may only mention items present in validated tool output.
+- Recommendation grounding is unchanged: assistant copy may only mention items
+  present in validated tool output.
 - Tool timeout, invalid payload, and unexpected tool failures return explicit safe fallback messages.
 - Empty tool results are explicit and return a constraints-tightening message path.
 - Router contract and persistence behavior in `/api/v1/chat` are unchanged.
+- `/api/v1/recommendations/query` remains deterministic and does not depend on
+  conversational planning state.
 
 ## Failure handling
 
-- Planner failure or invalid planner payload:
-  - Fall back to deterministic guardrail planner.
-- Invalid structured state patch:
-  - Ignore patch and continue with prior state + deterministic extraction guardrails.
+- Chat-model or agent execution failure:
+  - Fall back to deterministic extraction plus direct deterministic tool execution
+    when the guardrail policy says a search should still run.
 - Tool timeout:
   - Return retry-safe deterministic message.
 - Invalid tool output:
   - Return deterministic invalid-payload fallback message.
 - Empty tool results:
-  - Route through response composition when available, with deterministic no-strong-match fallback if composition fails.
-- Invalid request after query-schema mapping:
-  - Route through response composition when available, with deterministic request-for-missing-details fallback if composition fails.
-- Response composer failure/invalid payload:
-  - Return deterministic fallback response text in the same TravelTom persona.
+  - Return deterministic no-strong-match guidance, even if the agent's final
+    message is blank or unsafe to trust.
+- Invalid tool-call arguments:
+  - Treat as an invalid request and ask for the missing trip details instead of guessing.

@@ -5,69 +5,66 @@
 - The assistant is a travel orchestrator, not a recommendation source.
 - Recommendations must come only from the recommendation tool response.
 - Tool input and output contracts are always schema-validated.
-- If any structured model output is invalid, fail safe and continue with deterministic fallback logic.
+- If the agent transcript is missing a safe grounded answer, fail safe and continue with deterministic fallback logic.
+- API routes enter through `TravelTomAgent`, which selects either `chat` or
+  `direct_recommendation` mode; both modes are built with LangChain `create_agent`.
 
-## Planner prompt (LLM-first decisioning)
+## Chat-agent system prompt
 
-Planner context is built from:
+The shared chat agent receives:
 
-- Current `SessionState` JSON (validated persisted state).
-- Latest user message.
-- Current max-results policy.
+- a bounded system prompt
+- one hidden runtime-context message containing validated `SessionState` JSON
+- the latest user message
+- one allowed tool: `recommendation_query`
 
-Planner must return structured JSON matching `LLMOrchestrationPlan`:
+The system prompt constrains the model to two behaviors only:
 
-- `intent`: `recommend|refine|clarify`
-- `should_call_recommendation_tool`: `bool`
-- `clarification_message`: required when not calling tool
-- `state_patch`: partial `SessionState` updates
-- `query_controls`: normalized `RecommendationQuery` controls
+- ask a short clarification question, or
+- call `recommendation_query` and then summarize only grounded tool results
 
-If planner output is invalid or planner invocation fails, orchestration falls back to deterministic guardrail planning.
+Hard instructions in the prompt:
 
-## Response-composer prompt (grounded copy)
+- `recommendation_query` is the only recommendation source
+- never invent items, prices, or availability
+- if the tool returns no results, say so plainly
+- if the user message is vague, ask only for the missing trip details
 
-Composer context is built from:
+## Direct recommendation prompt
 
-- Current `SessionState` JSON.
-- Latest user message.
-- Validated recommendation result list (or explicit `NO_RESULTS`).
-- Explicit deterministic fallback copy.
-- Explicit response outcome (`clarification`, `invalid_request`, `results`, `empty_results`).
+The direct recommendation agent uses a separate deterministic model and a system
+prompt that forces exactly one `recommendation_query` call from the serialized
+request payload. It does not author end-user recommendation text.
 
-Composer persona:
+## Tool-grounding behavior
 
-- TravelTom sounds like a warm expert travel assistant.
-- Replies should be natural, concise, and proactive about missing details.
-- The tone should stay grounded and consistent even when no recommendation results exist.
+The recommendation LangChain tool is defined with `@tool` and returns:
 
-Composer must return:
+- human-readable tool content for the model to ground on
+- a schema-validated runtime artifact consumed by backend post-processing
 
-```json
-{"assistant_message": "string"}
-```
+The runtime artifact records:
 
-If composer output is invalid or composer invocation fails, orchestration returns the provided deterministic fallback message.
-
-Normal response-composed paths:
-
-- Clarification prompts after planner says not to call the tool.
-- Invalid-request guidance when `RecommendationQuery` validation fails.
-- Grounded results summaries from validated recommendation items.
-- Empty-results guidance when the tool returns no strong matches.
+- `status`: `success|timeout|invalid_payload|failure`
+- validated `RecommendationToolResponse` on success
+- normalized error codes/messages on failure
 
 ## Deterministic guardrails kept in runtime
 
-- Structured state patch merge validates against `SessionState`.
 - Deterministic extraction still enriches missed constraints from user text.
 - Query filter guardrail normalizes item types to `destination|hotel|flight`.
 - Recommendation ranking version stays deterministic (`heuristic-v1`).
+- `OrchestratorService` normalizes the final transcript and only trusts validated
+  tool artifacts for recommendation data.
+- Direct recommendation mode bypasses conversational composition and returns only
+  schema-validated tool output.
 
 ## Fallback response requirements
 
-- Planner failure/invalid output:
-  - Use deterministic fallback planner.
-- Invalid request after schema mapping:
+- Chat-model or agent execution failure:
+  - Use deterministic extraction plus direct deterministic tool execution when
+    the fallback guardrail says a search is still appropriate.
+- Invalid request after tool-call validation:
   - Ask for the missing travel details in conversational branded copy.
 - Tool timeout:
   - Return retry-safe deterministic prompt.
@@ -75,12 +72,13 @@ Normal response-composed paths:
   - Return safe deterministic invalid-payload prompt.
 - Empty tool results:
   - Return explicit no-strong-match message and ask for tighter constraints.
-- Composer failure/invalid output:
-  - Use deterministic fallback copy written in the same persona as the composer prompt.
+- Missing or blank final agent message:
+  - Use deterministic fallback copy based on the validated tool artifact.
 
-Hard grounding rules for composed replies:
+Hard grounding rules for replies:
 
 - Never invent recommendation items, prices, availability, or destination facts.
 - Mention recommendations only if they appear in validated `RecommendationToolResponse.results`.
 - If there are no results, do not imply that hidden or unavailable options exist.
-- Tool timeout, invalid tool payload, and unexpected tool failures remain deterministic and do not depend on the response composer.
+- Tool timeout, invalid tool payload, and unexpected tool failures remain deterministic and do not depend on model-authored recovery text.
+- The direct recommendation endpoint remains tool-only and cannot generate model-authored recommendations.

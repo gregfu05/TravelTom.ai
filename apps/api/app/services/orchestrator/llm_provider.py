@@ -1,51 +1,63 @@
-"""LLM provider bindings for orchestrator planning and response composition."""
+"""LangChain-native chat model construction for TravelTom agents."""
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal, Sequence
 
-from app.schemas.orchestrator import OrchestratorLLMModels
-from app.services.orchestrator.providers import (
-    OllamaStructuredClient,
-    OpenAIStructuredClient,
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.runnables import Runnable
+from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
+
+from app.schemas.state import SessionState
+from app.schemas.tools.recommendations import (
+    RecommendationQuery,
+    RecommendationResult,
+    RecommendationToolResponse,
+)
+from app.services.orchestrator.extraction import extract_query_filters
+from app.services.orchestrator.policies import (
+    build_clarification_message,
+    build_empty_results_message,
+    build_tool_failure_message,
+    build_tool_timeout_message,
+    decide_next_action,
+)
+from app.services.orchestrator.service import (
+    extract_direct_query,
+    extract_runtime_state,
 )
 
 ProviderName = Literal["disabled", "ollama", "openai"]
 
 
-def build_orchestrator_llm_models(
+def build_chat_model(
     *,
     provider: ProviderName,
     ollama_base_url: str,
-    ollama_planning_model: str,
-    ollama_response_model: str,
+    ollama_chat_model: str,
     llm_timeout_seconds: float,
     ollama_temperature: float,
     openai_base_url: str,
     openai_api_key: str | None,
-    openai_planning_model: str,
-    openai_response_model: str,
+    openai_chat_model: str,
     openai_temperature: float,
-) -> OrchestratorLLMModels:
-    """Create planner/composer callables for the configured provider."""
+    max_results: int,
+) -> BaseChatModel:
+    """Create the configured chat model for the LangChain chat agent."""
 
     if provider == "disabled":
-        return OrchestratorLLMModels(
-            planning_model=None,
-            response_model=None,
-        )
+        return DeterministicTravelTomChatModel(max_results=max_results)
 
     if provider == "ollama":
-        ollama_client = OllamaStructuredClient(
+        return ChatOllama(
+            model=ollama_chat_model,
             base_url=ollama_base_url,
-            planning_model_name=ollama_planning_model,
-            response_model_name=ollama_response_model,
-            timeout_seconds=llm_timeout_seconds,
             temperature=ollama_temperature,
-        )
-        return OrchestratorLLMModels(
-            planning_model=ollama_client.plan,
-            response_model=ollama_client.compose,
+            num_predict=512,
+            validate_model_on_init=False,
         )
 
     if provider == "openai":
@@ -55,18 +67,270 @@ def build_orchestrator_llm_models(
                 "OPENAI_API_KEY (or ORCHESTRATOR_OPENAI_API_KEY) is required "
                 "when ORCHESTRATOR_LLM_PROVIDER=openai"
             )
-
-        openai_client = OpenAIStructuredClient(
-            base_url=openai_base_url,
+        return ChatOpenAI(
+            model=openai_chat_model,
             api_key=api_key,
-            planning_model_name=openai_planning_model,
-            response_model_name=openai_response_model,
-            timeout_seconds=llm_timeout_seconds,
+            base_url=openai_base_url,
             temperature=openai_temperature,
-        )
-        return OrchestratorLLMModels(
-            planning_model=openai_client.plan,
-            response_model=openai_client.compose,
+            timeout=llm_timeout_seconds,
+            max_retries=1,
         )
 
     raise ValueError(f"Unsupported orchestrator LLM provider: {provider}")
+
+
+def build_direct_recommendation_model() -> BaseChatModel:
+    """Create the deterministic model used by direct recommendation agents."""
+
+    return DeterministicRecommendationAgentModel()
+
+
+class _BoundDeterministicToolModel(Runnable):
+    """Minimal runnable wrapper used by deterministic agent test models."""
+
+    def __init__(self, model: "_DeterministicToolCallingModel") -> None:
+        self._model = model
+
+    def invoke(self, input: Any, config: Any | None = None, **kwargs: Any) -> AIMessage:
+        del config
+        if isinstance(input, list):
+            messages = input
+        else:
+            messages = input.to_messages()
+        return self._model.invoke(messages, **kwargs)
+
+
+class _DeterministicToolCallingModel(BaseChatModel):
+    """Base model for deterministic create_agent-backed TravelTom flows."""
+
+    def bind_tools(
+        self,
+        tools: Sequence[Any],
+        *,
+        tool_choice: str | None = None,
+        **kwargs: Any,
+    ) -> Runnable:
+        del tools
+        del tool_choice
+        del kwargs
+        return _BoundDeterministicToolModel(self)
+
+    @property
+    def _llm_type(self) -> str:
+        return "traveltom-deterministic"
+
+
+class DeterministicTravelTomChatModel(_DeterministicToolCallingModel):
+    """Fallback chat model that still runs through LangChain create_agent."""
+
+    max_results: int = 5
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: Any | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        del stop
+        del run_manager
+        del kwargs
+
+        tool_message = self._last_tool_message(messages)
+        session_state = extract_runtime_state(messages) or SessionState(
+            session_id="unknown-session"
+        )
+        if tool_message is not None:
+            response = self._response_from_tool_message(
+                tool_message=tool_message,
+                session_state=session_state,
+            )
+            return ChatResult(generations=[ChatGeneration(message=response)])
+
+        user_message = self._latest_user_message(messages)
+        decision = decide_next_action(user_message, session_state)
+        if not decision.should_call_recommendation_tool:
+            response = AIMessage(content=build_clarification_message(session_state))
+            return ChatResult(generations=[ChatGeneration(message=response)])
+
+        tool_call = {
+            "name": "recommendation_query",
+            "args": self._build_tool_args(
+                session_state=session_state, user_message=user_message
+            ),
+            "id": "recommendation_query_call",
+            "type": "tool_call",
+        }
+        response = AIMessage(content="", tool_calls=[tool_call])
+        return ChatResult(generations=[ChatGeneration(message=response)])
+
+    def _response_from_tool_message(
+        self,
+        *,
+        tool_message: ToolMessage,
+        session_state: SessionState,
+    ) -> AIMessage:
+        artifact = getattr(tool_message, "artifact", None) or {}
+        status = artifact.get("status")
+        if status == "timeout":
+            return AIMessage(content=build_tool_timeout_message())
+        if status == "invalid_payload":
+            return AIMessage(
+                content=(
+                    "I received an invalid recommendation payload, so I stopped "
+                    "rather than guess."
+                )
+            )
+        if status != "success":
+            return AIMessage(content=build_tool_failure_message())
+
+        response_payload = artifact.get("response") or {}
+        try:
+            response = RecommendationToolResponse.model_validate(response_payload)
+        except Exception:
+            return AIMessage(content=build_tool_failure_message())
+
+        if not response.results:
+            return AIMessage(content=build_empty_results_message(session_state))
+
+        return AIMessage(
+            content=_build_results_message(response.results, self.max_results)
+        )
+
+    def _build_tool_args(
+        self,
+        *,
+        session_state: SessionState,
+        user_message: str,
+    ) -> dict[str, Any]:
+        constraints: dict[str, Any] = {}
+        if session_state.constraints.origin:
+            constraints["origin"] = session_state.constraints.origin
+        if session_state.constraints.destination:
+            constraints["destination"] = session_state.constraints.destination
+        if session_state.constraints.dates:
+            constraints["dates"] = session_state.constraints.dates.model_dump(
+                mode="json"
+            )
+        if session_state.constraints.budget:
+            constraints["budget"] = session_state.constraints.budget.model_dump(
+                mode="json"
+            )
+        if session_state.constraints.party_size:
+            constraints["party_size"] = (
+                session_state.constraints.party_size.model_dump()
+            )
+
+        filters = extract_query_filters(user_message)
+        payload = RecommendationQuery(
+            session_id=session_state.session_id,
+            query=user_message,
+            constraints=constraints,
+            filters=filters,
+            max_results=self.max_results,
+            ranking_version="heuristic-v1",
+        )
+        return payload.model_dump(mode="json")
+
+    def _latest_user_message(self, messages: Sequence[BaseMessage]) -> str:
+        for message in reversed(messages):
+            if getattr(message, "type", None) != "human":
+                continue
+            content = getattr(message, "content", "")
+            if isinstance(content, str):
+                return content
+        return ""
+
+    def _last_tool_message(self, messages: Sequence[BaseMessage]) -> ToolMessage | None:
+        for message in reversed(messages):
+            if (
+                isinstance(message, ToolMessage)
+                and message.name == "recommendation_query"
+            ):
+                return message
+        return None
+
+
+class DeterministicRecommendationAgentModel(_DeterministicToolCallingModel):
+    """Model that forces a single deterministic recommendation tool invocation."""
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: Any | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        del stop
+        del run_manager
+        del kwargs
+
+        tool_message = self._last_tool_message(messages)
+        if tool_message is not None:
+            return ChatResult(
+                generations=[ChatGeneration(message=AIMessage(content="done"))]
+            )
+
+        request = extract_direct_query(messages)
+        if request is None:
+            return ChatResult(
+                generations=[
+                    ChatGeneration(
+                        message=AIMessage(
+                            content="",
+                            tool_calls=[
+                                {
+                                    "name": "recommendation_query",
+                                    "args": {},
+                                    "id": "recommendation_query_call",
+                                    "type": "tool_call",
+                                }
+                            ],
+                        )
+                    )
+                ]
+            )
+
+        tool_call = {
+            "name": "recommendation_query",
+            "args": request.model_dump(mode="json"),
+            "id": "recommendation_query_call",
+            "type": "tool_call",
+        }
+        return ChatResult(
+            generations=[
+                ChatGeneration(message=AIMessage(content="", tool_calls=[tool_call]))
+            ]
+        )
+
+    def _last_tool_message(self, messages: Sequence[BaseMessage]) -> ToolMessage | None:
+        for message in reversed(messages):
+            if (
+                isinstance(message, ToolMessage)
+                and message.name == "recommendation_query"
+            ):
+                return message
+        return None
+
+
+def _build_results_message(
+    results: list[RecommendationResult],
+    max_results: int,
+) -> str:
+    preview_items = "\n".join(
+        f"{i}. {_recommendation_display_name(item)}"
+        for i, item in enumerate(results[: max(1, max_results)], start=1)
+    )
+    return (
+        f"I found {len(results)} grounded option(s) that fit what you asked for. "
+        f"My top picks are:\n{preview_items}"
+    )
+
+
+def _recommendation_display_name(item: RecommendationResult) -> str:
+    name = item.features.get("name")
+    if isinstance(name, str):
+        normalized = name.strip()
+        if normalized:
+            return normalized
+    return item.item_id

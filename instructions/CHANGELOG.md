@@ -2,6 +2,41 @@
 
 ## 2026-03-12
 
+- Reworked the backend agent runtime around LangChain-native `create_agent` and
+  `@tool`:
+  - `apps/api/app/services/travel_tom_agent.py` now builds two real LangChain
+    agents:
+    - a bounded chat agent for `/api/v1/chat`
+    - a deterministic direct recommendation agent for
+      `/api/v1/recommendations/query`
+  - Replaced the old compatibility-layer runtime path with LangChain-native tool
+    registration and transcript normalization.
+  - `apps/api/app/services/orchestrator/llm_provider.py` now builds
+    `ChatOpenAI` / `ChatOllama` models and deterministic in-process models for
+    disabled/direct modes.
+  - `apps/api/app/services/orchestrator/service.py` now normalizes agent
+    transcripts and keeps deterministic fallback behavior for model failure,
+    invalid tool calls, tool timeout, invalid tool payload, tool failure, and
+    empty results.
+  - Added `RecommendationToolRuntimePayload` to
+    `apps/api/app/schemas/orchestrator.py` for schema-valid tool artifacts.
+  - Updated orchestrator/provider tests for the new LangChain-native contract.
+- Added runtime dependencies for the new backend path:
+  - `langchain`
+  - `langchain-openai`
+  - `langchain-ollama`
+- Refactored backend route wiring to use a shared `TravelTomAgent` entrypoint:
+  - Added `apps/api/app/services/travel_tom_agent.py` and
+    `apps/api/app/schemas/agent.py`.
+  - `/api/v1/chat` now resolves `TravelTomAgent.handle_chat(...)` instead of
+    injecting `OrchestratorService` directly.
+  - `/api/v1/recommendations/query` now resolves
+    `TravelTomAgent.handle_recommendation_query(...)` instead of injecting the raw
+    recommendation tool.
+  - Moved LangChain-compatible recommendation tool registration/invocation to the
+    shared agent layer while keeping recommender behavior deterministic.
+  - Updated backend/orchestrator docs and route tests for the new dependency
+    boundary.
 - Updated orchestrator docs to reflect the broader response-composition path:
   - `04-llm-orchestrator/orchestrator-overview.md` now documents composed
     clarification and invalid-request replies alongside results and empty-results.

@@ -1,14 +1,11 @@
-"""Chat endpoint with orchestrator execution and session persistence."""
+"""Chat endpoint with TravelTom agent execution and session persistence."""
 
 from __future__ import annotations
-
-from functools import lru_cache
 
 from fastapi import APIRouter, Depends
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.core.security import (
     enforce_chat_rate_limit,
@@ -24,36 +21,9 @@ from app.services.chat_persistence import (
     session_pk,
 )
 from app.services.chat_uow import ChatUnitOfWork
-from app.services.orchestrator.llm_provider import build_orchestrator_llm_models
-from app.services.orchestrator.service import OrchestratorService
-from traveltom.recommendor.recommendor_v1 import recommendation_tool
+from app.services.travel_tom_agent import TravelTomAgent, get_travel_tom_agent
 
 router = APIRouter()
-
-
-@lru_cache()
-def get_orchestrator_service() -> OrchestratorService:
-    """Return a cached orchestrator service instance."""
-
-    settings = get_settings()
-    llm_models = build_orchestrator_llm_models(
-        provider=settings.orchestrator_llm_provider,
-        ollama_base_url=settings.ollama_base_url,
-        ollama_planning_model=settings.ollama_planning_model,
-        ollama_response_model=settings.ollama_response_model,
-        llm_timeout_seconds=settings.orchestrator_llm_timeout_seconds,
-        ollama_temperature=settings.ollama_temperature,
-        openai_base_url=settings.openai_base_url,
-        openai_api_key=settings.openai_api_key,
-        openai_planning_model=settings.openai_planning_model,
-        openai_response_model=settings.openai_response_model,
-        openai_temperature=settings.openai_temperature,
-    )
-    return OrchestratorService(
-        recommendation_tool=recommendation_tool,
-        planning_model=llm_models.planning_model,
-        response_model=llm_models.response_model,
-    )
 
 
 def get_chat_uow(db: AsyncSession = Depends(get_db)) -> ChatUnitOfWork:
@@ -68,7 +38,7 @@ async def chat(
     _: None = Depends(enforce_chat_rate_limit),
     principal: AuthenticatedPrincipal | None = Depends(require_authenticated_principal),
     uow: ChatUnitOfWork = Depends(get_chat_uow),
-    orchestrator: OrchestratorService = Depends(get_orchestrator_service),
+    agent: TravelTomAgent = Depends(get_travel_tom_agent),
 ) -> ChatResponse:
     """Handle a chat message and persist session/message/recommendation records."""
 
@@ -100,7 +70,7 @@ async def chat(
                 user_id=state_user_id,
             )
 
-            orchestration = orchestrator.handle_message(
+            orchestration = agent.handle_chat(
                 user_message=request.message,
                 session_state=state,
             )

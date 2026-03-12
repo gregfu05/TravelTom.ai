@@ -173,8 +173,16 @@ Response:
 
 Implementation notes (current):
 
-- Endpoint lives in `apps/api/app/api/v1/chat.py` (thin router, orchestration + persistence wiring only).
-- Orchestrator runtime is LLM-first for intent interpretation, clarification strategy, and response composition.
+- Endpoint lives in `apps/api/app/api/v1/chat.py` (thin router, agent invocation + persistence wiring only).
+- Router resolves `apps/api/app/services/travel_tom_agent.py:get_travel_tom_agent`
+  and calls `TravelTomAgent.handle_chat(...)`.
+- Orchestrator runtime is a real LangChain `create_agent` chat loop with one
+  shared `@tool` recommendation tool.
+- `TravelTomAgent` builds the chat agent with LangChain-native OpenAI or Ollama
+  chat models, or a deterministic in-process model when provider mode is
+  `disabled`.
+- `OrchestratorService` converts the final agent transcript into the normalized
+  backend response and ignores model-invented recommendation content.
 - Recommendation retrieval remains tool-first and deterministic; router never returns model-invented recommendation items.
 - Request/response Pydantic schemas live in `apps/api/app/schemas/api/chat.py` (`ChatRequest`, `ChatResponse`, `ChatRecommendation`, `ClientContext`).
 - Chat transaction boundary lives in `apps/api/app/services/chat_uow.py`.
@@ -191,7 +199,7 @@ Implementation notes (current):
   - one `messages` row for the assistant message
   - one `recommendations` snapshot row (empty `results` is valid in placeholder mode)
 - Tool and model failure behavior:
-  - planner/model output failures fall back to deterministic orchestration guards
+  - chat-model or agent failures fall back to deterministic orchestration guards
   - tool timeout/invalid payload/empty results return explicit safe assistant copy
 
 ### POST /api/v1/recommendations/query
@@ -245,9 +253,16 @@ Response:
 Notes:
 - `max_results` default is 20.
 - `max_results` hard cap is 50 (debug and evaluation use only).
-- Endpoint lives in `apps/api/app/api/v1/recommendations.py` (thin router, DI + HTTP mapping only).
+- Endpoint lives in `apps/api/app/api/v1/recommendations.py` (thin router, shared agent DI + HTTP mapping only).
+- Router resolves `apps/api/app/services/travel_tom_agent.py:get_travel_tom_agent`
+  and calls `TravelTomAgent.handle_recommendation_query(...)`.
 - API request/response schemas live in `apps/api/app/schemas/api/recommendations.py`.
-- Recommendation tool execution/validation lives in `apps/api/app/services/recommendation_query.py`.
+- Deterministic recommendation tool registration/invocation lives in
+  `apps/api/app/services/travel_tom_agent.py` and uses LangChain `@tool`.
+- The endpoint uses a separate deterministic `create_agent` configuration that
+  forces one validated recommendation tool call and returns only tool-backed results.
+- Recommendation tool error/normalization helpers live in
+  `apps/api/app/services/recommendation_query.py`.
 - Service validates tool payloads using `app/schemas/tools/recommendations.py` contracts.
 - In placeholder mode, results may be an empty list while recommender integration is pending.
 
