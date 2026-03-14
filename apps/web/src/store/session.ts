@@ -24,11 +24,13 @@ interface SessionState {
   latestRecommendations: SessionRecommendation[];
   isSending: boolean;
   errorMessage: string | null;
+  authToken: string | null;
   setSessionId: (sessionId: string) => void;
   addMessage: (message: SessionMessage) => void;
   setLatestRecommendations: (items: SessionRecommendation[]) => void;
   setIsSending: (value: boolean) => void;
   setErrorMessage: (value: string | null) => void;
+  setAuthToken: (token: string | null) => void;
   resetConversation: () => void;
 }
 
@@ -46,6 +48,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   latestRecommendations: [],
   isSending: false,
   errorMessage: null,
+  authToken: null,
   setSessionId: (sessionId) => {
     set({ sessionId });
   },
@@ -61,6 +64,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   setErrorMessage: (value) => {
     set({ errorMessage: value });
   },
+  setAuthToken: (token) => set({ authToken: token }),
   resetConversation: () => {
     set({
       sessionId: createSessionId(),
@@ -68,6 +72,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       latestRecommendations: [],
       isSending: false,
       errorMessage: null,
+      authToken: null,
     });
   },
 }));
