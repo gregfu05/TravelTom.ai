@@ -37,6 +37,10 @@ const chatResponseSchema = z.object({
   state: z.record(z.string(), z.unknown()).optional(),
 });
 
+const authResponseSchema = z.object({
+  token: z.string(),
+});
+
 type ApiErrorPayload = z.infer<typeof apiErrorSchema>;
 
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
@@ -177,5 +181,27 @@ export const apiClient = {
     );
 
     return mapChatResponse(response);
+  },
+
+  async login(input: { email: string; password: string }): Promise<{ token: string }> {
+    return request(
+      "/auth/login",
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+      authResponseSchema,
+    );
+  },
+
+  async signup(input: { email: string; password: string }): Promise<void> {
+    await request(
+      "/auth/signup",
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+      z.void(),
+    );
   },
 };
