@@ -61,7 +61,10 @@ Implementation notes (current):
 - Endpoint lives in `apps/api/app/api/v1/auth.py`.
 - API request/response schemas live in `apps/api/app/schemas/api/auth.py`.
 - Shared auth runtime schemas live in `apps/api/app/schemas/auth.py`.
-- Local account creation and token issuance live in `apps/api/app/services/auth.py`.
+- Local account creation and credential verification live in `apps/api/app/services/auth.py`
+  via an app-owned `fastapi-users` adapter.
+- TravelTom token issuance remains app-owned so the public response contract stays
+  unchanged.
 - Local auth-session persistence lives in `apps/api/app/repositories/auth_sessions.py`.
 
 ### POST /api/v1/auth/login
@@ -90,7 +93,7 @@ Auth:
 - Accepts a TravelTom-issued local bearer token.
 - Local tokens must reference an active persisted auth session and may be rejected
   after logout, absolute expiry, or idle timeout.
-- Azure AD B2C bearer-token support remains deferred for deployment work.
+- Azure AD B2C bearer validation remains available through the security dependency.
 
 Response:
 

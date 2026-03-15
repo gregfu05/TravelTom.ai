@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "../api/client";
-import "./SignupPage.css";
+import "../styles/auth.css";
 
 export function SignupPage() {
   const [email, setEmail] = useState("");

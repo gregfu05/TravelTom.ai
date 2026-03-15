@@ -22,7 +22,7 @@ Services:
 - `AUTH_TENANT_NAME` (reserved for later Azure AD B2C deployment work)
 - `AUTH_POLICY_NAME` (reserved for later Azure AD B2C deployment work)
 - `AUTH_REQUIRED_SCOPES` (default `user_impersonation`, reserved for later provider integration)
-- `LOCAL_AUTH_TOKEN_SECRET` (required for local signup/login and local bearer validation)
+- `LOCAL_AUTH_TOKEN_SECRET` (required for local signup/login and local bearer validation; use at least 32 random bytes)
 - `LOCAL_AUTH_TOKEN_TTL_SECONDS` (default `604800`)
 - `LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS` (default `43200`)
 - `CHAT_RATE_LIMIT` (default `30/minute`)
@@ -66,13 +66,16 @@ To enable TravelTom local account auth locally:
 1. Set `LOCAL_AUTH_TOKEN_SECRET` in `.env`.
 2. Optionally override `LOCAL_AUTH_TOKEN_TTL_SECONDS`.
 3. Optionally override `LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS`.
-4. Run the latest API migrations so the `users.password_hash` and `auth_sessions`
+4. Install backend dependencies so `fastapi-users` and its password helpers are available.
+5. Run the latest API migrations so the existing `users.password_hash` and `auth_sessions`
    tables exist.
-5. Restart the API process so cached auth dependencies reload.
+6. Restart the API process so cached auth dependencies reload.
 
 Local auth lifecycle notes:
 
 - The current backend build supports local email/password auth end-to-end.
+- Local credential storage/verification is library-backed, but logout and idle timeout
+  still depend on persisted `auth_sessions`.
 - `POST /api/v1/auth/logout` revokes the current local bearer token.
 - Local bearer tokens expire by absolute TTL and by inactivity timeout.
 - Azure AD B2C deployment/provider wiring is deferred until later deployment work.

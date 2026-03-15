@@ -1,28 +1,19 @@
-"""Local email/password authentication helpers."""
+"""Local auth helpers for email normalization and TravelTom-issued JWTs."""
 
 from __future__ import annotations
 
-import base64
-import binascii
-import hashlib
-import hmac
-import json
-import os
 import re
-import secrets
-import time
 import uuid
-from typing import Any
+
+import jwt
+from fastapi_users.password import PasswordHelper
+from jwt import ExpiredSignatureError, InvalidTokenError
 
 from app.schemas.auth import LocalAccessTokenClaims
 
 LOCAL_AUTH_ISSUER = "traveltom-local"
-_SCRYPT_N = 2**14
-_SCRYPT_R = 8
-_SCRYPT_P = 1
-_SCRYPT_DKLEN = 64
-_SCRYPT_SALT_BYTES = 16
 _EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_PASSWORD_HELPER = PasswordHelper()
 
 
 class LocalAuthError(ValueError):
@@ -50,53 +41,16 @@ def is_valid_email(email: str) -> bool:
 
 
 def hash_password(password: str) -> str:
-    """Hash a password with ``scrypt`` and return a serialized digest."""
+    """Hash a password using the configured library-backed password helper."""
 
-    salt = os.urandom(_SCRYPT_SALT_BYTES)
-    digest = hashlib.scrypt(
-        password.encode("utf-8"),
-        salt=salt,
-        n=_SCRYPT_N,
-        r=_SCRYPT_R,
-        p=_SCRYPT_P,
-        dklen=_SCRYPT_DKLEN,
-    )
-    return (
-        "scrypt"
-        f"${_SCRYPT_N}"
-        f"${_SCRYPT_R}"
-        f"${_SCRYPT_P}"
-        f"${base64.urlsafe_b64encode(salt).decode('ascii')}"
-        f"${base64.urlsafe_b64encode(digest).decode('ascii')}"
-    )
+    return _PASSWORD_HELPER.hash(password)
 
 
 def verify_password(password: str, stored_hash: str) -> bool:
-    """Return whether the password matches the serialized ``scrypt`` hash."""
+    """Return whether the password matches the stored library-managed hash."""
 
-    try:
-        algorithm, n, r, p, salt_b64, digest_b64 = stored_hash.split("$", maxsplit=5)
-    except ValueError:
-        return False
-
-    if algorithm != "scrypt":
-        return False
-
-    try:
-        salt = base64.urlsafe_b64decode(_with_padding(salt_b64))
-        expected_digest = base64.urlsafe_b64decode(_with_padding(digest_b64))
-        computed_digest = hashlib.scrypt(
-            password.encode("utf-8"),
-            salt=salt,
-            n=int(n),
-            r=int(r),
-            p=int(p),
-            dklen=len(expected_digest),
-        )
-    except (ValueError, TypeError, binascii.Error):
-        return False
-
-    return secrets.compare_digest(computed_digest, expected_digest)
+    verified, _ = _PASSWORD_HELPER.verify_and_update(password, stored_hash)
+    return verified
 
 
 def create_access_token(
@@ -110,7 +64,7 @@ def create_access_token(
 ) -> str:
     """Return a signed bearer token for a local-authenticated user."""
 
-    current_issued_at = issued_at if issued_at is not None else int(time.time())
+    current_issued_at = issued_at if issued_at is not None else _utc_timestamp()
     claims = LocalAccessTokenClaims(
         jti=token_id or str(uuid.uuid4()),
         sub=subject,
@@ -119,73 +73,39 @@ def create_access_token(
         iat=current_issued_at,
         exp=current_issued_at + ttl_seconds,
     )
-    header_segment = _urlsafe_json({"alg": "HS256", "typ": "JWT"})
-    payload_segment = _urlsafe_json(claims.model_dump(mode="json"))
-    signing_input = f"{header_segment}.{payload_segment}"
-    signature = hmac.new(
-        secret.encode("utf-8"),
-        signing_input.encode("ascii"),
-        hashlib.sha256,
-    ).digest()
-    return f"{signing_input}.{_urlsafe_b64encode(signature)}"
+    return jwt.encode(
+        claims.model_dump(mode="json"),
+        secret,
+        algorithm="HS256",
+    )
 
 
 def decode_access_token(*, token: str, secret: str) -> LocalAccessTokenClaims:
     """Validate and decode a local bearer token."""
 
     try:
-        _, payload_segment, signature_segment = token.split(".", maxsplit=2)
-    except ValueError as exc:
+        unverified_payload = jwt.decode(
+            token,
+            options={"verify_signature": False, "verify_exp": False},
+        )
+    except InvalidTokenError as exc:
         raise InvalidLocalTokenError("Invalid bearer token") from exc
 
-    payload = _decode_segment(payload_segment)
-    issuer = payload.get("iss")
+    issuer = unverified_payload.get("iss")
     if issuer != LOCAL_AUTH_ISSUER:
         raise NotLocalTokenError("Bearer token issuer is not local auth")
 
-    signing_input = ".".join(token.split(".")[:2])
-    expected_signature = hmac.new(
-        secret.encode("utf-8"),
-        signing_input.encode("ascii"),
-        hashlib.sha256,
-    ).digest()
-    actual_signature = _decode_b64(signature_segment)
-    if not secrets.compare_digest(expected_signature, actual_signature):
-        raise InvalidLocalTokenError("Invalid bearer token")
-
     try:
+        payload = jwt.decode(token, secret, algorithms=["HS256"])
         claims = LocalAccessTokenClaims.model_validate(payload)
-    except Exception as exc:  # pragma: no cover - pydantic error shape is not important
+    except ExpiredSignatureError as exc:
+        raise InvalidLocalTokenError("Expired bearer token") from exc
+    except (InvalidTokenError, ValueError) as exc:
         raise InvalidLocalTokenError("Invalid bearer token") from exc
-
-    if claims.exp <= int(time.time()):
-        raise InvalidLocalTokenError("Expired bearer token")
     return claims
 
 
-def _urlsafe_json(value: dict[str, Any]) -> str:
-    return _urlsafe_b64encode(
-        json.dumps(value, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    )
+def _utc_timestamp() -> int:
+    from time import time
 
-
-def _urlsafe_b64encode(value: bytes) -> str:
-    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
-
-
-def _decode_segment(segment: str) -> dict[str, Any]:
-    try:
-        return json.loads(_decode_b64(segment))
-    except (json.JSONDecodeError, UnicodeDecodeError, binascii.Error) as exc:
-        raise InvalidLocalTokenError("Invalid bearer token") from exc
-
-
-def _decode_b64(value: str) -> bytes:
-    try:
-        return base64.urlsafe_b64decode(_with_padding(value))
-    except binascii.Error as exc:
-        raise InvalidLocalTokenError("Invalid bearer token") from exc
-
-
-def _with_padding(value: str) -> str:
-    return value + "=" * (-len(value) % 4)
+    return int(time())

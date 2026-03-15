@@ -19,6 +19,12 @@ class UserRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def get_by_id(self, user_id: uuid.UUID) -> User | None:
+        """Return a user row by primary key."""
+
+        result = await self._session.execute(select(User).where(User.id == user_id))
+        return result.scalar_one_or_none()
+
     async def get_by_email(self, email: str) -> User | None:
         """Return a user row by normalized email address."""
 

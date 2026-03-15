@@ -32,6 +32,7 @@ apps/api/
       users.py
     services/
       auth.py
+      local_user_manager.py
       travel_tom_agent.py
       orchestrator/
       recommender/
@@ -104,8 +105,12 @@ apps/api/
   - Owns lookup, idle-timeout extension, and revocation of local auth sessions.
 - Auth service (`app/services/auth.py`):
   - Owns local email/password signup, login, logout, and current-user resolution.
+  - Uses an app-owned `fastapi-users` adapter for local user creation and password verification.
   - Issues TravelTom local bearer tokens from configured runtime secrets.
   - Creates persisted local auth sessions before token issuance.
+- Local user manager (`app/services/local_user_manager.py`):
+  - Adapts `fastapi-users` to the existing `users` table without adopting library routers.
+  - Keeps library-specific user/password logic behind app-owned services.
 - Chat unit of work (`app/services/chat_uow.py`):
   - Owns chat transaction lifecycle (`flush`/`commit`/`rollback`).
   - Wires the chat and user repositories to a request-scoped DB session.
@@ -117,8 +122,7 @@ apps/api/
   - Own structured error responses and per-request trace IDs.
 - Security helpers (`app/core/security.py`):
   - Own local bearer-token verification, auth-session timeout checks, logout-aware
-    token rejection, and chat rate limiting.
-  - Deployment/provider auth integration remains a later concern.
+    token rejection, Azure bearer fallback, and chat rate limiting.
 - Shared schema modules (`app/schemas/*.py`):
   - Own cross-module Pydantic contracts used by multiple runtime layers.
   - Keep auth principals, token claims, state payloads, and orchestrator contracts out of `core/` and `services/` modules.

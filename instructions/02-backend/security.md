@@ -21,7 +21,9 @@
 
 ## Implemented backend path
 
-- Local bearer-token signing/verification is implemented in-app for TravelTom accounts.
+- Local email/password account creation and password verification are library-backed
+  through `fastapi-users` and `pwdlib`.
+- TravelTom local bearer-token signing/verification uses `PyJWT`.
 - Local bearer tokens are backed by persisted `auth_sessions` rows so logout and timeout
   checks are enforced server-side.
 - Chat rate limiting uses the `limits` library.
@@ -40,6 +42,7 @@
 
 - Local auth sessions are persisted in `auth_sessions`.
 - Each token carries a `jti` that resolves to a persisted auth session.
+- Library-backed local credential validation does not replace server-side session checks.
 - Absolute token expiry is controlled by `LOCAL_AUTH_TOKEN_TTL_SECONDS`.
 - Idle timeout is controlled by `LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS`.
 - Successful local-authenticated requests extend the idle timeout window.

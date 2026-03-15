@@ -7,6 +7,7 @@
   background-color: var(--background);
 }
 
+.login-form,
 .signup-form {
   display: flex;
   flex-direction: column;
@@ -41,16 +42,19 @@
   background-color: var(--disabled);
 }
 
+.signup-link,
 .login-link {
   margin-top: 1rem;
   font-size: 0.9rem;
 }
 
+.signup-link a,
 .login-link a {
-  color: var(--link);
+  color: var(--link, orange);
   text-decoration: none;
 }
 
+.signup-link a:hover,
 .login-link a:hover {
   text-decoration: underline;
 }

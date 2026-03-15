@@ -1,5 +1,21 @@
 # Instructions Changelog
 
+## 2026-03-15
+
+- Updated backend auth docs to reflect the local-auth library migration:
+  - `02-backend/api-design.md` now documents the app-owned `fastapi-users` adapter
+    behind the existing `/api/v1/auth/*` contract.
+  - `02-backend/services-and-modules.md` now includes `local_user_manager.py`
+    and clarifies that library-specific local-user logic stays behind app services.
+  - `02-backend/security.md` now distinguishes library-backed local credentials
+    from app-owned `auth_sessions` enforcement and PyJWT-issued bearer tokens.
+  - `02-backend/data-model.md` now notes that `users.password_hash` is managed by
+    the local-auth library integration.
+  - `02-backend/migrations.md` now states that the migration reuses the existing
+    `users.password_hash` and `auth_sessions` schema unless the table shape changes.
+  - `07-infra-ops/local-dev.md` now documents the local-dev dependency/runtime
+    expectations for library-backed local auth.
+
 ## 2026-03-12
 
 - Reworked the backend agent runtime around LangChain-native `create_agent` and

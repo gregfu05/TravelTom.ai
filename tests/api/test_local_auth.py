@@ -12,6 +12,7 @@ from app.core.local_auth import (
     create_access_token,
     decode_access_token,
     hash_password,
+    verify_password,
 )
 from app.core.security import get_azure_b2c_scheme, get_chat_rate_limiter
 from app.db.models.auth_session import AuthSession
@@ -193,7 +194,7 @@ class _FakeTravelTomAgent:
 
 
 def _enable_local_auth(monkeypatch, *, auth_enabled: bool = False) -> str:
-    secret = "traveltom-local-secret"
+    secret = "traveltom-local-secret-with-32-bytes"
     monkeypatch.setenv("LOCAL_AUTH_TOKEN_SECRET", secret)
     monkeypatch.setenv("LOCAL_AUTH_TOKEN_TTL_SECONDS", "3600")
     monkeypatch.setenv("LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS", "1800")
@@ -229,8 +230,10 @@ def test_signup_creates_local_account_and_returns_bearer_token(monkeypatch) -> N
     assert body["user"]["email"] == "traveler@example.com"
     assert fake_db.existing_user is not None
     assert fake_db.existing_auth_session is not None
+    assert fake_db.flushed is True
     assert fake_db.existing_user.password_hash is not None
     assert fake_db.existing_user.password_hash != "VeryStrong123"
+    assert verify_password("VeryStrong123", fake_db.existing_user.password_hash)
     claims = decode_access_token(token=body["access_token"], secret=secret)
     assert claims.sub == str(fake_db.existing_user.id)
     assert claims.jti == str(fake_db.existing_auth_session.id)

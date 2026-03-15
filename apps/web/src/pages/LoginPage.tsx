@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { useSessionStore } from "../store/session";
-import "./LoginPage.css";
+import "../styles/auth.css";
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
