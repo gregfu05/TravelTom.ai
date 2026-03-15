@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { NavLink } from "react-router-dom";
+import { useSessionStore } from "../store/session";
 
 import { apiClient } from "../api/client";
 import { getApiStatusText } from "../content/siteContent";
@@ -16,6 +17,11 @@ export function TopNav() {
   });
 
   const apiStatus = getApiStatusText(healthQuery.isSuccess, healthQuery.isError);
+  const { authToken, setAuthToken } = useSessionStore();
+
+  function handleLogout() {
+    setAuthToken(null);
+  }
 
   return (
     <header className="home-nav">
@@ -39,9 +45,20 @@ export function TopNav() {
         <span className="api-status" data-status={apiStatus}>
           {apiStatus}
         </span>
-        <NavLink className="button button-sm" to="/planner">
-          Open Planner
-        </NavLink>
+        {authToken ? (
+          <button className="button button-sm" onClick={handleLogout}>
+            Logout
+          </button>
+        ) : (
+          <>
+            <NavLink className="button button-sm" to="/login">
+              Login
+            </NavLink>
+            <NavLink className="button button-sm" to="/signup">
+              Signup
+            </NavLink>
+          </>
+        )}
       </div>
     </header>
   );
