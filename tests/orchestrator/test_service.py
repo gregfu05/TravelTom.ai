@@ -152,6 +152,63 @@ def test_orchestrator_returns_clarification_when_agent_skips_tool() -> None:
     assert response.state["status"] == "explore"
 
 
+def test_orchestrator_runs_fallback_recommendation_when_agent_skips_tool() -> None:
+    service = OrchestratorService()
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+
+    def agent_executor(_messages: list[dict[str, str]]) -> dict[str, Any]:
+        return {
+            "messages": [
+                HumanMessage(
+                    content=(
+                        "Recommend hotels in Lisbon from 2026-06-10 to 2026-06-17 "
+                        "with budget between 1200 and 2400 USD."
+                    )
+                ),
+                AIMessage(content="Can you share your destination and dates first?"),
+            ]
+        }
+
+    def recommendation_executor(query: RecommendationQuery):
+        captured_query["value"] = query
+        return {
+            "ranking_version": "heuristic-v1",
+            "results": [
+                {
+                    "item_id": "hotel-lisbon-1",
+                    "item_type": "hotel",
+                    "score": 0.94,
+                    "rank": 1,
+                    "features": {"name": "Lisbon Stay"},
+                    "explanation": "Strong hotel match in Lisbon.",
+                }
+            ],
+        }
+
+    response = service.handle_message(
+        user_message=(
+            "Recommend hotels in Lisbon from 2026-06-10 to 2026-06-17 "
+            "with budget between 1200 and 2400 USD."
+        ),
+        session_state=SessionState(session_id="sess-skip-tool"),
+        agent_executor=agent_executor,
+        recommendation_executor=recommendation_executor,
+    )
+
+    query = captured_query["value"]
+    assert query is not None
+    assert query.constraints.destination == "Lisbon"
+    assert query.constraints.dates is not None
+    assert query.constraints.dates.start.isoformat() == "2026-06-10"
+    assert query.constraints.budget is not None
+    assert query.constraints.budget.max == 2400.0
+    assert query.filters["item_type"] == "hotel"
+    assert len(response.recommendations) == 1
+    assert response.recommendations[0].item_id == "hotel-lisbon-1"
+    assert response.state["status"] == "refine"
+    assert response.state["constraints"]["destination"] == "Lisbon"
+
+
 def test_orchestrator_handles_tool_validation_error_transcript() -> None:
     service = OrchestratorService()
 

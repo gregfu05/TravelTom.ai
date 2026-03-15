@@ -169,6 +169,7 @@ class OrchestratorService:
             user_message=message,
             session_state=prepared_state,
             agent_result=agent_result,
+            recommendation_executor=recommendation_executor,
         )
 
     def response_from_direct_agent_result(
@@ -240,12 +241,27 @@ class OrchestratorService:
         user_message: str,
         session_state: SessionState,
         agent_result: dict[str, Any],
+        recommendation_executor: RecommendationExecutor | None = None,
     ) -> OrchestratorResponse:
         messages = self._messages_from_agent_result(agent_result)
         final_ai_message = self._last_final_ai_message(messages)
         tool_message = self._last_recommendation_tool_message(agent_result)
 
         if tool_message is None:
+            fallback_plan = build_guardrail_plan(
+                message=user_message,
+                session_state=session_state,
+                max_results=self._policy.max_recommendation_results,
+            )
+            if (
+                fallback_plan.should_call_recommendation_tool
+                and recommendation_executor is not None
+            ):
+                return self._fallback_from_agent_failure(
+                    user_message=user_message,
+                    session_state=session_state,
+                    recommendation_executor=recommendation_executor,
+                )
             fallback = build_clarification_message(session_state)
             assistant_message = self._assistant_message_or_fallback(
                 final_ai_message,
