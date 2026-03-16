@@ -68,11 +68,13 @@ export function ChatView() {
     isSending,
     errorMessage,
     latestRecommendations,
+    authToken,
     setSessionId,
     addMessage,
     setLatestRecommendations,
     setIsSending,
     setErrorMessage,
+    setAuthToken,
     resetConversation,
   } = useSessionStore();
 
@@ -141,6 +143,7 @@ export function ChatView() {
         messageId,
         message,
         clientContext: getClientContext(),
+        authToken: authToken ?? undefined,
       });
 
       setSessionId(response.sessionId);
@@ -154,6 +157,9 @@ export function ChatView() {
       setLatestRecommendations(response.recommendations);
       setPendingRequest(null);
     } catch (error: unknown) {
+      if (error instanceof ApiClientError && error.status === 401) {
+        setAuthToken(null);
+      }
       setErrorMessage(getErrorMessage(error));
     } finally {
       setIsSending(false);

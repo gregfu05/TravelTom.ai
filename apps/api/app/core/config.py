@@ -52,6 +52,10 @@ class Settings(BaseSettings):
         "30/minute",
         validation_alias=AliasChoices("CHAT_RATE_LIMIT"),
     )
+    cors_allowed_origins: str = Field(
+        "http://localhost:5173 http://127.0.0.1:5173",
+        validation_alias=AliasChoices("CORS_ALLOWED_ORIGINS"),
+    )
     orchestrator_llm_provider: Literal["disabled", "ollama", "openai"] = Field(
         "disabled",
         validation_alias=AliasChoices("ORCHESTRATOR_LLM_PROVIDER"),
@@ -117,6 +121,11 @@ class Settings(BaseSettings):
     def auth_required_scopes_list(self) -> list[str]:
         raw_scopes = self.auth_required_scopes.replace(",", " ").split()
         return [scope for scope in raw_scopes if scope]
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        raw_origins = self.cors_allowed_origins.replace(",", " ").split()
+        return [origin for origin in raw_origins if origin]
 
     @property
     def auth_openid_config_url(self) -> str | None:

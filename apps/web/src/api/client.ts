@@ -38,7 +38,14 @@ const chatResponseSchema = z.object({
 });
 
 const authResponseSchema = z.object({
-  token: z.string(),
+  access_token: z.string(),
+  token_type: z.literal("bearer"),
+  expires_in: z.number(),
+  idle_timeout_in: z.number(),
+  user: z.object({
+    id: z.string(),
+    email: z.string(),
+  }),
 });
 
 type ApiErrorPayload = z.infer<typeof apiErrorSchema>;
@@ -57,6 +64,7 @@ export interface ChatRequest {
   messageId: string;
   message: string;
   clientContext?: ClientContext;
+  authToken?: string;
 }
 
 export interface Recommendation {
@@ -75,6 +83,17 @@ export interface ChatResponse {
   recommendations: Recommendation[];
   itinerary?: z.infer<typeof itinerarySchema>;
   state?: Record<string, unknown>;
+}
+
+export interface AuthSession {
+  accessToken: string;
+  tokenType: "bearer";
+  expiresIn: number;
+  idleTimeoutIn: number;
+  user: {
+    id: string;
+    email: string;
+  };
 }
 
 export class ApiClientError extends Error {
@@ -152,6 +171,16 @@ function mapChatResponse(raw: z.output<typeof chatResponseSchema>): ChatResponse
   };
 }
 
+function mapAuthSession(raw: z.output<typeof authResponseSchema>): AuthSession {
+  return {
+    accessToken: raw.access_token,
+    tokenType: raw.token_type,
+    expiresIn: raw.expires_in,
+    idleTimeoutIn: raw.idle_timeout_in,
+    user: raw.user,
+  };
+}
+
 export const apiClient = {
   getHealth(signal?: AbortSignal): Promise<HealthResponse> {
     return request("/health", { method: "GET", signal }, healthResponseSchema);
@@ -173,6 +202,9 @@ export const apiClient = {
       {
         method: "POST",
         body: JSON.stringify(payload),
+        headers: input.authToken
+          ? { Authorization: `Bearer ${input.authToken}` }
+          : undefined,
         signal,
       },
       chatResponseSchema,
@@ -181,8 +213,11 @@ export const apiClient = {
     return mapChatResponse(response);
   },
 
-  async login(input: { email: string; password: string }): Promise<{ token: string }> {
-    return request(
+  async login(input: {
+    email: string;
+    password: string;
+  }): Promise<AuthSession> {
+    const response = await request(
       "/auth/login",
       {
         method: "POST",
@@ -190,16 +225,36 @@ export const apiClient = {
       },
       authResponseSchema,
     );
+
+    return mapAuthSession(response);
   },
 
-  async signup(input: { email: string; password: string }): Promise<void> {
-    await request(
+  async signup(input: {
+    email: string;
+    password: string;
+  }): Promise<AuthSession> {
+    const response = await request(
       "/auth/signup",
       {
         method: "POST",
         body: JSON.stringify(input),
       },
-      z.void(),
+      authResponseSchema,
+    );
+
+    return mapAuthSession(response);
+  },
+
+  async logout(authToken: string): Promise<void> {
+    await request(
+      "/auth/logout",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      },
+      z.null().transform(() => undefined),
     );
   },
 };

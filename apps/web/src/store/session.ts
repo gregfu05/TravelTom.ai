@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export type SessionMessageRole = "user" | "assistant";
 
@@ -42,37 +43,47 @@ function createSessionId(): string {
   }
 }
 
-export const useSessionStore = create<SessionState>((set) => ({
-  sessionId: createSessionId(),
-  messages: [],
-  latestRecommendations: [],
-  isSending: false,
-  errorMessage: null,
-  authToken: null,
-  setSessionId: (sessionId) => {
-    set({ sessionId });
-  },
-  addMessage: (message) => {
-    set((state) => ({ messages: [...state.messages, message] }));
-  },
-  setLatestRecommendations: (items) => {
-    set({ latestRecommendations: items });
-  },
-  setIsSending: (value) => {
-    set({ isSending: value });
-  },
-  setErrorMessage: (value) => {
-    set({ errorMessage: value });
-  },
-  setAuthToken: (token) => set({ authToken: token }),
-  resetConversation: () => {
-    set({
+export const useSessionStore = create<SessionState>()(
+  persist(
+    (set) => ({
       sessionId: createSessionId(),
       messages: [],
       latestRecommendations: [],
       isSending: false,
       errorMessage: null,
       authToken: null,
-    });
-  },
-}));
+      setSessionId: (sessionId) => {
+        set({ sessionId });
+      },
+      addMessage: (message) => {
+        set((state) => ({ messages: [...state.messages, message] }));
+      },
+      setLatestRecommendations: (items) => {
+        set({ latestRecommendations: items });
+      },
+      setIsSending: (value) => {
+        set({ isSending: value });
+      },
+      setErrorMessage: (value) => {
+        set({ errorMessage: value });
+      },
+      setAuthToken: (token) => set({ authToken: token }),
+      resetConversation: () => {
+        set((state) => ({
+          sessionId: createSessionId(),
+          messages: [],
+          latestRecommendations: [],
+          isSending: false,
+          errorMessage: null,
+          authToken: state.authToken,
+        }));
+      },
+    }),
+    {
+      name: "traveltom-session",
+      partialize: (state) => ({
+        authToken: state.authToken,
+      }),
+    },
+  ),
+);

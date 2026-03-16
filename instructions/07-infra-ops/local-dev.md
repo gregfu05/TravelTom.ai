@@ -26,6 +26,7 @@ Services:
 - `LOCAL_AUTH_TOKEN_TTL_SECONDS` (default `604800`)
 - `LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS` (default `43200`)
 - `CHAT_RATE_LIMIT` (default `30/minute`)
+- `CORS_ALLOWED_ORIGINS` (space- or comma-separated, default `http://localhost:5173 http://127.0.0.1:5173`)
 - `ORCHESTRATOR_LLM_PROVIDER=disabled|ollama|openai`
 - `ORCHESTRATOR_LLM_TIMEOUT_SECONDS` (default `20`)
 - `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`)
@@ -139,6 +140,9 @@ Optional pre-check:
     (`VITE_API_PROXY_TARGET` or default proxy to `http://localhost:8000`).
   - Configure `apps/web/.env` (from `apps/web/.env.example`) when backend is
     not running on `localhost:8000`.
+- Browser requests fail before reaching the API:
+  - If the frontend is not using the Vite dev proxy, set backend
+    `CORS_ALLOWED_ORIGINS` to include the frontend origin and restart the API.
 
 ## Pre-deploy checks (local)
 
