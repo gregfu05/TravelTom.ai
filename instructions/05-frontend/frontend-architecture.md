@@ -58,6 +58,8 @@
 ## API client
 
 - Centralized `apiClient` with base URL `/api/v1`.
+- Serialize JSON request bodies in one shared helper inside `apiClient`; call
+  sites should pass plain objects instead of pre-stringified payloads.
 - Request/response schemas validated with Zod (frontend) mirroring Pydantic.
 - Normalize non-2xx responses into a typed `ApiClientError` for predictable UI handling.
 - Parse structured 429 metadata, including `Retry-After` and

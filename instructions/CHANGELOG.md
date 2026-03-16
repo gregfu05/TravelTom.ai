@@ -2,6 +2,11 @@
 
 ## 2026-03-16
 
+- Documented centralized frontend JSON request serialization:
+  - `05-frontend/frontend-architecture.md` now states that JSON request bodies
+    must be serialized in one shared `apiClient` helper and that call sites
+    should pass plain objects.
+
 - Documented chat 429 classification and recovery behavior:
   - `02-backend/api-design.md` now distinguishes TravelTom-owned throttling
     from upstream provider rate limits and documents `Retry-After`.

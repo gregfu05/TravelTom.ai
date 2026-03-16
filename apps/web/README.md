@@ -27,6 +27,12 @@ Ownership: Frontend.
 
 ## Troubleshooting
 
+- If `/api/v1/chat`, login, or signup fail with a `422 validation_error` and the
+  backend says the request body is a string:
+  1. Confirm the frontend request body in the browser network tab is a JSON
+     object payload, not a quoted JSON string.
+  2. Keep JSON calls on the shared `apiClient` JSON request path so request
+     bodies are serialized exactly once.
 - If chat replies appear but recommendation cards do not:
   1. Confirm backend `/api/v1/chat` response includes a non-empty
      `recommendations` array in the browser network tab.

@@ -13,6 +13,7 @@
   },
   "include": [
     "src/api/client.ts",
+    "src/api/client.test.ts",
     "src/api/errorHandling.ts",
     "src/api/errorHandling.test.ts",
     "src/components/chatErrorState.ts",

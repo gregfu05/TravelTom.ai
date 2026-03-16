@@ -124,13 +124,15 @@ async function request<TSchema extends z.ZodTypeAny>(
   init: RequestInit,
   schema: TSchema,
 ): Promise<z.output<TSchema>> {
+  const { headers, ...rest } = init;
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...rest,
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...init.headers,
+      ...headers,
     },
-    ...init,
   });
 
   const payload = await parseJsonSafely(response);
@@ -151,6 +153,46 @@ async function request<TSchema extends z.ZodTypeAny>(
   }
 
   return schema.parse(payload);
+}
+
+function shouldGuardJsonBody(): boolean {
+  const viteDevFlag = (
+    import.meta as ImportMeta & { env?: { DEV?: boolean } }
+  ).env?.DEV;
+
+  if (typeof viteDevFlag === "boolean") {
+    return viteDevFlag;
+  }
+
+  if (typeof process !== "undefined") {
+    return process.env.NODE_ENV !== "production";
+  }
+
+  return true;
+}
+
+function requestJson<TSchema extends z.ZodTypeAny>(
+  path: string,
+  init: Omit<RequestInit, "body"> & { body?: unknown },
+  schema: TSchema,
+): Promise<z.output<TSchema>> {
+  const { body, headers, ...rest } = init;
+
+  if (typeof body === "string" && shouldGuardJsonBody()) {
+    throw new TypeError(
+      "requestJson expected a plain object body. Pass structured data instead of a pre-serialized JSON string.",
+    );
+  }
+
+  return request(
+    path,
+    {
+      ...rest,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    },
+    schema,
+  );
 }
 
 function mapChatResponse(raw: z.output<typeof chatResponseSchema>): ChatResponse {
@@ -197,11 +239,11 @@ export const apiClient = {
       client_context: input.clientContext,
     };
 
-    const response = await request(
+    const response = await requestJson(
       "/chat",
       {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: payload,
         headers: input.authToken
           ? { Authorization: `Bearer ${input.authToken}` }
           : undefined,
@@ -217,11 +259,11 @@ export const apiClient = {
     email: string;
     password: string;
   }): Promise<AuthSession> {
-    const response = await request(
+    const response = await requestJson(
       "/auth/login",
       {
         method: "POST",
-        body: JSON.stringify(input),
+        body: input,
       },
       authResponseSchema,
     );
@@ -233,11 +275,11 @@ export const apiClient = {
     email: string;
     password: string;
   }): Promise<AuthSession> {
-    const response = await request(
+    const response = await requestJson(
       "/auth/signup",
       {
         method: "POST",
-        body: JSON.stringify(input),
+        body: input,
       },
       authResponseSchema,
     );
