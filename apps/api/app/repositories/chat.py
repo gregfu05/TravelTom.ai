@@ -13,6 +13,7 @@ from app.core.errors import ApiError
 from app.db.models.message import Message
 from app.db.models.recommendation import Recommendation
 from app.db.models.session import Session
+from app.schemas.orchestrator import TranscriptMessage
 from app.schemas.state import SessionState
 
 
@@ -100,6 +101,37 @@ class ChatRepository:
                 ranking_version=ranking_version,
             )
         )
+
+    async def get_recent_messages(
+        self,
+        *,
+        pk: uuid.UUID,
+        limit: int,
+    ) -> list[TranscriptMessage]:
+        """Return a bounded recent transcript window in chronological order."""
+
+        if limit <= 0:
+            return []
+
+        result = await self._session.execute(
+            select(Message)
+            .where(Message.session_id == pk)
+            .order_by(Message.created_at.desc())
+            .limit(limit)
+        )
+        rows = list(result.scalars())
+        rows.reverse()
+        transcript: list[TranscriptMessage] = []
+        for row in rows:
+            if row.role not in {"user", "assistant"}:
+                continue
+            transcript.append(
+                TranscriptMessage(
+                    role=row.role,
+                    content=row.content,
+                )
+            )
+        return transcript
 
     @staticmethod
     def _query_hash(*, pk: uuid.UUID, message: str) -> str:

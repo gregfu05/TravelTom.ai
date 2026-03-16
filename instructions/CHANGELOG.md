@@ -2,6 +2,26 @@
 
 ## 2026-03-16
 
+- Redesigned chat orchestration to use bounded recent transcript replay plus
+  conversation-aware state:
+  - `apps/api/app/services/orchestrator/service.py` now runs
+    deterministic extraction, structured planning, optional deterministic
+    recommendation execution, and grounded response composition per turn.
+  - `apps/api/app/services/travel_tom_agent.py` now invokes planner/composer
+    model calls for `/api/v1/chat` while keeping direct recommendation mode
+    LangChain-agent backed.
+  - `apps/api/app/repositories/chat.py` now exposes bounded recent-message reads
+    for orchestration input.
+  - `apps/api/app/schemas/state.py` now includes `conversation.last_requested_slots`
+    and `conversation.last_user_intent`.
+  - Updated orchestrator/chat tests for multi-turn carryover, progressive
+    clarification, refine continuity, and route-level transcript threading.
+- Updated backend/orchestrator docs for the implemented chat runtime:
+  - `04-llm-orchestrator/orchestrator-overview.md`
+  - `04-llm-orchestrator/prompts-and-guardrails.md`
+  - `04-llm-orchestrator/session-state-schema.md`
+  - `02-backend/services-and-modules.md`
+
 - Documented centralized frontend JSON request serialization:
   - `05-frontend/frontend-architecture.md` now states that JSON request bodies
     must be serialized in one shared `apiClient` helper and that call sites

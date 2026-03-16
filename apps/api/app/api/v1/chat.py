@@ -75,10 +75,15 @@ async def chat(
                 session_id=request.session_id,
                 user_id=state_user_id,
             )
+            recent_messages = await uow.chat_repository.get_recent_messages(
+                pk=pk,
+                limit=agent.recent_history_limit,
+            )
 
             orchestration = agent.handle_chat(
                 user_message=request.message,
                 session_state=state,
+                recent_messages=recent_messages,
             )
             persisted_state = SessionState.model_validate(orchestration.state)
             persisted_state.session_id = request.session_id

@@ -12,6 +12,7 @@ from app.db.models.session import Session
 from app.db.models.user import User
 from app.db.session import get_db
 from app.main import app
+from app.schemas.orchestrator import TranscriptMessage
 from app.schemas.orchestrator import OrchestratorResponse
 from app.services.travel_tom_agent import get_travel_tom_agent
 from fastapi.testclient import TestClient
@@ -24,15 +25,22 @@ class _FakeResult:
     def scalar_one_or_none(self) -> Any:
         return self._value
 
+    def scalars(self) -> list[Any]:
+        if isinstance(self._value, list):
+            return self._value
+        return []
+
 
 class _FakeAsyncSession:
     def __init__(
         self,
         existing_session: Session | None = None,
         existing_user: User | None = None,
+        existing_messages: list[Message] | None = None,
     ) -> None:
         self.existing_session = existing_session
         self.existing_user = existing_user
+        self.existing_messages = existing_messages or []
         self.added: list[Any] = []
         self.committed = False
         self.rolled_back = False
@@ -44,6 +52,8 @@ class _FakeAsyncSession:
             return _FakeResult(self.existing_session)
         if entity is User:
             return _FakeResult(self.existing_user)
+        if entity is Message:
+            return _FakeResult(list(reversed(self.existing_messages)))
         return _FakeResult(None)
 
     def add(self, obj: Any) -> None:
@@ -74,15 +84,22 @@ class _FakeTravelTomAgent:
         self.assistant_message = assistant_message
         self.recommendations = recommendations
         self.state = state
+        self.recent_messages_seen: list[TranscriptMessage] | None = None
+
+    @property
+    def recent_history_limit(self) -> int:
+        return 6
 
     def handle_chat(
         self,
         *,
         user_message: str,
         session_state: Any,
+        recent_messages: list[TranscriptMessage] | None = None,
     ) -> OrchestratorResponse:
         del user_message
         del session_state
+        self.recent_messages_seen = recent_messages
         return OrchestratorResponse.model_validate(
             {
                 "session_id": self.state["session_id"],
@@ -95,26 +112,38 @@ class _FakeTravelTomAgent:
 
 
 class _FailingTravelTomAgent:
+    @property
+    def recent_history_limit(self) -> int:
+        return 6
+
     def handle_chat(
         self,
         *,
         user_message: str,
         session_state: Any,
+        recent_messages: list[TranscriptMessage] | None = None,
     ) -> OrchestratorResponse:
         del user_message
         del session_state
+        del recent_messages
         raise RuntimeError("orchestrator failure")
 
 
 class _ProviderRateLimitedAgent:
+    @property
+    def recent_history_limit(self) -> int:
+        return 6
+
     def handle_chat(
         self,
         *,
         user_message: str,
         session_state: Any,
+        recent_messages: list[TranscriptMessage] | None = None,
     ) -> OrchestratorResponse:
         del user_message
         del session_state
+        del recent_messages
         raise ApiError(
             status_code=429,
             code="provider_rate_limited",
@@ -152,7 +181,12 @@ def _chat_payload() -> dict[str, Any]:
 
 
 def test_chat_endpoint_returns_expected_shape_and_persists_records() -> None:
-    fake_db = _FakeAsyncSession()
+    fake_db = _FakeAsyncSession(
+        existing_messages=[
+            Message(role="user", content="I want a city break."),
+            Message(role="assistant", content="Which destination should I focus on?"),
+        ]
+    )
     fake_agent = _FakeTravelTomAgent(
         assistant_message="I found 1 strong option for Lisbon.",
         recommendations=[
@@ -195,6 +229,11 @@ def test_chat_endpoint_returns_expected_shape_and_persists_records() -> None:
     assert body["assistant_message"] == "I found 1 strong option for Lisbon."
     assert len(body["recommendations"]) == 1
     assert body["recommendations"][0]["metadata"] == {"interest_match": 0.9}
+    assert fake_agent.recent_messages_seen is not None
+    assert [message.content for message in fake_agent.recent_messages_seen] == [
+        "I want a city break.",
+        "Which destination should I focus on?",
+    ]
     assert fake_db.flushed is True
     assert fake_db.committed is True
 

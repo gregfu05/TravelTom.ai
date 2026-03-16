@@ -89,6 +89,19 @@ def test_extracts_relative_dates_and_qualitative_budget() -> None:
     assert updated.constraints.party_size.children == 0
 
 
+def test_extracts_bare_destination_reply() -> None:
+    state = SessionState(session_id="sess-1")
+
+    updated = apply_message_state_updates(
+        message="Lisbon",
+        session_state=state,
+        today=date(2026, 2, 23),
+    )
+
+    assert updated.constraints.destination == "Lisbon"
+    assert updated.entities.destinations == ["Lisbon"]
+
+
 def test_apply_structured_state_patch_merges_llm_payload() -> None:
     state = SessionState.model_validate(
         {

@@ -94,6 +94,15 @@ class ItineraryState(BaseModel):
     days: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class ConversationState(BaseModel):
+    """Conversation metadata used by the orchestrator across turns."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    last_requested_slots: list[str] = Field(default_factory=list)
+    last_user_intent: Literal["recommend", "refine", "clarify"] | None = None
+
+
 class SessionState(BaseModel):
     """Canonical orchestrator session state (v1)."""
 
@@ -105,6 +114,7 @@ class SessionState(BaseModel):
     constraints: Constraints = Field(default_factory=Constraints)
     preferences: Preferences = Field(default_factory=Preferences)
     entities: Entities = Field(default_factory=Entities)
+    conversation: ConversationState = Field(default_factory=ConversationState)
     shortlist: list[str] = Field(default_factory=list)
     itinerary: ItineraryState = Field(default_factory=ItineraryState)
     status: Literal["explore", "refine", "itinerary", "booking"] = "explore"

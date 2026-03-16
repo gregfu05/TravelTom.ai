@@ -255,6 +255,8 @@ def apply_message_state_updates(
         origin = _extract_origin(normalized_message)
     if destination is None:
         destination = _extract_destination(normalized_message)
+    if destination is None:
+        destination = _extract_bare_destination(normalized_message)
 
     if origin is not None:
         next_state.constraints.origin = origin
@@ -367,6 +369,16 @@ def _extract_destination(message: str) -> str | None:
         if destination is not None:
             return destination
     return None
+
+
+def _extract_bare_destination(message: str) -> str | None:
+    if any(character.isdigit() for character in message):
+        return None
+    if re.search(r"\b(?:from|to|in|between|under|over|budget|for|with)\b", message):
+        return None
+    if re.search(r"[,.!?;:]", message):
+        return None
+    return _normalize_location(message)
 
 
 def _normalize_location(value: str) -> str | None:

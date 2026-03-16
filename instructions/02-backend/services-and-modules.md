@@ -65,20 +65,24 @@ apps/api/
 ## Module boundaries
 
 - Orchestrator service:
-  - Owns LangChain-agent transcript normalization and deterministic fallback logic.
+  - Owns planner/composer orchestration, deterministic fallback logic, and
+    grounded response normalization.
   - Does not own route wiring or LangChain tool registration.
-  - Keeps deterministic guardrails for fallback planning, state extraction, and query-filter normalization.
-  - Converts validated tool artifacts into route-safe `OrchestratorResponse` payloads.
+  - Keeps deterministic guardrails for fallback planning, state extraction,
+    structured state-patch merging, and query-filter normalization.
+  - Converts validated recommendation data into route-safe `OrchestratorResponse`
+    payloads.
 - TravelTom agent service (`app/services/travel_tom_agent.py`):
   - Owns the route-facing backend agent abstraction used by `/chat` and `/recommendations/query`.
-  - Owns LangChain-native `create_agent` construction for explicit `chat` and
-    `direct_recommendation` modes.
+  - Owns planner/composer model invocation for `/chat` and LangChain-native
+    `create_agent` construction for `direct_recommendation` mode.
   - Owns `@tool` registration for the shared deterministic recommendation tool.
-  - Delegates transcript normalization and fallback logic to `OrchestratorService`.
+  - Delegates chat turn orchestration and fallback logic to `OrchestratorService`.
   - Wraps deterministic recommendation execution without changing recommender logic.
 - Orchestrator model provider (`app/services/orchestrator/llm_provider.py`):
-  - Owns LangChain-native model construction for OpenAI and Ollama chat agents.
-  - Owns deterministic in-process models for disabled chat mode and direct recommendation mode.
+  - Owns chat-model construction for OpenAI and Ollama planner/composer calls.
+  - Owns deterministic in-process models for disabled chat fallback and direct
+    recommendation mode.
 - Recommender service:
   - Owns retrieval and ranking logic.
   - Deterministic outputs with versioned scoring.
@@ -94,8 +98,8 @@ apps/api/
     normalization helpers used by agent-backed deterministic flows.
   - Keeps recommendation error normalization separate from route HTTP mapping.
 - Chat repository (`app/repositories/chat.py`):
-  - Owns chat persistence operations: session lookup/creation, message writes,
-    and recommendation snapshot writes.
+  - Owns chat persistence operations: session lookup/creation, bounded recent
+    message reads, message writes, and recommendation snapshot writes.
   - Provides feature-specific data access (non-generic repository pattern).
 - User repository (`app/repositories/users.py`):
   - Resolves authenticated principals to internal `users` rows.

@@ -6,11 +6,12 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from functools import lru_cache
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 from langchain.agents import create_agent
 from langchain.tools import tool
-from pydantic import ValidationError
+from langchain_core.messages import HumanMessage
+from pydantic import BaseModel, ValidationError
 
 from app.core.config import get_settings
 from app.schemas.api.recommendations import (
@@ -18,9 +19,12 @@ from app.schemas.api.recommendations import (
 )
 from app.schemas.api.recommendations import RecommendationResponse
 from app.schemas.orchestrator import (
+    LLMComposedResponse,
+    LLMOrchestrationPlan,
     OrchestratorPolicyConfig,
     OrchestratorResponse,
     RecommendationToolRuntimePayload,
+    TranscriptMessage,
 )
 from app.schemas.state import SessionState
 from app.schemas.tools.recommendations import (
@@ -45,27 +49,13 @@ from app.services.recommendation_query import (
 )
 from traveltom.recommendor.recommendor_v1 import recommendation_tool
 
-_CHAT_AGENT_SYSTEM_PROMPT = """
-You are TravelTom's backend chat agent.
-
-You may either:
-- ask a short clarification question, or
-- call recommendation_query exactly when grounded recommendations are needed.
-
-Hard rules:
-- recommendation_query is the only source of recommendation items
-- never invent recommendation items, prices, or availability
-- use only the tool output when describing recommendations
-- if the tool returns no results, explain that there are no strong matches yet
-- if the user message is vague, ask only for the missing trip details you need
-""".strip()
-
 _DIRECT_RECOMMENDATION_SYSTEM_PROMPT = """
 You are TravelTom's deterministic recommendation executor.
 
 Always call recommendation_query once with the provided serialized request.
 Do not add recommendation content of your own.
 """.strip()
+_TStructuredResponse = TypeVar("_TStructuredResponse", bound=BaseModel)
 
 
 class TravelTomAgent:
@@ -83,15 +73,10 @@ class TravelTomAgent:
     ) -> None:
         self._orchestrator = orchestrator_service
         self._provider_name = provider_name
+        self._chat_model = chat_model
         self._recommendation_handler = recommendation_tool
         self._policy = policy_config or OrchestratorPolicyConfig()
         self._recommendation_tool = self._build_recommendation_tool()
-        self._chat_agent = create_agent(
-            model=chat_model,
-            tools=[self._recommendation_tool],
-            system_prompt=_CHAT_AGENT_SYSTEM_PROMPT,
-            name="traveltom_chat_agent",
-        )
         self._direct_recommendation_agent = create_agent(
             model=direct_recommendation_model,
             tools=[self._recommendation_tool],
@@ -105,18 +90,27 @@ class TravelTomAgent:
 
         return True
 
+    @property
+    def recent_history_limit(self) -> int:
+        """Return the bounded transcript window used for orchestration."""
+
+        return self._policy.recent_history_message_limit
+
     def handle_chat(
         self,
         *,
         user_message: str,
         session_state: SessionState,
+        recent_messages: list[TranscriptMessage] | None = None,
     ) -> OrchestratorResponse:
-        """Handle chat orchestration through the shared LangChain agent."""
+        """Handle chat orchestration through the planner/composer loop."""
 
         return self._orchestrator.handle_message(
             user_message=user_message,
             session_state=session_state,
-            agent_executor=self._invoke_chat_agent,
+            recent_messages=recent_messages,
+            planner_executor=self._invoke_planner,
+            composer_executor=self._invoke_composer,
             recommendation_executor=self._execute_recommendation_query,
         )
 
@@ -132,18 +126,11 @@ class TravelTomAgent:
             request,
         )
 
-    def _invoke_chat_agent(self, messages: list[dict[str, str]]) -> dict[str, Any]:
-        chat_agent = cast(Any, self._chat_agent)
-        try:
-            return cast(dict[str, Any], chat_agent.invoke({"messages": messages}))
-        except Exception as exc:
-            provider_error = map_provider_exception_to_api_error(
-                exc,
-                provider=cast(Any, self._provider_name),
-            )
-            if provider_error is not None:
-                raise provider_error from exc
-            raise
+    def _invoke_planner(self, prompt_context: str) -> LLMOrchestrationPlan:
+        return self._invoke_structured_chat_model(prompt_context, LLMOrchestrationPlan)
+
+    def _invoke_composer(self, prompt_context: str) -> LLMComposedResponse:
+        return self._invoke_structured_chat_model(prompt_context, LLMComposedResponse)
 
     def _invoke_direct_recommendation_agent(
         self,
@@ -263,6 +250,36 @@ class TravelTomAgent:
             status="success",
             response=response,
         )
+
+    def _invoke_structured_chat_model(
+        self,
+        prompt_context: str,
+        response_model: type[_TStructuredResponse],
+    ) -> _TStructuredResponse:
+        chat_model = cast(Any, self._chat_model)
+        structured_output_error: Exception | None = None
+        with_structured_output = getattr(chat_model, "with_structured_output", None)
+        if callable(with_structured_output):
+            try:
+                response = with_structured_output(response_model).invoke(prompt_context)
+                return response_model.model_validate(response)
+            except Exception as exc:
+                structured_output_error = exc
+
+        try:
+            raw_response = chat_model.invoke([HumanMessage(content=prompt_context)])
+            content = getattr(raw_response, "content", raw_response)
+            if not isinstance(content, str):
+                raise TypeError("Structured chat model returned non-string content")
+            return response_model.model_validate_json(content)
+        except Exception as exc:
+            provider_error = map_provider_exception_to_api_error(
+                structured_output_error or exc,
+                provider=cast(Any, self._provider_name),
+            )
+            if provider_error is not None:
+                raise provider_error from exc
+            raise
 
     def _execute_recommendation_query(
         self,

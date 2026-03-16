@@ -22,6 +22,10 @@ Source of truth: `apps/api/app/schemas/state.py`
     "dislikes": ["red_eye_flights", "long_layovers"]
   },
   "entities": {"destinations": ["Lisbon"]},
+  "conversation": {
+    "last_requested_slots": ["dates"],
+    "last_user_intent": "recommend"
+  },
   "shortlist": ["item_id"],
   "itinerary": {"days": []},
   "status": "explore|refine|itinerary|booking",
@@ -37,6 +41,7 @@ Source of truth: `apps/api/app/schemas/state.py`
 - `constraints.budget.max` must be greater than or equal to `constraints.budget.min`.
 - `constraints.party_size.adults >= 1` and `children >= 0`.
 - `preferences.weighted_interests.*` must be in range `[0, 1]`.
+- `conversation.last_user_intent` is `recommend|refine|clarify|null`.
 - `status` is an enum: `explore`, `refine`, `itinerary`, `booking`.
 
 ## Evolution rules
@@ -57,4 +62,10 @@ Source of truth: `apps/api/app/schemas/state.py`
 - If patch validation fails, orchestration ignores the patch and continues with prior state.
 - Deterministic extraction still runs as a guardrail to enrich missing constraints from user text.
 - Destination values are deduplicated in `entities.destinations`.
+- `conversation.last_requested_slots` tracks the most recent progressive
+  clarification ask so the assistant can request one next-most-useful detail
+  instead of repeating the full core-constraints list.
+- `conversation.last_user_intent` preserves whether the user is trying to
+  recommend, refine, or clarify, so a later slot-filling turn can continue the
+  prior recommendation flow once the missing details are complete.
 

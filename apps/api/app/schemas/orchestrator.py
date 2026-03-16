@@ -23,6 +23,7 @@ class OrchestratorPolicyConfig:
 
     recommendation_timeout_seconds: float = 4.0
     max_recommendation_results: int = 5
+    recent_history_message_limit: int = 6
 
 
 @dataclass(frozen=True)
@@ -120,6 +121,15 @@ class LLMComposedResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     assistant_message: str = Field(min_length=1)
+
+
+class TranscriptMessage(BaseModel):
+    """Bounded persisted transcript item used for orchestration context."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1)
 
 
 class RecommendationToolRuntimePayload(BaseModel):
