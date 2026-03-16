@@ -10,6 +10,9 @@
   an idle timeout (`LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS`).
 - Use a single backend API key for internal tools if needed.
 - Chat rate limiting is configured via `CHAT_RATE_LIMIT`.
+- Local/dev chat rate limiting is controlled explicitly with
+  `CHAT_RATE_LIMIT_ENABLED`; when unset, local/dev defaults to disabled while
+  non-local environments keep throttling enabled.
 - Secrets are stored in environment variables only.
 
 ## Final stance
@@ -27,6 +30,10 @@
 - Local bearer tokens are backed by persisted `auth_sessions` rows so logout and timeout
   checks are enforced server-side.
 - Chat rate limiting uses the `limits` library.
+- TravelTom-owned chat throttling returns `429 rate_limit_exceeded` with
+  `details.retry_after_seconds`, `details.source=traveltom`, and `Retry-After`.
+- Upstream model/provider quota failures return `429 provider_rate_limited` and
+  are not labeled as TravelTom throttling.
 - `POST /api/v1/auth/signup` creates a local account and returns a TravelTom bearer token.
 - `POST /api/v1/auth/login` authenticates a local account and returns a TravelTom bearer token.
 - `GET /api/v1/auth/me` returns the authenticated user for a valid bearer token.
@@ -70,3 +77,5 @@
 - Fall back to IP-based chat limits only when auth is disabled for local dev.
 - Add per-session limits for later session-backed endpoints as needed.
 - Log rejected requests as security events.
+- Include limiter diagnostics in rate-limit logs: trace ID, identifier,
+  principal subject when present, configured limit, client host, and retry-after.

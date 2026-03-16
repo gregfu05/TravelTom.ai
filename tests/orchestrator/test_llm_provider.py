@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import pytest
+from app.core.errors import ApiError
 from app.services.orchestrator.llm_provider import (
     DeterministicRecommendationAgentModel,
     DeterministicTravelTomChatModel,
     build_chat_model,
     build_direct_recommendation_model,
+    map_provider_exception_to_api_error,
 )
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
@@ -85,3 +87,33 @@ def test_build_chat_model_returns_langchain_ollama_model() -> None:
 def test_build_direct_recommendation_model_returns_deterministic_model() -> None:
     model = build_direct_recommendation_model()
     assert isinstance(model, DeterministicRecommendationAgentModel)
+
+
+class _FakeResponse:
+    status_code = 429
+    headers = {"Retry-After": "13"}
+
+
+class _FakeProviderError(Exception):
+    def __init__(self) -> None:
+        super().__init__("Provider quota exceeded")
+        self.response = _FakeResponse()
+
+
+def test_map_provider_exception_to_api_error_returns_structured_429() -> None:
+    error = map_provider_exception_to_api_error(
+        _FakeProviderError(),
+        provider="openai",
+    )
+
+    assert isinstance(error, ApiError)
+    assert error.status_code == 429
+    assert error.code == "provider_rate_limited"
+    assert error.details == {
+        "provider": "openai",
+        "source": "provider",
+        "upstream_error_type": "_FakeProviderError",
+        "upstream_status_code": 429,
+        "retry_after_seconds": 13,
+    }
+    assert error.headers == {"Retry-After": "13"}

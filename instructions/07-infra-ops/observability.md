@@ -4,6 +4,9 @@
 
 - Structured JSON logs with fields: `timestamp`, `level`, `service`, `trace_id`, `span_id`, `message`, `context`.
 - Do not log secrets or raw user messages.
+- For chat 429s, log whether the source is `traveltom` or `provider`.
+- TravelTom limiter logs should include `chat_rate_limit`, caller identity key,
+  retry-after, client host, and trace ID.
 
 ## Tracing
 

@@ -60,6 +60,8 @@
 - Centralized `apiClient` with base URL `/api/v1`.
 - Request/response schemas validated with Zod (frontend) mirroring Pydantic.
 - Normalize non-2xx responses into a typed `ApiClientError` for predictable UI handling.
+- Parse structured 429 metadata, including `Retry-After` and
+  `details.retry_after_seconds`, before rendering chat recovery UI.
 - Map backend snake_case chat response fields to frontend camelCase models in the API client.
 - Implement `sendChatMessage` for `/api/v1/chat`, append assistant responses,
   and map recommendation payloads for planner rendering.
@@ -83,11 +85,14 @@
   rationale, constrained panel height, internal scrolling, and a
   `Show/Hide picks` control to reduce clutter.
 - Retry button on chat failures.
+- Distinguish TravelTom cooldowns from provider quota failures in planner chat UX.
 - Homepage API status states: checking, online, unreachable.
 - Chat screen states include:
   - Empty state before first message
   - Loading state while awaiting `/api/v1/chat`
   - Error state with retry for the last failed send
+  - TravelTom-owned cooldown state that disables send/retry until the cooldown expires
+  - Provider quota/rate-limit state with provider-specific guidance and no blind retry
 
 ## Analytics
 

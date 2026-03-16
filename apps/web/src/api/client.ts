@@ -1,18 +1,16 @@
 import { z } from "zod";
 
+import {
+  ApiErrorMetadata,
+  ApiErrorPayload,
+  apiErrorSchema,
+  parseApiErrorMetadata,
+} from "./errorHandling.js";
+
 const API_BASE_URL = "/api/v1";
 
 const healthResponseSchema = z.object({
   status: z.literal("ok"),
-});
-
-const apiErrorSchema = z.object({
-  error: z.object({
-    code: z.string(),
-    message: z.string(),
-    details: z.record(z.string(), z.unknown()).optional(),
-    trace_id: z.string().optional(),
-  }),
 });
 
 const recommendationSchema = z.object({
@@ -47,8 +45,6 @@ const authResponseSchema = z.object({
     email: z.string(),
   }),
 });
-
-type ApiErrorPayload = z.infer<typeof apiErrorSchema>;
 
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 export type ItemType = z.infer<typeof recommendationSchema>["item_type"];
@@ -98,12 +94,14 @@ export interface AuthSession {
 
 export class ApiClientError extends Error {
   readonly status: number;
+  readonly metadata: ApiErrorMetadata;
   readonly payload?: ApiErrorPayload;
 
-  constructor(status: number, message: string, payload?: ApiErrorPayload) {
-    super(message);
+  constructor(status: number, metadata: ApiErrorMetadata, payload?: ApiErrorPayload) {
+    super(metadata.message);
     this.name = "ApiClientError";
     this.status = status;
+    this.metadata = metadata;
     this.payload = payload;
   }
 }
@@ -139,13 +137,15 @@ async function request<TSchema extends z.ZodTypeAny>(
 
   if (!response.ok) {
     const parsedError = payload ? apiErrorSchema.safeParse(payload) : null;
-    const message = parsedError?.success
-      ? parsedError.data.error.message
-      : `Request failed with status ${response.status}`;
+    const metadata = parseApiErrorMetadata({
+      status: response.status,
+      payload,
+      retryAfterHeader: response.headers.get("Retry-After"),
+    });
 
     throw new ApiClientError(
       response.status,
-      message,
+      metadata,
       parsedError?.success ? parsedError.data : undefined,
     );
   }

@@ -1,5 +1,18 @@
 # Instructions Changelog
 
+## 2026-03-16
+
+- Documented chat 429 classification and recovery behavior:
+  - `02-backend/api-design.md` now distinguishes TravelTom-owned throttling
+    from upstream provider rate limits and documents `Retry-After`.
+  - `02-backend/security.md` now documents explicit local/dev rate-limit policy
+    and required limiter diagnostics.
+  - `05-frontend/frontend-architecture.md` now documents cooldown-aware chat UX
+    and provider-specific 429 handling.
+  - `07-infra-ops/local-dev.md`, `07-infra-ops/observability.md`, and
+    `07-infra-ops/runbooks.md` now include chat 429 troubleshooting and
+    classification steps.
+
 ## 2026-03-15
 
 - Updated backend auth docs to reflect the local-auth library migration:

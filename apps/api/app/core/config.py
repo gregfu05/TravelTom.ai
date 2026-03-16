@@ -52,6 +52,10 @@ class Settings(BaseSettings):
         "30/minute",
         validation_alias=AliasChoices("CHAT_RATE_LIMIT"),
     )
+    chat_rate_limit_enabled: bool | None = Field(
+        default=None,
+        validation_alias=AliasChoices("CHAT_RATE_LIMIT_ENABLED"),
+    )
     cors_allowed_origins: str = Field(
         "http://localhost:5173 http://127.0.0.1:5173",
         validation_alias=AliasChoices("CORS_ALLOWED_ORIGINS"),
@@ -143,6 +147,17 @@ class Settings(BaseSettings):
     def local_auth_enabled(self) -> bool:
         secret = (self.local_auth_token_secret or "").strip()
         return bool(secret)
+
+    @property
+    def is_local_environment(self) -> bool:
+        normalized = self.environment.strip().casefold()
+        return normalized in {"local", "dev", "development"}
+
+    @property
+    def chat_rate_limit_enabled_effective(self) -> bool:
+        if self.chat_rate_limit_enabled is not None:
+            return self.chat_rate_limit_enabled
+        return not self.is_local_environment
 
 
 @lru_cache()

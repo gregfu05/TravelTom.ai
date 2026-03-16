@@ -31,6 +31,7 @@ from app.schemas.tools.recommendations import (
 from app.services.orchestrator.llm_provider import (
     build_chat_model,
     build_direct_recommendation_model,
+    map_provider_exception_to_api_error,
 )
 from app.services.orchestrator.policies import build_empty_results_message
 from app.services.orchestrator.service import (
@@ -74,12 +75,14 @@ class TravelTomAgent:
         self,
         *,
         orchestrator_service: OrchestratorService,
+        provider_name: str,
         chat_model: Any,
         direct_recommendation_model: Any,
         recommendation_tool: RecommendationTool = recommendation_tool,
         policy_config: OrchestratorPolicyConfig | None = None,
     ) -> None:
         self._orchestrator = orchestrator_service
+        self._provider_name = provider_name
         self._recommendation_handler = recommendation_tool
         self._policy = policy_config or OrchestratorPolicyConfig()
         self._recommendation_tool = self._build_recommendation_tool()
@@ -131,7 +134,16 @@ class TravelTomAgent:
 
     def _invoke_chat_agent(self, messages: list[dict[str, str]]) -> dict[str, Any]:
         chat_agent = cast(Any, self._chat_agent)
-        return cast(dict[str, Any], chat_agent.invoke({"messages": messages}))
+        try:
+            return cast(dict[str, Any], chat_agent.invoke({"messages": messages}))
+        except Exception as exc:
+            provider_error = map_provider_exception_to_api_error(
+                exc,
+                provider=cast(Any, self._provider_name),
+            )
+            if provider_error is not None:
+                raise provider_error from exc
+            raise
 
     def _invoke_direct_recommendation_agent(
         self,
@@ -301,6 +313,7 @@ def get_travel_tom_agent() -> TravelTomAgent:
     )
     return TravelTomAgent(
         orchestrator_service=OrchestratorService(policy_config=policy),
+        provider_name=settings.orchestrator_llm_provider,
         chat_model=chat_model,
         direct_recommendation_model=build_direct_recommendation_model(),
         recommendation_tool=recommendation_tool,

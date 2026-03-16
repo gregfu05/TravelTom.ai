@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from app.core.errors import ApiError
 from app.db.models.message import Message
 from app.db.models.recommendation import Recommendation
 from app.db.models.session import Session
@@ -103,6 +104,30 @@ class _FailingTravelTomAgent:
         del user_message
         del session_state
         raise RuntimeError("orchestrator failure")
+
+
+class _ProviderRateLimitedAgent:
+    def handle_chat(
+        self,
+        *,
+        user_message: str,
+        session_state: Any,
+    ) -> OrchestratorResponse:
+        del user_message
+        del session_state
+        raise ApiError(
+            status_code=429,
+            code="provider_rate_limited",
+            message="Upstream chat provider is rate limited",
+            details={
+                "provider": "openai",
+                "retry_after_seconds": 17,
+                "source": "provider",
+                "upstream_error_type": "RateLimitError",
+                "upstream_status_code": 429,
+            },
+            headers={"Retry-After": "17"},
+        )
 
 
 def _override_db(fake_db: _FakeAsyncSession):
@@ -275,5 +300,28 @@ def test_chat_endpoint_rolls_back_on_invalid_state_payload() -> None:
 
     assert response.status_code == 400
     assert response.json()["error"]["message"] == "Invalid session state payload"
+    assert fake_db.committed is False
+    assert fake_db.rolled_back is True
+
+
+def test_chat_endpoint_returns_structured_provider_rate_limit_error() -> None:
+    fake_db = _FakeAsyncSession()
+    app.dependency_overrides[get_db] = _override_db(fake_db)
+    app.dependency_overrides[get_travel_tom_agent] = lambda: _ProviderRateLimitedAgent()
+
+    try:
+        client = TestClient(app)
+        response = client.post("/api/v1/chat", json=_chat_payload())
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "17"
+    body = response.json()
+    assert body["error"]["code"] == "provider_rate_limited"
+    assert body["error"]["details"]["provider"] == "openai"
+    assert body["error"]["details"]["retry_after_seconds"] == 17
+    assert body["error"]["details"]["source"] == "provider"
+    assert body["error"]["trace_id"]
     assert fake_db.committed is False
     assert fake_db.rolled_back is True

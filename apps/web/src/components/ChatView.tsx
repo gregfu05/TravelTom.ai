@@ -1,6 +1,10 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 
 import { ApiClientError, apiClient } from "../api/client";
+import {
+  buildChatErrorState,
+  getCooldownRemainingSeconds,
+} from "./chatErrorState";
 import { SessionMessage, useSessionStore } from "../store/session";
 
 interface PendingRequest {
@@ -46,34 +50,19 @@ function createMessage(
   };
 }
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof ApiClientError) {
-    if (error.status === 404) {
-      return "Chat endpoint is not available yet. Start the backend service or implement /api/v1/chat.";
-    }
-    return error.message;
-  }
-
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "Something went wrong while sending your message.";
-}
-
 export function ChatView() {
   const {
     sessionId,
     messages,
     isSending,
-    errorMessage,
+    chatError,
     latestRecommendations,
     authToken,
     setSessionId,
     addMessage,
     setLatestRecommendations,
     setIsSending,
-    setErrorMessage,
+    setChatError,
     setAuthToken,
     resetConversation,
   } = useSessionStore();
@@ -82,6 +71,7 @@ export function ChatView() {
   const [pendingRequest, setPendingRequest] = useState<PendingRequest | null>(
     null,
   );
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [recsJustArrived, setRecsJustArrived] = useState(false);
@@ -89,6 +79,12 @@ export function ChatView() {
 
   const hasRecommendations = latestRecommendations.length > 0;
   const topRecommendations = latestRecommendations.slice(0, 5);
+  const cooldownRemainingSeconds = getCooldownRemainingSeconds(
+    chatError?.cooldownUntilMs ?? null,
+    nowMs,
+  );
+  const isTravelTomCooldownActive =
+    chatError?.kind === "traveltom_rate_limit" && cooldownRemainingSeconds > 0;
 
   // Detect new recommendations → glow avatar + pulse pill
   useEffect(() => {
@@ -118,18 +114,28 @@ export function ChatView() {
     };
   }, [isDrawerOpen]);
 
+  useEffect(() => {
+    if (!isTravelTomCooldownActive) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [isTravelTomCooldownActive]);
+
   async function sendMessage(
     rawMessage: string,
     options?: { appendUserMessage?: boolean; messageId?: string },
   ) {
     const message = rawMessage.trim();
-    if (!message || isSending) {
+    if (!message || isSending || isTravelTomCooldownActive) {
       return;
     }
 
     const messageId = options?.messageId ?? createMessageId();
 
-    setErrorMessage(null);
+    setChatError(null);
     setIsSending(true);
     setPendingRequest({ message, messageId });
 
@@ -156,11 +162,13 @@ export function ChatView() {
       );
       setLatestRecommendations(response.recommendations);
       setPendingRequest(null);
+      setChatError(null);
     } catch (error: unknown) {
       if (error instanceof ApiClientError && error.status === 401) {
         setAuthToken(null);
       }
-      setErrorMessage(getErrorMessage(error));
+      setChatError(buildChatErrorState(error));
+      setNowMs(Date.now());
     } finally {
       setIsSending(false);
     }
@@ -177,7 +185,7 @@ export function ChatView() {
   }
 
   function handleRetry() {
-    if (!pendingRequest || isSending) {
+    if (!pendingRequest || isSending || isTravelTomCooldownActive) {
       return;
     }
     void sendMessage(pendingRequest.message, {
@@ -340,16 +348,25 @@ export function ChatView() {
             ) : null}
           </div>
 
-          {errorMessage ? (
+          {chatError ? (
             <aside className="chat-error" role="alert">
-              <p>{errorMessage}</p>
-              {pendingRequest ? (
+              <p>{chatError.message}</p>
+              {chatError.traceId ? (
+                <p className="chat-form-hint">Trace ID: {chatError.traceId}</p>
+              ) : null}
+              {isTravelTomCooldownActive ? (
+                <p className="chat-form-hint">
+                  Retry becomes available in {cooldownRemainingSeconds}s.
+                </p>
+              ) : null}
+              {pendingRequest && chatError.actionLabel ? (
                 <button
                   className="button button-ghost button-xs"
                   onClick={handleRetry}
                   type="button"
+                  disabled={isTravelTomCooldownActive}
                 >
-                  Retry last message
+                  {chatError.actionLabel}
                 </button>
               ) : null}
             </aside>
@@ -369,22 +386,26 @@ export function ChatView() {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
                     const message = draft.trim();
-                    if (!message || isSending) return;
+                    if (!message || isSending || isTravelTomCooldownActive) return;
                     setDraft("");
                     void sendMessage(message, { appendUserMessage: true });
                   }
                 }}
                 placeholder="Tell Tom what kind of trip you want..."
                 rows={2}
-                disabled={isSending}
+                disabled={isSending || isTravelTomCooldownActive}
                 required
               />
               <button
                 className="button button-primary chat-send-button"
                 type="submit"
-                disabled={isSending}
+                disabled={isSending || isTravelTomCooldownActive}
               >
-                {isSending ? "Sending..." : "Send"}
+                {isSending
+                  ? "Sending..."
+                  : isTravelTomCooldownActive
+                    ? `Retry in ${cooldownRemainingSeconds}s`
+                    : "Send"}
               </button>
             </div>
             <p className="chat-form-hint">

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 from datetime import datetime, timezone
@@ -16,7 +17,7 @@ from limits.util import parse as parse_rate_limit
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.errors import ApiError
+from app.core.errors import ApiError, get_trace_id
 from app.core.local_auth import (
     InvalidLocalTokenError,
     NotLocalTokenError,
@@ -41,6 +42,8 @@ try:
 except ImportError:  # pragma: no cover - dependency is installed in runtime env
     FASTAPI_AZURE_AUTH_INSTALLED = False
     azure_b2c_scheme_class = None
+
+logger = logging.getLogger(__name__)
 
 
 class ChatRateLimiter:
@@ -304,6 +307,9 @@ async def enforce_chat_rate_limit(
 ) -> None:
     """Enforce the configured chat rate limit."""
 
+    if not settings.chat_rate_limit_enabled_effective:
+        return
+
     limiter = get_chat_rate_limiter()
     if principal is not None:
         identifier = principal.subject
@@ -318,9 +324,33 @@ async def enforce_chat_rate_limit(
     if retry_after_seconds is None:
         return
 
+    trace_id = get_trace_id(request)
+    logger.warning(
+        "chat_rate_limit_rejected",
+        extra={
+            "trace_id": trace_id,
+            "context": {
+                "auth_enabled": settings.auth_enabled,
+                "chat_rate_limit": settings.chat_rate_limit,
+                "client_host": (
+                    request.client.host if request.client is not None else None
+                ),
+                "identifier": identifier,
+                "path": str(request.url.path),
+                "principal_subject": (
+                    principal.subject if principal is not None else None
+                ),
+                "retry_after_seconds": retry_after_seconds,
+            },
+        },
+    )
     raise ApiError(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         code="rate_limit_exceeded",
         message="Chat rate limit exceeded",
-        details={"retry_after_seconds": retry_after_seconds},
+        details={
+            "retry_after_seconds": retry_after_seconds,
+            "source": "traveltom",
+        },
+        headers={"Retry-After": str(retry_after_seconds)},
     )

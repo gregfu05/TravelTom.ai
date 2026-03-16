@@ -26,6 +26,8 @@ Services:
 - `LOCAL_AUTH_TOKEN_TTL_SECONDS` (default `604800`)
 - `LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS` (default `43200`)
 - `CHAT_RATE_LIMIT` (default `30/minute`)
+- `CHAT_RATE_LIMIT_ENABLED` (optional; defaults to `false` in local/dev and
+  `true` outside local/dev)
 - `CORS_ALLOWED_ORIGINS` (space- or comma-separated, default `http://localhost:5173 http://127.0.0.1:5173`)
 - `ORCHESTRATOR_LLM_PROVIDER=disabled|ollama|openai`
 - `ORCHESTRATOR_LLM_TIMEOUT_SECONDS` (default `20`)
@@ -60,7 +62,9 @@ To enable backend auth locally:
 2. For the current backend scope, use TravelTom local bearer tokens from
    `POST /api/v1/auth/signup` or `POST /api/v1/auth/login`.
 3. Optionally override `CHAT_RATE_LIMIT`.
-4. Restart the API process so cached auth dependencies reload.
+4. Set `CHAT_RATE_LIMIT_ENABLED=true` only when you explicitly want to test
+   TravelTom-owned chat throttling in local dev.
+5. Restart the API process so cached auth dependencies reload.
 
 To enable TravelTom local account auth locally:
 
@@ -134,6 +138,13 @@ Optional pre-check:
     directly; if that is empty, restart backend and ensure latest recommender code
     is deployed.
   - Restart API after backend code/config changes so cached dependencies refresh.
+- Chat returns `429` immediately:
+  - Inspect `error.code` first.
+  - `rate_limit_exceeded` means TravelTom-owned throttling. Use `Retry-After`,
+    `details.retry_after_seconds`, and `X-Trace-ID` to confirm the limiter decision.
+  - `provider_rate_limited` means the upstream chat provider is quota-limited.
+    Do not lower TravelTom throttling to mask that path.
+  - In local/dev, confirm whether `CHAT_RATE_LIMIT_ENABLED` is intentionally on.
 - Frontend chat shows assistant text but no recommendation cards:
   - Verify `/api/v1/chat` network response contains `recommendations` data.
   - Ensure frontend is running against the intended backend

@@ -9,6 +9,7 @@ from typing import Any, Callable, Sequence
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from pydantic import ValidationError
 
+from app.core.errors import ApiError
 from app.schemas.api.recommendations import (
     RecommendationQuery as ApiRecommendationQuery,
 )
@@ -158,6 +159,8 @@ class OrchestratorService:
                     session_state=prepared_state,
                 )
             )
+        except ApiError:
+            raise
         except Exception:
             return self._fallback_from_agent_failure(
                 user_message=message,

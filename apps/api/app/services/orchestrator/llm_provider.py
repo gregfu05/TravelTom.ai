@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Literal, Sequence
+
+from fastapi import status
+from openai import RateLimitError as OpenAIRateLimitError
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
@@ -11,6 +16,7 @@ from langchain_core.runnables import Runnable
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
+from app.core.errors import ApiError
 from app.schemas.state import SessionState
 from app.schemas.tools.recommendations import (
     RecommendationQuery,
@@ -79,10 +85,112 @@ def build_chat_model(
     raise ValueError(f"Unsupported orchestrator LLM provider: {provider}")
 
 
+def map_provider_exception_to_api_error(
+    exc: Exception,
+    *,
+    provider: ProviderName,
+) -> ApiError | None:
+    """Map upstream provider rate-limit failures to a structured API error."""
+
+    if provider == "disabled":
+        return None
+
+    for candidate in _iter_exception_chain(exc):
+        candidate_status = _extract_status_code(candidate)
+        if not _looks_like_rate_limit(candidate, status_code=candidate_status):
+            continue
+
+        retry_after_seconds = _extract_retry_after_seconds(candidate)
+        details: dict[str, Any] = {
+            "provider": provider,
+            "source": "provider",
+            "upstream_error_type": type(candidate).__name__,
+            "upstream_status_code": candidate_status
+            or status.HTTP_429_TOO_MANY_REQUESTS,
+        }
+        if retry_after_seconds is not None:
+            details["retry_after_seconds"] = retry_after_seconds
+
+        headers = (
+            {"Retry-After": str(retry_after_seconds)}
+            if retry_after_seconds is not None
+            else None
+        )
+        return ApiError(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            code="provider_rate_limited",
+            message="Upstream chat provider is rate limited",
+            details=details,
+            headers=headers,
+        )
+
+    return None
+
+
 def build_direct_recommendation_model() -> BaseChatModel:
     """Create the deterministic model used by direct recommendation agents."""
 
     return DeterministicRecommendationAgentModel()
+
+
+def _iter_exception_chain(exc: Exception):
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        current = current.__cause__ or current.__context__
+
+
+def _extract_status_code(candidate: BaseException) -> int | None:
+    status_code = getattr(candidate, "status_code", None)
+    if isinstance(status_code, int):
+        return status_code
+
+    response = getattr(candidate, "response", None)
+    response_status = getattr(response, "status_code", None)
+    if isinstance(response_status, int):
+        return response_status
+    return None
+
+
+def _looks_like_rate_limit(
+    candidate: BaseException, *, status_code: int | None
+) -> bool:
+    if isinstance(candidate, OpenAIRateLimitError):
+        return True
+    if status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+        return True
+
+    message = str(candidate).casefold()
+    return "rate limit" in message or "quota" in message
+
+
+def _extract_retry_after_seconds(candidate: BaseException) -> int | None:
+    response = getattr(candidate, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+
+    retry_after = headers.get("retry-after")
+    if retry_after is None:
+        retry_after = headers.get("Retry-After")
+    if retry_after is None:
+        return None
+
+    raw_value = str(retry_after).strip()
+    if not raw_value:
+        return None
+    if raw_value.isdigit():
+        return max(0, int(raw_value))
+
+    try:
+        reset_at = parsedate_to_datetime(raw_value)
+    except (TypeError, ValueError, IndexError):
+        return None
+    if reset_at.tzinfo is None:
+        reset_at = reset_at.replace(tzinfo=timezone.utc)
+    return max(0, int((reset_at - datetime.now(timezone.utc)).total_seconds()))
 
 
 class _BoundDeterministicToolModel(Runnable):

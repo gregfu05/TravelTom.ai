@@ -125,6 +125,7 @@ def _principal(subject: str = "subject-123") -> AuthenticatedPrincipal:
 
 
 def _enable_auth(monkeypatch, *, chat_rate_limit: str = "30/minute") -> None:
+    monkeypatch.setenv("APP_ENV", "local")
     monkeypatch.setenv("AUTH_ENABLED", "true")
     monkeypatch.setenv("AUTH_APP_CLIENT_ID", "traveltom-api-client")
     monkeypatch.setenv("AUTH_TENANT_NAME", "traveltomtest")
@@ -239,6 +240,8 @@ def test_chat_rejects_other_users_session(monkeypatch) -> None:
 
 def test_chat_rate_limit_is_enforced(monkeypatch) -> None:
     _enable_auth(monkeypatch, chat_rate_limit="2/minute")
+    monkeypatch.setenv("CHAT_RATE_LIMIT_ENABLED", "true")
+    get_settings.cache_clear()
     fake_db = _FakeAsyncSession()
     fake_agent = _FakeTravelTomAgent(
         assistant_message="Limited chat response.",
@@ -273,3 +276,45 @@ def test_chat_rate_limit_is_enforced(monkeypatch) -> None:
     assert second.status_code == 200
     assert third.status_code == 429
     assert third.json()["error"]["code"] == "rate_limit_exceeded"
+    details = third.json()["error"]["details"]
+    assert details["source"] == "traveltom"
+    assert isinstance(details["retry_after_seconds"], int)
+    assert details["retry_after_seconds"] >= 0
+    assert third.headers["Retry-After"] == str(details["retry_after_seconds"])
+
+
+def test_local_environment_disables_chat_rate_limit_by_default(monkeypatch) -> None:
+    _enable_auth(monkeypatch, chat_rate_limit="1/minute")
+    monkeypatch.delenv("CHAT_RATE_LIMIT_ENABLED", raising=False)
+    get_settings.cache_clear()
+    fake_db = _FakeAsyncSession()
+    fake_agent = _FakeTravelTomAgent(
+        assistant_message="Local development response.",
+        state={
+            "state_version": "v1",
+            "session_id": "session-auth",
+            "user_id": None,
+            "constraints": {},
+            "preferences": {"weighted_interests": {}, "dislikes": []},
+            "entities": {"destinations": []},
+            "shortlist": [],
+            "itinerary": {"days": []},
+            "status": "explore",
+            "last_recommendation_version": "heuristic-v1",
+            "last_message_at": "2026-03-07T19:15:00Z",
+        },
+    )
+
+    app.dependency_overrides[get_db] = _override_db(fake_db)
+    app.dependency_overrides[get_travel_tom_agent] = lambda: fake_agent
+    app.dependency_overrides[require_authenticated_principal] = lambda: _principal()
+
+    try:
+        client = TestClient(app)
+        first = client.post("/api/v1/chat", json=_chat_payload())
+        second = client.post("/api/v1/chat", json=_chat_payload())
+    finally:
+        app.dependency_overrides.clear()
+
+    assert first.status_code == 200
+    assert second.status_code == 200

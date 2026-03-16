@@ -21,6 +21,14 @@ All errors return JSON:
 }
 ```
 
+Rate-limit note:
+
+- TravelTom-owned chat throttling uses `error.code = rate_limit_exceeded`.
+- Upstream provider quota/rate-limit failures use
+  `error.code = provider_rate_limited`.
+- TravelTom-owned chat throttling also returns `Retry-After` and
+  `details.retry_after_seconds`.
+
 ## Endpoints
 
 ### POST /api/v1/auth/signup
@@ -204,6 +212,8 @@ Implementation notes (current):
 - Tool and model failure behavior:
   - chat-model or agent failures fall back to deterministic orchestration guards
   - tool timeout/invalid payload/empty results return explicit safe assistant copy
+  - upstream provider quota/rate-limit failures escape the fallback path and are
+    returned as structured `429 provider_rate_limited` errors instead
 
 ### POST /api/v1/recommendations/query
 
@@ -326,4 +336,6 @@ Returns the current itinerary for a session.
 - 404 Not Found: Missing resource.
 - 409 Conflict: Idempotency conflict.
 - 429 Too Many Requests: Rate limit.
+  - `rate_limit_exceeded`: TravelTom-owned throttling.
+  - `provider_rate_limited`: upstream model/provider quota or rate limit.
 - 500 Internal Server Error: Unhandled errors.

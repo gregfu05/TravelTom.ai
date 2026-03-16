@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+import { ChatErrorState } from "../components/chatErrorState";
+
 export type SessionMessageRole = "user" | "assistant";
 
 export interface SessionRecommendation {
@@ -24,13 +26,13 @@ interface SessionState {
   messages: SessionMessage[];
   latestRecommendations: SessionRecommendation[];
   isSending: boolean;
-  errorMessage: string | null;
+  chatError: ChatErrorState | null;
   authToken: string | null;
   setSessionId: (sessionId: string) => void;
   addMessage: (message: SessionMessage) => void;
   setLatestRecommendations: (items: SessionRecommendation[]) => void;
   setIsSending: (value: boolean) => void;
-  setErrorMessage: (value: string | null) => void;
+  setChatError: (value: ChatErrorState | null) => void;
   setAuthToken: (token: string | null) => void;
   resetConversation: () => void;
 }
@@ -50,7 +52,7 @@ export const useSessionStore = create<SessionState>()(
       messages: [],
       latestRecommendations: [],
       isSending: false,
-      errorMessage: null,
+      chatError: null,
       authToken: null,
       setSessionId: (sessionId) => {
         set({ sessionId });
@@ -64,8 +66,8 @@ export const useSessionStore = create<SessionState>()(
       setIsSending: (value) => {
         set({ isSending: value });
       },
-      setErrorMessage: (value) => {
-        set({ errorMessage: value });
+      setChatError: (value) => {
+        set({ chatError: value });
       },
       setAuthToken: (token) => set({ authToken: token }),
       resetConversation: () => {
@@ -74,7 +76,7 @@ export const useSessionStore = create<SessionState>()(
           messages: [],
           latestRecommendations: [],
           isSending: false,
-          errorMessage: null,
+          chatError: null,
           authToken: state.authToken,
         }));
       },

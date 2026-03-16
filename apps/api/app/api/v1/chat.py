@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import logging
+
+from fastapi import APIRouter, Depends, Request
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import ApiError
+from app.core.config import Settings, get_settings
+from app.core.errors import ApiError, get_trace_id
 from app.core.security import (
     enforce_chat_rate_limit,
     require_authenticated_principal,
@@ -24,6 +27,7 @@ from app.services.chat_uow import ChatUnitOfWork
 from app.services.travel_tom_agent import TravelTomAgent, get_travel_tom_agent
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def get_chat_uow(db: AsyncSession = Depends(get_db)) -> ChatUnitOfWork:
@@ -35,8 +39,10 @@ def get_chat_uow(db: AsyncSession = Depends(get_db)) -> ChatUnitOfWork:
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
+    http_request: Request,
     _: None = Depends(enforce_chat_rate_limit),
     principal: AuthenticatedPrincipal | None = Depends(require_authenticated_principal),
+    settings: Settings = Depends(get_settings),
     uow: ChatUnitOfWork = Depends(get_chat_uow),
     agent: TravelTomAgent = Depends(get_travel_tom_agent),
 ) -> ChatResponse:
@@ -101,7 +107,23 @@ async def chat(
                 request_message_id=request.message_id,
                 orchestration=orchestration,
             )
-    except ApiError:
+    except ApiError as exc:
+        if exc.code == "provider_rate_limited":
+            logger.warning(
+                "chat_provider_rate_limited",
+                extra={
+                    "trace_id": get_trace_id(http_request),
+                    "context": {
+                        "chat_provider": settings.orchestrator_llm_provider,
+                        "error_code": exc.code,
+                        "path": str(http_request.url.path),
+                        "principal_subject": (
+                            principal.subject if principal is not None else None
+                        ),
+                        "session_id": request.session_id,
+                    },
+                },
+            )
         raise
     except ValidationError as exc:
         raise ApiError(
