@@ -7,7 +7,11 @@ from typing import Any
 
 from fastapi_users import BaseUserManager, schemas
 from fastapi_users.db import BaseUserDatabase
-from fastapi_users.exceptions import InvalidID, InvalidPasswordException
+from fastapi_users.exceptions import (
+    InvalidID,
+    InvalidPasswordException,
+    UserAlreadyExists,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.local_auth import normalize_email
@@ -25,7 +29,7 @@ class _LocalUserCreate(schemas.CreateUpdateDictModel):
     is_verified: bool = True
 
 
-class TravelTomUserDatabase(BaseUserDatabase[User, uuid.UUID]):
+class TravelTomUserDatabase(BaseUserDatabase[Any, uuid.UUID]):
     """Minimal fastapi-users database adapter over the existing user repo."""
 
     def __init__(self, *, session: AsyncSession) -> None:
@@ -78,7 +82,7 @@ class TravelTomUserDatabase(BaseUserDatabase[User, uuid.UUID]):
         return user
 
 
-class TravelTomUserManager(BaseUserManager[User, uuid.UUID]):
+class TravelTomUserManager(BaseUserManager[Any, uuid.UUID]):
     """Use fastapi-users password and create flows without adopting its routers."""
 
     reset_password_token_secret = "traveltom-local-reset-token-unused"
@@ -91,7 +95,7 @@ class TravelTomUserManager(BaseUserManager[User, uuid.UUID]):
             raise InvalidID() from exc
 
     async def validate_password(
-        self, password: str, user: _LocalUserCreate | User
+        self, password: str, user: schemas.CreateUpdateDictModel | User
     ) -> None:
         del user
         if len(password) < 8:
@@ -100,10 +104,21 @@ class TravelTomUserManager(BaseUserManager[User, uuid.UUID]):
             )
 
     async def create_local_user(self, *, email: str, password: str) -> User:
-        return await self.create(
-            _LocalUserCreate(email=normalize_email(email), password=password),
-            safe=True,
+        user_create = _LocalUserCreate(
+            email=normalize_email(email),
+            password=password,
         )
+        await self.validate_password(user_create.password, user_create)
+
+        existing_user = await self.user_db.get_by_email(user_create.email)
+        if existing_user is not None:
+            raise UserAlreadyExists()
+
+        user_dict = user_create.create_update_dict()
+        raw_password = str(user_dict.pop("password"))
+        user_dict["hashed_password"] = self.password_helper.hash(raw_password)
+        created_user = await self.user_db.create(user_dict)
+        return created_user
 
     async def authenticate_local_user(
         self, *, email: str, password: str
