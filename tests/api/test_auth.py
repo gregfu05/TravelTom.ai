@@ -11,12 +11,13 @@ from app.core.security import (
     get_chat_rate_limiter,
     require_authenticated_principal,
 )
+from app.db.models.message import Message
 from app.db.models.session import Session
 from app.db.models.user import User
 from app.db.session import get_db
 from app.main import app
 from app.schemas.auth import AuthenticatedPrincipal
-from app.schemas.orchestrator import OrchestratorResponse
+from app.schemas.orchestrator import OrchestratorResponse, TranscriptMessage
 from app.services.chat_persistence import session_pk
 from app.services.travel_tom_agent import get_travel_tom_agent
 from fastapi.testclient import TestClient
@@ -29,15 +30,22 @@ class _FakeResult:
     def scalar_one_or_none(self) -> Any:
         return self._value
 
+    def scalars(self) -> list[Any]:
+        if isinstance(self._value, list):
+            return self._value
+        return []
+
 
 class _FakeAsyncSession:
     def __init__(
         self,
         existing_session: Session | None = None,
         existing_user: User | None = None,
+        existing_messages: list[Message] | None = None,
     ) -> None:
         self.existing_session = existing_session
         self.existing_user = existing_user
+        self.existing_messages = existing_messages or []
         self.added: list[Any] = []
         self.committed = False
         self.rolled_back = False
@@ -49,6 +57,8 @@ class _FakeAsyncSession:
             return _FakeResult(self.existing_session)
         if entity is User:
             return _FakeResult(self.existing_user)
+        if entity is Message:
+            return _FakeResult(list(reversed(self.existing_messages)))
         return _FakeResult(None)
 
     def add(self, obj: Any) -> None:
@@ -84,15 +94,22 @@ class _FakeTravelTomAgent:
     ) -> None:
         self.assistant_message = assistant_message
         self.state = state
+        self.recent_messages_seen: list[TranscriptMessage] | None = None
+
+    @property
+    def recent_history_limit(self) -> int:
+        return 6
 
     def handle_chat(
         self,
         *,
         user_message: str,
         session_state: Any,
+        recent_messages: list[TranscriptMessage] | None = None,
     ) -> OrchestratorResponse:
         del user_message
         del session_state
+        self.recent_messages_seen = recent_messages
         return OrchestratorResponse.model_validate(
             {
                 "session_id": self.state["session_id"],

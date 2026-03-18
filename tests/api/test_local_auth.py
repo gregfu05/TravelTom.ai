@@ -16,11 +16,12 @@ from app.core.local_auth import (
 )
 from app.core.security import get_azure_b2c_scheme, get_chat_rate_limiter
 from app.db.models.auth_session import AuthSession
+from app.db.models.message import Message
 from app.db.models.session import Session
 from app.db.models.user import User
 from app.db.session import get_db
 from app.main import app
-from app.schemas.orchestrator import OrchestratorResponse
+from app.schemas.orchestrator import OrchestratorResponse, TranscriptMessage
 from app.services.chat_persistence import session_pk
 from app.services.travel_tom_agent import get_travel_tom_agent
 from fastapi.testclient import TestClient
@@ -35,6 +36,11 @@ class _FakeResult:
     def scalar_one_or_none(self) -> Any:
         return self._value
 
+    def scalars(self) -> list[Any]:
+        if isinstance(self._value, list):
+            return self._value
+        return []
+
 
 class _FakeAsyncSession:
     def __init__(
@@ -42,10 +48,12 @@ class _FakeAsyncSession:
         existing_session: Session | None = None,
         existing_user: User | None = None,
         existing_auth_session: AuthSession | None = None,
+        existing_messages: list[Message] | None = None,
     ) -> None:
         self.existing_session = existing_session
         self.existing_user = existing_user
         self.existing_auth_session = existing_auth_session
+        self.existing_messages = existing_messages or []
         self.added: list[Any] = []
         self.committed = False
         self.rolled_back = False
@@ -62,6 +70,8 @@ class _FakeAsyncSession:
         entity = statement.column_descriptions[0].get("entity")
         if entity is Session:
             return _FakeResult(self.existing_session)
+        if entity is Message:
+            return _FakeResult(list(reversed(self.existing_messages)))
         if entity is AuthSession:
             filters = self._filters(statement)
             auth_session_id = filters.get("id")
@@ -173,15 +183,22 @@ class _FakeTravelTomAgent:
     ) -> None:
         self.assistant_message = assistant_message
         self.state = state
+        self.recent_messages_seen: list[TranscriptMessage] | None = None
+
+    @property
+    def recent_history_limit(self) -> int:
+        return 6
 
     def handle_chat(
         self,
         *,
         user_message: str,
         session_state: Any,
+        recent_messages: list[TranscriptMessage] | None = None,
     ) -> OrchestratorResponse:
         del user_message
         del session_state
+        self.recent_messages_seen = recent_messages
         return OrchestratorResponse.model_validate(
             {
                 "session_id": self.state["session_id"],
