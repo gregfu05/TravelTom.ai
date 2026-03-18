@@ -1,24 +1,25 @@
-"""Tests for planner/composer orchestration and deterministic fallbacks."""
+"""Tests for chat-agent orchestration and deterministic follow-up shaping."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from langchain_core.messages import SystemMessage, ToolMessage
-
 from app.schemas.orchestrator import (
-    LLMComposedResponse,
-    LLMOrchestrationPlan,
     OrchestratorPolicyConfig,
     RecommendationToolRuntimePayload,
     TranscriptMessage,
 )
 from app.schemas.state import SessionState
-from app.schemas.tools.recommendations import RecommendationQuery, RecommendationResult
+from app.schemas.tools.recommendations import (
+    RecommendationQuery,
+    RecommendationResult,
+    RecommendationToolResponse,
+)
 from app.services.orchestrator.service import (
     OrchestratorService,
     build_runtime_state_message,
 )
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
 
 def _base_state() -> SessionState:
@@ -30,7 +31,12 @@ def _base_state() -> SessionState:
                 "dates": {"start": "2026-06-10", "end": "2026-06-17"},
                 "budget": {"min": 1000, "max": 2500, "currency": "USD"},
             },
-            "conversation": {"last_user_intent": "recommend"},
+            "preferences": {"weighted_interests": {"nightlife": 0.8}},
+            "conversation": {
+                "last_user_intent": "recommend",
+                "last_recommendation_item_type": "hotel",
+                "last_recommendation_query": "hotel Lisbon nightlife",
+            },
         }
     )
 
@@ -42,85 +48,190 @@ def _success_tool_artifact() -> dict[str, Any]:
             "ranking_version": "heuristic-v1",
             "results": [
                 {
-                    "item_id": "dest-lisbon",
-                    "item_type": "destination",
+                    "item_id": "hotel-lisbon-1",
+                    "item_type": "hotel",
                     "score": 0.92,
                     "rank": 1,
-                    "features": {"name": "Lisbon"},
-                    "explanation": "Strong culture and food fit.",
+                    "features": {"name": "Lisbon Stay"},
+                    "explanation": "Strong nightlife fit.",
                 }
             ],
         },
     ).model_dump(mode="json")
 
 
-def test_orchestrator_uses_planner_and_composer_with_recent_transcript() -> None:
+def test_build_chat_messages_includes_hidden_context_and_recent_transcript() -> None:
     service = OrchestratorService()
-    captured: dict[str, str] = {}
 
-    def planner_executor(prompt_context: str) -> LLMOrchestrationPlan:
-        captured["planner"] = prompt_context
-        return LLMOrchestrationPlan.model_validate(
+    messages = service.build_chat_messages(
+        user_message="show me more",
+        session_state=_base_state(),
+        recent_messages=[
+            TranscriptMessage(role="user", content="Find me a hotel in Lisbon"),
+            TranscriptMessage(role="assistant", content="Here are grounded options."),
+        ],
+    )
+
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"].startswith("TRAVELTOM_SESSION_STATE_JSON:")
+    assert messages[1]["role"] == "system"
+    assert "TRAVELTOM_RECOMMENDATION_CONTEXT_JSON:" in messages[1]["content"]
+    assert '"effective_item_type": "hotel"' in messages[1]["content"]
+    assert (
+        '"effective_query": "show me more hotel Lisbon nightlife"'
+        in messages[1]["content"]
+    )
+    assert messages[2] == {"role": "user", "content": "Find me a hotel in Lisbon"}
+    assert messages[3] == {"role": "assistant", "content": "Here are grounded options."}
+    assert messages[4] == {"role": "user", "content": "show me more"}
+
+
+def test_orchestrator_follow_up_uses_carried_item_type_and_query() -> None:
+    service = OrchestratorService()
+    captured: dict[str, Any] = {}
+
+    def agent_executor(messages: list[dict[str, str]]) -> dict[str, Any]:
+        captured["messages"] = messages
+        return {
+            "messages": [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "recommendation_query",
+                            "args": {
+                                "session_id": "sess-123",
+                                "query": "show me more hotel Lisbon nightlife",
+                                "constraints": {
+                                    "destination": "Lisbon",
+                                    "dates": {
+                                        "start": "2026-06-10",
+                                        "end": "2026-06-17",
+                                    },
+                                    "budget": {
+                                        "min": 1000,
+                                        "max": 2500,
+                                        "currency": "USD",
+                                    },
+                                },
+                                "filters": {"item_type": "hotel"},
+                                "max_results": 5,
+                                "ranking_version": "heuristic-v1",
+                            },
+                            "id": "call-1",
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                ToolMessage(
+                    content="Found 1 grounded option.",
+                    name="recommendation_query",
+                    tool_call_id="call-1",
+                    artifact=_success_tool_artifact(),
+                ),
+                AIMessage(content="Here is another grounded hotel option in Lisbon."),
+            ]
+        }
+
+    response = service.handle_message(
+        user_message="show me more",
+        session_state=_base_state(),
+        recent_messages=[
+            TranscriptMessage(role="user", content="Find me a hotel in Lisbon"),
+            TranscriptMessage(role="assistant", content="Here are grounded options."),
+        ],
+        agent_executor=agent_executor,
+    )
+
+    assert captured["messages"][-1]["content"] == "show me more"
+    assert (
+        response.assistant_message == "Here is another grounded hotel option in Lisbon."
+    )
+    assert response.recommendations[0].item_id == "hotel-lisbon-1"
+    assert response.state["conversation"]["last_recommendation_item_type"] == "hotel"
+    assert (
+        response.state["conversation"]["last_recommendation_query"]
+        == "show me more hotel Lisbon nightlife"
+    )
+    assert response.state["status"] == "refine"
+
+
+def test_orchestrator_fallback_preserves_prior_topic_terms_for_follow_up() -> None:
+    service = OrchestratorService()
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        captured_query["value"] = query
+        return RecommendationToolResponse.model_validate(
             {
-                "intent": "refine",
-                "should_call_recommendation_tool": True,
-                "state_patch": {
-                    "preferences": {"weighted_interests": {"nightlife": 0.9}},
-                    "status": "refine",
-                },
-                "query_controls": {"query": "another option with more nightlife"},
+                "ranking_version": "heuristic-v1",
+                "results": [
+                    {
+                        "item_id": "hotel-lisbon-2",
+                        "item_type": "hotel",
+                        "score": 0.9,
+                        "rank": 1,
+                        "features": {"name": "Late Night Stay"},
+                        "explanation": "Better nightlife fit.",
+                    }
+                ],
             }
         )
 
-    def recommendation_executor(_query: RecommendationQuery) -> dict[str, Any]:
-        return {
-            "ranking_version": "heuristic-v1",
-            "results": [
-                {
-                    "item_id": "dest-lisbon",
-                    "item_type": "destination",
-                    "score": 0.92,
-                    "rank": 1,
-                    "features": {"name": "Lisbon"},
-                    "explanation": "Strong culture and nightlife fit.",
-                }
-            ],
-        }
-
-    def composer_executor(prompt_context: str) -> LLMComposedResponse:
-        captured["composer"] = prompt_context
-        return LLMComposedResponse(
-            assistant_message="Lisbon is still the best grounded fit, with a stronger nightlife angle."
-        )
-
     response = service.handle_message(
-        user_message="another option with more nightlife",
+        user_message="another option",
         session_state=_base_state(),
-        recent_messages=[
-            TranscriptMessage(role="user", content="Recommend me a summer city trip."),
-            TranscriptMessage(
-                role="assistant",
-                content="Lisbon is the strongest grounded match so far.",
-            ),
-        ],
-        planner_executor=planner_executor,
-        composer_executor=composer_executor,
+        agent_executor=lambda _messages: (_ for _ in ()).throw(RuntimeError("boom")),
         recommendation_executor=recommendation_executor,
     )
 
-    assert "Recent transcript" in captured["planner"]
-    assert "Recommend me a summer city trip." in captured["planner"]
-    assert "Recommendation records" in captured["composer"]
-    assert "name=Lisbon" in captured["composer"]
-    assert (
-        response.assistant_message
-        == "Lisbon is still the best grounded fit, with a stronger nightlife angle."
+    query = captured_query["value"]
+    assert query is not None
+    assert query.filters["item_type"] == "hotel"
+    assert query.query == "another option hotel Lisbon nightlife"
+    assert response.state["conversation"]["last_recommendation_query"] == query.query
+    assert response.recommendations[0].item_id == "hotel-lisbon-2"
+
+
+def test_orchestrator_explicit_override_replaces_carried_item_type() -> None:
+    service = OrchestratorService()
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        captured_query["value"] = query
+        return RecommendationToolResponse.model_validate(
+            {
+                "ranking_version": "heuristic-v1",
+                "results": [
+                    {
+                        "item_id": "flight-lisbon-1",
+                        "item_type": "flight",
+                        "score": 0.88,
+                        "rank": 1,
+                        "features": {"name": "LIS Flight"},
+                        "explanation": "Switches to flights explicitly.",
+                    }
+                ],
+            }
+        )
+
+    response = service.handle_message(
+        user_message="actually flights",
+        session_state=_base_state(),
+        agent_executor=lambda _messages: (_ for _ in ()).throw(RuntimeError("boom")),
+        recommendation_executor=recommendation_executor,
     )
-    assert len(response.recommendations) == 1
-    assert response.state["status"] == "refine"
-    assert response.state["preferences"]["weighted_interests"]["nightlife"] == 0.9
-    assert response.state["conversation"]["last_user_intent"] == "refine"
-    assert response.state["conversation"]["last_requested_slots"] == []
+
+    query = captured_query["value"]
+    assert query is not None
+    assert query.filters["item_type"] == "flight"
+    assert query.query == "actually flights"
+    assert response.state["conversation"]["last_recommendation_item_type"] == "flight"
+    assert response.recommendations[0].item_type == "flight"
 
 
 def test_orchestrator_progressive_clarification_acknowledges_new_detail() -> None:
@@ -143,111 +254,46 @@ def test_orchestrator_progressive_clarification_acknowledges_new_detail() -> Non
                 role="assistant", content="Which destination should I focus on?"
             )
         ],
+        agent_executor=lambda _messages: {
+            "messages": [AIMessage(content="What travel dates should I plan around?")]
+        },
     )
 
     assert response.state["constraints"]["destination"] == "Lisbon"
-    assert "I have your destination" in response.assistant_message
     assert "travel dates" in response.assistant_message
-    assert "budget range" not in response.assistant_message
     assert response.state["conversation"]["last_requested_slots"] == ["dates"]
     assert response.state["conversation"]["last_user_intent"] == "recommend"
-
-
-def test_orchestrator_continues_recommendation_flow_when_final_slot_arrives() -> None:
-    service = OrchestratorService()
-    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
-    state = SessionState.model_validate(
-        {
-            "session_id": "sess-complete",
-            "constraints": {
-                "destination": "Lisbon",
-                "dates": {"start": "2026-06-10", "end": "2026-06-17"},
-            },
-            "conversation": {
-                "last_requested_slots": ["budget"],
-                "last_user_intent": "recommend",
-            },
-        }
-    )
-
-    def recommendation_executor(query: RecommendationQuery) -> dict[str, Any]:
-        captured_query["value"] = query
-        return {
-            "ranking_version": "heuristic-v1",
-            "results": [
-                {
-                    "item_id": "hotel-lisbon-1",
-                    "item_type": "hotel",
-                    "score": 0.94,
-                    "rank": 1,
-                    "features": {"name": "Lisbon Stay"},
-                    "explanation": "Strong hotel match in Lisbon.",
-                }
-            ],
-        }
-
-    response = service.handle_message(
-        user_message="Budget between 1200 and 2400 USD.",
-        session_state=state,
-        recommendation_executor=recommendation_executor,
-    )
-
-    query = captured_query["value"]
-    assert query is not None
-    assert query.constraints.destination == "Lisbon"
-    assert query.constraints.budget is not None
-    assert query.constraints.budget.max == 2400.0
-    assert response.state["status"] == "refine"
-    assert response.state["conversation"]["last_user_intent"] == "recommend"
-    assert response.state["conversation"]["last_requested_slots"] == []
-    assert response.recommendations[0].item_id == "hotel-lisbon-1"
-
-
-def test_orchestrator_refine_turn_preserves_prior_context() -> None:
-    service = OrchestratorService()
-    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
-    state = _base_state()
-    state.status = "refine"
-    state.conversation.last_user_intent = "refine"
-
-    def recommendation_executor(query: RecommendationQuery) -> dict[str, Any]:
-        captured_query["value"] = query
-        return {
-            "ranking_version": "heuristic-v1",
-            "results": [
-                {
-                    "item_id": "dest-porto",
-                    "item_type": "destination",
-                    "score": 0.9,
-                    "rank": 1,
-                    "features": {"name": "Porto"},
-                    "explanation": "A slightly cheaper nightlife-focused alternative.",
-                }
-            ],
-        }
-
-    response = service.handle_message(
-        user_message="cheaper with more nightlife",
-        session_state=state,
-        recommendation_executor=recommendation_executor,
-    )
-
-    query = captured_query["value"]
-    assert query is not None
-    assert query.constraints.destination == "Lisbon"
-    assert query.constraints.dates is not None
-    assert response.state["preferences"]["weighted_interests"]["nightlife"] == 0.8
-    assert response.state["status"] == "refine"
-    assert response.recommendations[0].item_id == "dest-porto"
 
 
 def test_orchestrator_handles_invalid_tool_payload_with_safe_copy() -> None:
     service = OrchestratorService()
 
     response = service.handle_message(
-        user_message="recommend a trip to Lisbon from 2026-06-10 to 2026-06-17 under 2400 USD",
+        user_message=(
+            "recommend a trip to Lisbon from 2026-06-10 to 2026-06-17 " "under 2400 USD"
+        ),
         session_state=SessionState(session_id="sess-invalid-tool"),
-        recommendation_executor=lambda _query: {"results": []},
+        agent_executor=lambda _messages: {
+            "messages": [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "recommendation_query",
+                            "args": {"query": "bad"},
+                            "id": "call-1",
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                ToolMessage(
+                    content="invalid",
+                    name="recommendation_query",
+                    tool_call_id="call-1",
+                    artifact={"status": "invalid_payload"},
+                ),
+            ]
+        },
     )
 
     assert "invalid recommendation payload" in response.assistant_message
@@ -300,4 +346,4 @@ def test_orchestrator_extracts_direct_recommendation_payload_from_tool_message()
 
     assert payload.status == "success"
     assert payload.response is not None
-    assert payload.response.results[0].item_id == "dest-lisbon"
+    assert payload.response.results[0].item_id == "hotel-lisbon-1"

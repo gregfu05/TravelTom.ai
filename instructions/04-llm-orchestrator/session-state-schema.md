@@ -24,7 +24,9 @@ Source of truth: `apps/api/app/schemas/state.py`
   "entities": {"destinations": ["Lisbon"]},
   "conversation": {
     "last_requested_slots": ["dates"],
-    "last_user_intent": "recommend"
+    "last_user_intent": "recommend",
+    "last_recommendation_item_type": "hotel",
+    "last_recommendation_query": "show me more hotel Lisbon nightlife"
   },
   "shortlist": ["item_id"],
   "itinerary": {"days": []},
@@ -42,6 +44,8 @@ Source of truth: `apps/api/app/schemas/state.py`
 - `constraints.party_size.adults >= 1` and `children >= 0`.
 - `preferences.weighted_interests.*` must be in range `[0, 1]`.
 - `conversation.last_user_intent` is `recommend|refine|clarify|null`.
+- `conversation.last_recommendation_item_type` is
+  `destination|hotel|flight|null`.
 - `status` is an enum: `explore`, `refine`, `itinerary`, `booking`.
 
 ## Evolution rules
@@ -57,9 +61,6 @@ Source of truth: `apps/api/app/schemas/state.py`
 
 ## LLM-first state handling notes
 
-- Planner emits a structured partial state patch (`state_patch`).
-- Runtime merges patch into current state using strict validation (`SessionState.model_validate`).
-- If patch validation fails, orchestration ignores the patch and continues with prior state.
 - Deterministic extraction still runs as a guardrail to enrich missing constraints from user text.
 - Destination values are deduplicated in `entities.destinations`.
 - `conversation.last_requested_slots` tracks the most recent progressive
@@ -68,4 +69,9 @@ Source of truth: `apps/api/app/schemas/state.py`
 - `conversation.last_user_intent` preserves whether the user is trying to
   recommend, refine, or clarify, so a later slot-filling turn can continue the
   prior recommendation flow once the missing details are complete.
+- `conversation.last_recommendation_item_type` preserves the effective hotel,
+  flight, or destination mode across follow-up turns like `show me more`.
+- `conversation.last_recommendation_query` preserves the effective recommender
+  query text so deterministic carry-forward can keep topical terms on later
+  elliptical turns like `another option` or `cheaper`.
 

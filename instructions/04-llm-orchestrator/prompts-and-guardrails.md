@@ -5,57 +5,30 @@
 - The assistant is a travel orchestrator, not a recommendation source.
 - Recommendations must come only from the recommendation tool response.
 - Tool input and output contracts are always schema-validated.
-- If planner or composer execution misses a safe grounded answer, fail safe and
-  continue with deterministic fallback logic.
+- If chat-agent execution misses a safe grounded answer, fail safe and continue
+  with deterministic fallback logic.
 - API routes enter through `TravelTomAgent`, which selects either:
-  - planner/composer chat orchestration for `/api/v1/chat`
+  - chat `create_agent` orchestration for `/api/v1/chat`
   - direct LangChain `create_agent` recommendation mode for
     `/api/v1/recommendations/query`
 
-## Planner prompt
+## Chat agent prompt
 
-The planner receives bounded prompt context that includes:
+The chat agent receives bounded context that includes:
 
-- validated `SessionState` JSON
+- validated `SessionState` JSON in a hidden system message
+- deterministic carry-forward recommendation context in a hidden system message
 - bounded recent transcript replay from persisted messages
 - the latest user message
-- the hard `max_results` limit for this turn
 
-The planner must return JSON only with:
-
-- `intent`
-- `should_call_recommendation_tool`
-- optional `clarification_message`
-- `state_patch`
-- `query_controls`
-
-Hard planner instructions:
+Hard chat-agent instructions:
 
 - use recent transcript plus state to avoid re-asking for captured details
+- on underspecified follow-ups, preserve prior recommendation intent unless the
+  user explicitly overrides it
 - if clarification is needed, ask for one next-most-useful missing detail
 - never invent recommendation items, prices, or availability
-- only propose structured state updates that fit the strict state schema
-
-## Composer prompt
-
-The composer receives bounded prompt context that includes:
-
-- validated `SessionState` JSON
-- bounded recent transcript replay
-- latest user message
-- validated recommendation records only
-- a deterministic fallback message
-
-The composer must return JSON only in the form:
-
-- `{"assistant_message": "..."}`
-
-Hard composer instructions:
-
 - recommendation names and travel facts must come only from validated tool output
-- if clarifying, acknowledge newly captured details when useful
-- do not repeat the same full clarification list when one next slot is enough
-- if no recommendations exist, say so plainly and guide the user to tighten or adjust constraints
 
 ## Direct recommendation prompt
 
@@ -79,12 +52,16 @@ The runtime artifact records:
 ## Deterministic guardrails kept in runtime
 
 - Deterministic extraction still enriches missed constraints from user text.
-- Deterministic extraction runs before planner patch merging.
+- Deterministic extraction runs before chat-agent invocation.
+- Deterministic carry-forward helpers resolve the effective query text and item
+  type for elliptical refine turns before the agent runs.
 - Query filter guardrail normalizes item types to `destination|hotel|flight`.
-- Planner state patches are merged with strict validation; invalid patches are ignored.
 - Recommendation ranking version stays deterministic (`heuristic-v1`).
 - `SessionState.conversation` tracks `last_requested_slots` and
   `last_user_intent` so clarification stays progressive across turns.
+- `SessionState.conversation.last_recommendation_item_type` and
+  `last_recommendation_query` preserve recommender carry-forward semantics
+  across follow-up turns.
 - `OrchestratorService` only trusts validated recommendation payloads for
   recommendation data and destination-specific claims.
 - Direct recommendation mode bypasses conversational composition and returns only
@@ -92,7 +69,7 @@ The runtime artifact records:
 
 ## Fallback response requirements
 
-- Planner or composer execution failure:
+- Chat-agent execution failure:
   - Use deterministic extraction plus deterministic guardrail planning.
   - If the fallback plan still supports a search, run deterministic
     recommendation execution and deterministic grounded copy.
@@ -104,7 +81,7 @@ The runtime artifact records:
   - Return safe deterministic invalid-payload prompt.
 - Empty tool results:
   - Return explicit no-strong-match message and ask for tighter constraints.
-- Missing or blank composer message:
+- Missing or blank final agent message:
   - Use deterministic fallback copy based on the validated tool artifact and
     current state.
 

@@ -7,14 +7,13 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Literal, Sequence
 
 from fastapi import status
-from openai import RateLimitError as OpenAIRateLimitError
-
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import Runnable
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
+from openai import RateLimitError as OpenAIRateLimitError
 
 from app.core.errors import ApiError
 from app.schemas.state import SessionState
@@ -33,6 +32,7 @@ from app.services.orchestrator.policies import (
 )
 from app.services.orchestrator.service import (
     extract_direct_query,
+    extract_runtime_recommendation_context,
     extract_runtime_state,
 )
 
@@ -264,7 +264,9 @@ class DeterministicTravelTomChatModel(_DeterministicToolCallingModel):
         tool_call = {
             "name": "recommendation_query",
             "args": self._build_tool_args(
-                session_state=session_state, user_message=user_message
+                session_state=session_state,
+                user_message=user_message,
+                messages=messages,
             ),
             "id": "recommendation_query_call",
             "type": "tool_call",
@@ -310,6 +312,7 @@ class DeterministicTravelTomChatModel(_DeterministicToolCallingModel):
         *,
         session_state: SessionState,
         user_message: str,
+        messages: Sequence[BaseMessage],
     ) -> dict[str, Any]:
         constraints: dict[str, Any] = {}
         if session_state.constraints.origin:
@@ -329,10 +332,22 @@ class DeterministicTravelTomChatModel(_DeterministicToolCallingModel):
                 session_state.constraints.party_size.model_dump()
             )
 
+        recommendation_context = extract_runtime_recommendation_context(messages)
+        query_text = recommendation_context.get("effective_query")
+        if not isinstance(query_text, str) or not query_text.strip():
+            query_text = user_message
+
         filters = extract_query_filters(user_message)
+        effective_item_type = recommendation_context.get("effective_item_type")
+        if (
+            not filters
+            and isinstance(effective_item_type, str)
+            and effective_item_type in {"destination", "hotel", "flight"}
+        ):
+            filters = {"item_type": effective_item_type}
         payload = RecommendationQuery(
             session_id=session_state.session_id,
-            query=user_message,
+            query=query_text,
             constraints=constraints,
             filters=filters,
             max_results=self.max_results,

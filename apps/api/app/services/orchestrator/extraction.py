@@ -234,6 +234,24 @@ _ITEM_TYPE_PATTERNS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+_FOLLOW_UP_PATTERNS = (
+    r"\banother option\b",
+    r"\banother one\b",
+    r"\bshow me more\b",
+    r"\bmore options\b",
+    r"\bmore please\b",
+    r"\bwhat else\b",
+    r"\bsomething else\b",
+    r"\bany others\b",
+    r"\bother options\b",
+    r"\bmore like this\b",
+    r"\bcheaper\b",
+    r"\bcheapest\b",
+    r"\bless expensive\b",
+    r"\bmore affordable\b",
+    r"\bsimilar\b",
+)
+
 
 def apply_message_state_updates(
     *,
@@ -313,6 +331,71 @@ def extract_query_filters(message: str) -> dict[str, str]:
         if any(re.search(pattern, lowered) for pattern in patterns):
             return {"item_type": item_type}
     return {}
+
+
+def is_follow_up_refinement(message: str) -> bool:
+    """Return whether the user message looks like an underspecified follow-up."""
+
+    lowered = message.casefold()
+    return any(re.search(pattern, lowered) for pattern in _FOLLOW_UP_PATTERNS)
+
+
+def resolve_effective_item_type(
+    *,
+    message: str,
+    session_state: SessionState,
+) -> str | None:
+    """Resolve the effective recommendation item type for this turn."""
+
+    explicit_item_type = extract_query_filters(message).get("item_type")
+    if explicit_item_type is not None:
+        return explicit_item_type
+
+    if is_follow_up_refinement(message):
+        return session_state.conversation.last_recommendation_item_type
+    return None
+
+
+def build_effective_recommendation_query_text(
+    *,
+    message: str,
+    session_state: SessionState,
+) -> str:
+    """Build deterministic carry-forward query text for recommendation turns."""
+
+    normalized_message = " ".join(message.strip().split())
+    if not normalized_message:
+        return normalized_message
+
+    if not is_follow_up_refinement(normalized_message):
+        return normalized_message
+
+    prior_query = (session_state.conversation.last_recommendation_query or "").strip()
+    if prior_query:
+        return f"{normalized_message} {prior_query}".strip()
+
+    fragments: list[str] = [normalized_message]
+    effective_item_type = resolve_effective_item_type(
+        message=normalized_message,
+        session_state=session_state,
+    )
+    if effective_item_type is not None:
+        fragments.append(effective_item_type)
+
+    if session_state.constraints.destination:
+        fragments.append(session_state.constraints.destination)
+
+    weighted_interests = sorted(
+        session_state.preferences.weighted_interests.items(),
+        key=lambda item: (-item[1], item[0]),
+    )
+    for interest, _weight in weighted_interests[:3]:
+        fragments.append(interest)
+
+    normalized_fragments = [
+        fragment.strip() for fragment in fragments if fragment and fragment.strip()
+    ]
+    return " ".join(dict.fromkeys(normalized_fragments))
 
 
 def apply_structured_state_patch(

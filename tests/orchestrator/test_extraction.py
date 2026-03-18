@@ -9,6 +9,9 @@ from app.schemas.state import SessionState
 from app.services.orchestrator.extraction import (
     apply_message_state_updates,
     apply_structured_state_patch,
+    build_effective_recommendation_query_text,
+    is_follow_up_refinement,
+    resolve_effective_item_type,
 )
 from pydantic import ValidationError
 
@@ -141,3 +144,51 @@ def test_apply_structured_state_patch_rejects_invalid_payload() -> None:
             session_state=state,
             state_patch={"constraints": {"budget": {"min": 100, "max": 10}}},
         )
+
+
+def test_follow_up_refinement_reuses_prior_item_type_and_query_terms() -> None:
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-1",
+            "constraints": {"destination": "Lisbon"},
+            "preferences": {"weighted_interests": {"nightlife": 0.8}},
+            "conversation": {
+                "last_recommendation_item_type": "hotel",
+                "last_recommendation_query": "hotel Lisbon nightlife",
+            },
+        }
+    )
+
+    assert is_follow_up_refinement("show me more") is True
+    assert (
+        resolve_effective_item_type(message="show me more", session_state=state)
+        == "hotel"
+    )
+    assert (
+        build_effective_recommendation_query_text(
+            message="show me more",
+            session_state=state,
+        )
+        == "show me more hotel Lisbon nightlife"
+    )
+
+
+def test_explicit_item_type_override_beats_carried_type() -> None:
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-1",
+            "conversation": {"last_recommendation_item_type": "hotel"},
+        }
+    )
+
+    assert (
+        resolve_effective_item_type(message="actually flights", session_state=state)
+        == "flight"
+    )
+    assert (
+        build_effective_recommendation_query_text(
+            message="actually flights",
+            session_state=state,
+        )
+        == "actually flights"
+    )

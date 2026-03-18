@@ -12,8 +12,7 @@ from app.db.models.session import Session
 from app.db.models.user import User
 from app.db.session import get_db
 from app.main import app
-from app.schemas.orchestrator import TranscriptMessage
-from app.schemas.orchestrator import OrchestratorResponse
+from app.schemas.orchestrator import OrchestratorResponse, TranscriptMessage
 from app.services.travel_tom_agent import get_travel_tom_agent
 from fastapi.testclient import TestClient
 

@@ -1,5 +1,31 @@
 # Instructions Changelog
 
+## 2026-03-18
+
+- Restored `/api/v1/chat` to a true LangChain `create_agent` loop while keeping
+  deterministic recommendation shaping:
+  - `apps/api/app/services/travel_tom_agent.py` now rebuilds the shared chat
+    agent instead of routing normal chat through planner/composer model calls.
+  - `apps/api/app/services/orchestrator/service.py` now prepares hidden runtime
+    state + carry-forward context for the agent, normalizes agent transcripts,
+    and preserves deterministic fallback recommendation execution.
+  - `apps/api/app/services/orchestrator/extraction.py` now resolves effective
+    carried item type and effective recommender query text for elliptical
+    follow-up turns.
+  - `apps/api/app/schemas/state.py` now remembers the last effective
+    recommendation item type and query text in `conversation`.
+  - `apps/api/app/services/orchestrator/llm_provider.py` deterministic disabled
+    mode now consumes the same hidden carry-forward context as the real agent path.
+- Updated orchestrator/backend docs to reflect the restored chat-agent runtime:
+  - `04-llm-orchestrator/orchestrator-overview.md`
+  - `04-llm-orchestrator/prompts-and-guardrails.md`
+  - `04-llm-orchestrator/session-state-schema.md`
+  - `02-backend/api-design.md`
+  - `02-backend/services-and-modules.md`
+- Updated tests for the restored behavior:
+  - `tests/orchestrator/test_extraction.py`
+  - `tests/orchestrator/test_service.py`
+
 ## 2026-03-16
 
 - Redesigned chat orchestration to use bounded recent transcript replay plus

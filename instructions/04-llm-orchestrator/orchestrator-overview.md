@@ -2,12 +2,12 @@
 
 ## Responsibilities
 
-- Run `/api/v1/chat` through a planner/composer orchestration loop.
+- Run `/api/v1/chat` through a LangChain `create_agent` conversational loop.
 - Supply LangChain `@tool` recommendation tools from the shared backend service layer.
 - Reuse bounded persisted conversation history plus validated `SessionState` on every turn.
 - Keep recommendation retrieval tool-first and deterministic.
-- Merge deterministic extraction and planner-proposed state patches into canonical validated state.
-- Compose grounded assistant responses from validated tool-backed recommendations only.
+- Apply deterministic extraction and carry-forward shaping before agent invocation.
+- Normalize agent transcripts into grounded assistant responses backed only by validated tool output.
 - Persist schema-valid state and recommendation snapshots via `/api/v1/chat`.
 
 ## Hard constraints
@@ -20,27 +20,26 @@
 
 - `apps/api/app/services/travel_tom_agent.py`
   - Shared route-facing `TravelTomAgent` entrypoint for backend agent behavior.
-  - Owns LLM-backed planner/composer invocation for chat and LangChain
-    `create_agent` construction for direct recommendation mode.
+  - Owns the shared chat `create_agent` instance and the deterministic direct
+    recommendation `create_agent` instance.
   - Registers the recommendation tool with LangChain's `@tool` decorator.
   - Exposes `handle_chat` and `handle_recommendation_query` for `/chat` and
     `/recommendations/query`.
 - `apps/api/app/services/orchestrator/service.py`
-  - Runs turn orchestration in four steps:
-    - deterministic extraction
-    - structured planning
-    - optional deterministic recommendation execution
-    - grounded response composition
-  - Merges validated planner state patches into canonical `SessionState`.
-  - Keeps deterministic query shaping, clarification fallback logic, and
+  - Runs deterministic pre-extraction before the chat agent sees the turn.
+  - Builds hidden runtime context from validated state, bounded recent
+    transcript, and deterministic carry-forward query hints.
+  - Normalizes agent transcripts into schema-valid API responses.
+  - Keeps deterministic fallback query shaping, clarification continuity, and
     tool/error handling.
 - `apps/api/app/services/orchestrator/policies.py`
-  - Shared planner/composer prompt builders, guardrails, and deterministic
-    fallback copy helpers.
+  - Shared deterministic clarification and fallback helpers.
 - `apps/api/app/services/orchestrator/extraction.py`
   - Deterministic guardrail extraction from raw user text.
+  - Resolves carry-forward item type and effective recommender query text for
+    underspecified follow-up turns.
 - `apps/api/app/services/orchestrator/llm_provider.py`
-  - Builds OpenAI and Ollama chat models used by planner/composer calls.
+  - Builds OpenAI and Ollama chat models used by the chat agent.
   - Provides deterministic in-process models for disabled chat mode fallback
     and direct recommendation mode.
 
@@ -50,32 +49,21 @@
 2. The route loads a bounded recent transcript window from persisted `messages`
    and hydrates the validated `SessionState` from `sessions.state_json`.
 3. `OrchestratorService` applies deterministic extraction to the latest user turn
-   before any LLM planning.
-4. The planner receives:
+   before the chat agent runs.
+4. Runtime builds hidden agent context from:
    - validated current state
-   - bounded recent transcript
-   - latest user message
-   - a hard `max_results` bound for this turn
-5. The planner returns JSON with:
-   - `intent`
-   - `should_call_recommendation_tool`
-   - optional `clarification_message`
-   - `state_patch`
-   - `query_controls`
-6. Runtime merges the planner patch into state with strict validation. Invalid
-   patches are ignored and orchestration continues from the deterministic state.
-7. If a search is appropriate, `recommendation_query` validates the request,
-   executes the recommender, validates `RecommendationToolResponse`, and returns
-   deterministic runtime data.
-8. The composer receives:
-   - validated state
-   - bounded recent transcript
-   - latest user message
-   - validated recommendation results only
-   - a deterministic fallback message
-9. `OrchestratorService` emits `OrchestratorResponse` with schema-valid state,
-   grounded recommendations, and safe fallback copy when planning/composition
-   fails.
+   - bounded recent transcript replay
+   - deterministic carry-forward query hints for follow-up turns
+5. The chat `create_agent` loop either:
+   - asks a clarification question, or
+   - calls `recommendation_query`
+6. `recommendation_query` validates the request, executes the recommender,
+   validates `RecommendationToolResponse`, and returns deterministic runtime data.
+7. `OrchestratorService` normalizes the final agent transcript into
+   `OrchestratorResponse`, updates remembered recommendation intent fields in
+   `SessionState.conversation`, and ignores model-invented recommendation content.
+8. If the agent path fails, runtime falls back to deterministic clarification or
+   deterministic recommendation execution using the same carry-forward shaping.
 
 ## Direct recommendation flow
 
@@ -92,6 +80,10 @@
 - Recommendation grounding is unchanged: assistant copy may only mention items
   present in validated tool output.
 - Deterministic extraction still runs before planner state merging.
+- Deterministic extraction still runs before agent invocation.
+- Follow-up turns can reuse `conversation.last_recommendation_item_type` and
+  `conversation.last_recommendation_query` when the user says things like
+  `show me more`, `another option`, or `cheaper`.
 - Clarification fallback is progressive and slot-aware, using
   `state.conversation.last_requested_slots` plus current missing constraints.
 - Tool timeout, invalid payload, and unexpected tool failures return explicit safe fallback messages.
@@ -102,9 +94,9 @@
 
 ## Failure handling
 
-- Planner or composer execution failure:
-  - Fall back to deterministic extraction plus deterministic guardrail planning.
-  - If the fallback plan still permits a search, execute the deterministic
+- Chat-agent execution failure:
+  - Fall back to deterministic extraction plus deterministic guardrail routing.
+  - If the fallback path still permits a search, execute the deterministic
     recommendation path and use deterministic grounded copy.
 - Tool timeout:
   - Return retry-safe deterministic message.

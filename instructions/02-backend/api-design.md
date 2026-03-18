@@ -192,8 +192,10 @@ Implementation notes (current):
 - `TravelTomAgent` builds the chat agent with LangChain-native OpenAI or Ollama
   chat models, or a deterministic in-process model when provider mode is
   `disabled`.
-- `OrchestratorService` converts the final agent transcript into the normalized
-  backend response and ignores model-invented recommendation content.
+- `OrchestratorService` applies deterministic extraction and carry-forward query
+  shaping before agent invocation, then converts the final agent transcript into
+  the normalized backend response and ignores model-invented recommendation
+  content.
 - Recommendation retrieval remains tool-first and deterministic; router never returns model-invented recommendation items.
 - Request/response Pydantic schemas live in `apps/api/app/schemas/api/chat.py` (`ChatRequest`, `ChatResponse`, `ChatRecommendation`, `ClientContext`).
 - Chat transaction boundary lives in `apps/api/app/services/chat_uow.py`.

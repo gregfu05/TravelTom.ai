@@ -65,22 +65,23 @@ apps/api/
 ## Module boundaries
 
 - Orchestrator service:
-  - Owns planner/composer orchestration, deterministic fallback logic, and
+  - Owns chat-agent transcript normalization, deterministic fallback logic, and
     grounded response normalization.
   - Does not own route wiring or LangChain tool registration.
-  - Keeps deterministic guardrails for fallback planning, state extraction,
-    structured state-patch merging, and query-filter normalization.
+  - Keeps deterministic guardrails for state extraction, carry-forward query
+    shaping, clarification continuity, and query-filter normalization.
   - Converts validated recommendation data into route-safe `OrchestratorResponse`
     payloads.
 - TravelTom agent service (`app/services/travel_tom_agent.py`):
   - Owns the route-facing backend agent abstraction used by `/chat` and `/recommendations/query`.
-  - Owns planner/composer model invocation for `/chat` and LangChain-native
-    `create_agent` construction for `direct_recommendation` mode.
+  - Owns the shared chat `create_agent` runtime for `/chat` and the
+    deterministic `create_agent` runtime for `direct_recommendation` mode.
   - Owns `@tool` registration for the shared deterministic recommendation tool.
-  - Delegates chat turn orchestration and fallback logic to `OrchestratorService`.
+  - Delegates deterministic state preparation, transcript normalization, and
+    fallback logic to `OrchestratorService`.
   - Wraps deterministic recommendation execution without changing recommender logic.
 - Orchestrator model provider (`app/services/orchestrator/llm_provider.py`):
-  - Owns chat-model construction for OpenAI and Ollama planner/composer calls.
+  - Owns chat-model construction for OpenAI and Ollama chat-agent calls.
   - Owns deterministic in-process models for disabled chat fallback and direct
     recommendation mode.
 - Recommender service:
