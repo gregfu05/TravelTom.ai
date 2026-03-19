@@ -150,26 +150,25 @@ def _load_catalog() -> pd.DataFrame:
         df = df[df["is_open"] == 1]
     df = df.copy()
     df["popularity"] = df["popularity"].fillna(0.0)
+    df["weekly_open_minutes"] = df.get("weekly_open_minutes", 0).fillna(0)
+    df["weekend_open_minutes"] = df.get("weekend_open_minutes", 0).fillna(0)
     return df
 
 
 def _parse_intent(text: str) -> ParsedIntent:
-    normalized = text.lower()
-    categories: set[str] = set()
-    attributes: set[str] = set()
+    normalized = _normalize_text(text)
+    tokens = _tokenize(normalized)
 
-    for phrase, column in CATEGORY_KEYWORDS.items():
-        if phrase in normalized:
-            categories.add(column)
-    for phrase, column in ATTRIBUTE_KEYWORDS.items():
-        if phrase in normalized:
-            attributes.add(column)
+    categories = _match_categories(tokens, normalized)
+    attributes = _match_attributes(tokens, normalized)
 
-    require_parking = any(word in normalized for word in ["parking", "park", "car park"])
-    require_late_night = "late" in normalized or "late night" in normalized
-    require_burgers = "burger" in normalized or "burgers" in normalized
+    require_parking = _has_phrase(normalized, ["parking", "car park", "garage parking"])
+    require_late_night = _has_phrase(normalized, ["late night", "open late", "late"])
+    require_burgers = "burger" in tokens or "burgers" in tokens
+    price_tier = _detect_price(tokens)
 
     requested_results = _extract_requested_count(normalized)
+    city = _extract_city(normalized)
 
     return ParsedIntent(
         categories=categories,
@@ -177,7 +176,9 @@ def _parse_intent(text: str) -> ParsedIntent:
         require_parking=require_parking,
         require_burgers=require_burgers,
         attributes=attributes,
+        price_tier=price_tier,
         requested_results=requested_results,
+        city=city,
     )
 
 
@@ -191,6 +192,13 @@ def _extract_requested_count(text: str) -> int | None:
     return None
 
 
+def _extract_city(text: str) -> str | None:
+    match = re.search(r"in ([a-zA-Z][a-zA-Z\\s]+)", text)
+    if match:
+        return match.group(1).strip()
+    return None
+
+
 def _apply_filters(df: pd.DataFrame, intent: ParsedIntent) -> pd.DataFrame:
     candidates = df
 
@@ -199,6 +207,24 @@ def _apply_filters(df: pd.DataFrame, intent: ParsedIntent) -> pd.DataFrame:
         for col in intent.categories:
             if col in candidates.columns:
                 masks.append(candidates[col])
+        if "categories_list" in candidates.columns:
+            for key in intent.categories:
+                label = key.replace("cat_", "").replace("_", " ").lower()
+                masks.append(
+                    candidates["categories_list"]
+                    .astype(str)
+                    .str.lower()
+                    .str.contains(label)
+                )
+        if "categories" in candidates.columns:
+            for key in intent.categories:
+                label = key.replace("cat_", "").replace("_", " ").lower()
+                masks.append(
+                    candidates["categories"]
+                    .astype(str)
+                    .str.lower()
+                    .str.contains(label)
+                )
         if masks:
             combined = np.logical_or.reduce(masks)
             subset = candidates[combined]
@@ -221,6 +247,18 @@ def _apply_filters(df: pd.DataFrame, intent: ParsedIntent) -> pd.DataFrame:
     if intent.require_late_night and "late_night" in candidates.columns:
         candidates = candidates[candidates["late_night"] == True]  # noqa: E712
 
+    if intent.price_tier and "attr_RestaurantsPriceRange2" in candidates.columns:
+        if intent.price_tier == "low":
+            candidates = candidates[candidates["attr_RestaurantsPriceRange2"].fillna(5) <= 2]
+        elif intent.price_tier == "high":
+            candidates = candidates[candidates["attr_RestaurantsPriceRange2"].fillna(0) >= 3]
+
+    if intent.city and "city" in candidates.columns:
+        city_mask = candidates["city"].astype(str).str.lower().str.contains(intent.city)
+        subset = candidates[city_mask]
+        if not subset.empty:
+            candidates = subset
+
     # Future-proof: city/country filters can be added here when columns become available.
     return candidates.dropna(subset=["latitude", "longitude"])
 
@@ -233,6 +271,8 @@ def _rank_candidates(df: pd.DataFrame) -> pd.DataFrame:
         working["stars"]
         + 0.25 * np.log1p(working["review_count"])
         + 0.25 * working["popularity"]
+        + 0.05 * np.log1p(working.get("weekly_open_minutes", 0))
+        + 0.02 * np.log1p(working.get("weekend_open_minutes", 0))
     )
     ranked = working.sort_values(
         by=["score", "review_count", "popularity", "business_id"],
@@ -242,12 +282,12 @@ def _rank_candidates(df: pd.DataFrame) -> pd.DataFrame:
     return ranked
 
 
-def _normalize_requested_results(value: int | None) -> int:
+def _normalize_requested_results(value: int | None) -> tuple[int, str | None]:
     if value is None or value < 1:
-        return 5
+        return 5, None
     if value > 10:
-        return 10
-    return value
+        return 10, "You asked for more than 10 places. I can show up to 10."
+    return value, None
 
 
 def _build_map_url(lat: float, lon: float) -> str | None:
@@ -256,11 +296,48 @@ def _build_map_url(lat: float, lon: float) -> str | None:
     return f"https://www.google.com/maps?q={lat},{lon}"
 
 
-def _build_explanation(name: str, max_results: int, intent: ParsedIntent) -> str:
+def _build_explanation(
+    name: str, max_results: int, limit_notice: str | None, intent: ParsedIntent
+) -> str:
     base = f"Showing top {max_results} match" if max_results == 1 else f"Showing top {max_results} matches"
-    if intent.requested_results and intent.requested_results > 10:
-        return f"{base} (capped at 10)."
-    return f"{base} including {name}."
+    notice = f"{limit_notice} " if limit_notice else ""
+    return f"{notice}{base}, including {name}."
+
+
+def _normalize_text(text: str) -> str:
+    return re.sub(r"[^\w\s]", " ", text.lower())
+
+
+def _tokenize(text: str) -> list[str]:
+    return re.findall(r"\b[\w']+\b", text)
+
+
+def _has_phrase(text: str, phrases: Sequence[str]) -> bool:
+    return any(re.search(rf"\b{re.escape(p)}\b", text) for p in phrases)
+
+
+def _match_categories(tokens: list[str], text: str) -> set[str]:
+    categories: set[str] = set()
+    for phrase, column in CATEGORY_KEYWORDS.items():
+        if _has_phrase(text, [phrase]):
+            categories.add(column)
+    return categories
+
+
+def _match_attributes(tokens: list[str], text: str) -> set[str]:
+    attrs: set[str] = set()
+    for phrase, column in ATTRIBUTE_KEYWORDS.items():
+        if _has_phrase(text, [phrase]):
+            attrs.add(column)
+    return attrs
+
+
+def _detect_price(tokens: list[str]) -> str | None:
+    if any(t in tokens for t in ["cheap", "budget", "affordable", "inexpensive", "low"]):
+        return "low"
+    if any(t in tokens for t in ["expensive", "fine", "premium", "high", "pricey"]):
+        return "high"
+    return None
 
 
 __all__ = ["recommendation_tool"]
