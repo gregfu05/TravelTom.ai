@@ -101,7 +101,11 @@ def recommendation_tool(
 
     intent = _parse_intent(query.query)
     requested = intent.requested_results
-    if requested is None and query.max_results is not None and 1 <= query.max_results <= 10:
+    if (
+        requested is None
+        and query.max_results is not None
+        and 1 <= query.max_results <= 10
+    ):
         requested = query.max_results
     max_results, limit_notice = _normalize_requested_results(requested)
 
@@ -111,7 +115,9 @@ def recommendation_tool(
 
     ranked = _rank_candidates(candidates)
     results: list[RecommendationResult] = []
-    for rank, row in enumerate(ranked.head(max_results).itertuples(index=False), start=1):
+    for rank, row in enumerate(
+        ranked.head(max_results).itertuples(index=False), start=1
+    ):
         map_url = _build_map_url(row.latitude, row.longitude)
         if map_url is None:
             continue
@@ -129,7 +135,9 @@ def recommendation_tool(
                 score=float(row.score),
                 rank=rank,
                 features=features,
-                explanation=_build_explanation(row.name, max_results, limit_notice, intent),
+                explanation=_build_explanation(
+                    row.name, max_results, limit_notice, intent
+                ),
             )
         )
 
@@ -186,7 +194,9 @@ def _extract_requested_count(text: str) -> int | None:
     match = re.search(r"\btop\s+(\d{1,2})\b", text)
     if match:
         return int(match.group(1))
-    match = re.search(r"\b(\d{1,2})\s+(?:places|results|options|bars|restaurants|spots)\b", text)
+    match = re.search(
+        r"\b(\d{1,2})\s+(?:places|results|options|bars|restaurants|spots)\b", text
+    )
     if match:
         return int(match.group(1))
     return None
@@ -220,10 +230,7 @@ def _apply_filters(df: pd.DataFrame, intent: ParsedIntent) -> pd.DataFrame:
             for key in intent.categories:
                 label = key.replace("cat_", "").replace("_", " ").lower()
                 masks.append(
-                    candidates["categories"]
-                    .astype(str)
-                    .str.lower()
-                    .str.contains(label)
+                    candidates["categories"].astype(str).str.lower().str.contains(label)
                 )
         if masks:
             combined = np.logical_or.reduce(masks)
@@ -241,7 +248,9 @@ def _apply_filters(df: pd.DataFrame, intent: ParsedIntent) -> pd.DataFrame:
     if intent.require_parking:
         parking_cols = [col for col in PARKING_COLUMNS if col in candidates.columns]
         if parking_cols:
-            parking_mask = np.logical_or.reduce([candidates[col] for col in parking_cols])
+            parking_mask = np.logical_or.reduce(
+                [candidates[col] for col in parking_cols]
+            )
             candidates = candidates[parking_mask]
 
     if intent.require_late_night and "late_night" in candidates.columns:
@@ -249,9 +258,13 @@ def _apply_filters(df: pd.DataFrame, intent: ParsedIntent) -> pd.DataFrame:
 
     if intent.price_tier and "attr_RestaurantsPriceRange2" in candidates.columns:
         if intent.price_tier == "low":
-            candidates = candidates[candidates["attr_RestaurantsPriceRange2"].fillna(5) <= 2]
+            candidates = candidates[
+                candidates["attr_RestaurantsPriceRange2"].fillna(5) <= 2
+            ]
         elif intent.price_tier == "high":
-            candidates = candidates[candidates["attr_RestaurantsPriceRange2"].fillna(0) >= 3]
+            candidates = candidates[
+                candidates["attr_RestaurantsPriceRange2"].fillna(0) >= 3
+            ]
 
     if intent.city and "city" in candidates.columns:
         city_mask = candidates["city"].astype(str).str.lower().str.contains(intent.city)
@@ -299,7 +312,11 @@ def _build_map_url(lat: float, lon: float) -> str | None:
 def _build_explanation(
     name: str, max_results: int, limit_notice: str | None, intent: ParsedIntent
 ) -> str:
-    base = f"Showing top {max_results} match" if max_results == 1 else f"Showing top {max_results} matches"
+    base = (
+        f"Showing top {max_results} match"
+        if max_results == 1
+        else f"Showing top {max_results} matches"
+    )
     notice = f"{limit_notice} " if limit_notice else ""
     return f"{notice}{base}, including {name}."
 
@@ -333,7 +350,9 @@ def _match_attributes(tokens: list[str], text: str) -> set[str]:
 
 
 def _detect_price(tokens: list[str]) -> str | None:
-    if any(t in tokens for t in ["cheap", "budget", "affordable", "inexpensive", "low"]):
+    if any(
+        t in tokens for t in ["cheap", "budget", "affordable", "inexpensive", "low"]
+    ):
         return "low"
     if any(t in tokens for t in ["expensive", "fine", "premium", "high", "pricey"]):
         return "high"

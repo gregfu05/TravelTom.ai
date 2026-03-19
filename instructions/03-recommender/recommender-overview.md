@@ -83,7 +83,8 @@ Final:
   - Parses user intent for categories (bars, restaurants, pizza, burgers, coffee, shopping, beauty, nightlife, hotels, active life, automotive) and attributes (parking, late night, kid-friendly, outdoor seating, reservations, wifi, alcohol).
   - Filters candidates first on intent (including parking via any parking columns, late night flag, burgers category) and only then ranks.
   - Ranking: `score = stars + 0.25 * log1p(review_count) + 0.25 * popularity`; tie-breaks on `review_count`, `popularity`, `business_id`.
-  - Result count: default 5; accepts 1–10; requests above 10 are capped at 10; below 1 defaults to 5.
-  - Output per item: place name and a Google Maps link (from latitude/longitude) in `features`.
+  - Uses additional dataset signals: `categories_list/categories` text, weekly/weekend open minutes boost, price-range filters, parking attributes, wifi/alcohol/reservations/outdoor/kid-friendly flags, burgers category, late-night flag. City filter is wired when column exists.
+  - Result count: default 5; accepts 1–10; requests above 10 return a polite notice and cap at 10; below 1 defaults to 5.
+  - Output per item: place name and a Google Maps link (from latitude/longitude) in `features`; UI only shows these two fields.
   - Future-ready: hook left in filter stage for city/country columns once they are added.
 - Tests: `pytest tests/recommender/test_recommender_v2.py` (covers counts, category/attribute filters, late night, parking, map link format, and no-match handling).

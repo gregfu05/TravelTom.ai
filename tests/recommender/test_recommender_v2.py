@@ -131,7 +131,8 @@ def test_request_over_ten_caps_at_ten() -> None:
     response = recommendor_v2.recommendation_tool(
         _query("top 15 bars", max_results=15), catalog=_catalog()
     )
-    assert len(response.results) == 6  # capped at dataset size (<=10)
+    assert len(response.results) <= 10
+    assert any(res.features.get("limit_notice") for res in response.results)
     assert response.ranking_version == "recommender-v2"
 
 
@@ -160,13 +161,27 @@ def test_wifi_filter() -> None:
 
 
 def test_result_includes_map_url() -> None:
+    response = recommendor_v2.recommendation_tool(_query("bars"), catalog=_catalog())
+    assert response.results
+    assert (
+        response.results[0]
+        .features["map_url"]
+        .startswith("https://www.google.com/maps?q=")
+    )
+
+
+def test_phrase_parsing_full_bar_and_wifi() -> None:
     response = recommendor_v2.recommendation_tool(
-        _query("bars"), catalog=_catalog()
+        _query("bar with full bar and free wifi"), catalog=_catalog()
     )
     assert response.results
-    assert response.results[0].features["map_url"].startswith(
-        "https://www.google.com/maps?q="
-    )
+
+
+def test_categories_list_matching() -> None:
+    df = _catalog()
+    df.loc[0, "categories_list"] = ["Beauty & Spas"]
+    response = recommendor_v2.recommendation_tool(_query("beauty and spa"), catalog=df)
+    assert response.results
 
 
 def test_no_matches_returns_empty() -> None:

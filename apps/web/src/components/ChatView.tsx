@@ -218,32 +218,23 @@ export function ChatView() {
           className="recommendation-list-item"
         >
           <article className="recommendation-card">
-            <div className="recommendation-card-head">
-              <p className="recommendation-rank">#{item.rank}</p>
-              <div className="recommendation-card-badges">
-                <p className="recommendation-type">{item.itemType}</p>
-                <p className="recommendation-score">
-                  Score {item.score.toFixed(2)}
-                </p>
-              </div>
-            </div>
             <h3>
               {item.metadata?.name
                 ? String(item.metadata.name)
                 : item.itemId}
             </h3>
-            <p className="recommendation-subline">
-              {item.metadata?.city
-                ? String(item.metadata.city)
-                : "Location unavailable"}
-              {item.metadata?.stars
-                ? ` - ${String(item.metadata.stars)} stars`
-                : ""}
-            </p>
-            <details className="recommendation-details">
-              <summary>Why this pick</summary>
-              <p>{item.explanation}</p>
-            </details>
+            {item.metadata?.map_url ? (
+              <a
+                className="recommendation-link"
+                href={String(item.metadata.map_url)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open in Google Maps
+              </a>
+            ) : (
+              <p className="recommendation-subline">Map link unavailable</p>
+            )}
           </article>
         </li>
       ))}

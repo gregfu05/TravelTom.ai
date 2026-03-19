@@ -57,10 +57,12 @@ uvicorn app.main:app --reload --app-dir apps/api
 **Recommender v2 (current)**
 - Code: `traveltom/recommendor/recommendor_v2.py`
 - Data: `traveltom/datasets/cleaned_Yelp_DS.parquet`
-- Defaults to top 5 results (1–10 allowed, capped at 10).
-- Filters user intents (bars, burgers, late night, parking, wifi, etc.), ranks with
-  `score = stars + 0.25 * log1p(review_count) + 0.25 * popularity`, returns place
-  name + Google Maps link.
+- Defaults to top 5 results (1–10 allowed); requests above 10 return a polite notice
+  and cap at 10.
+- Filters user intents (bars, burgers, late night, parking, wifi, reservations,
+  alcohol, outdoor, kid-friendly, pizza, coffee, brunch, hotels, etc.), ranks with
+  `score = stars + 0.25 * log1p(review_count) + 0.25 * popularity` plus opening-hours
+  boosts; returns place name + Google Maps link (UI only shows those two fields).
 
 **Repository Layout**
 - `apps/` runtime services (API + web).
