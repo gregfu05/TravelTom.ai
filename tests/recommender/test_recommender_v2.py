@@ -189,3 +189,27 @@ def test_no_matches_returns_empty() -> None:
         _query("vegan cat cafes with bowling"), catalog=_catalog()
     )
     assert response.results == []
+
+
+def test_city_filter_applies_first() -> None:
+    df = _catalog()
+    df.loc[0, "city"] = "seattle"
+    df.loc[1, "city"] = "new york"
+    response = recommendor_v2.recommendation_tool(
+        _query("bars in seattle"), catalog=df
+    )
+    assert response.results
+    assert all(
+        res.features.get("city", "").lower().find("seattle") != -1
+        for res in response.results
+    )
+
+
+def test_city_not_found_returns_message() -> None:
+    df = _catalog()
+    df["city"] = "seattle"
+    response = recommendor_v2.recommendation_tool(
+        _query("bars in berlin"), catalog=df
+    )
+    assert len(response.results) == 1
+    assert "don't have places for berlin" in response.results[0].features["name"]

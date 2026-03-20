@@ -59,6 +59,8 @@ uvicorn app.main:app --reload --app-dir apps/api
 - Data: `traveltom/datasets/cleaned_Yelp_DS.parquet`
 - Defaults to top 5 results (1–10 allowed); requests above 10 return a polite notice
   and cap at 10.
+- City filter runs first: if you specify a city present in the dataset, only that city’s
+  places are considered; if the city is missing, you’ll get a friendly notice.
 - Filters user intents (bars, burgers, late night, parking, wifi, reservations,
   alcohol, outdoor, kid-friendly, pizza, coffee, brunch, hotels, etc.), ranks with
   `score = stars + 0.25 * log1p(review_count) + 0.25 * popularity` plus opening-hours

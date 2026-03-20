@@ -109,6 +109,15 @@ def recommendation_tool(
         requested = query.max_results
     max_results, limit_notice = _normalize_requested_results(requested)
 
+    if intent.city:
+        city_filtered = _filter_city(catalog_df, intent.city)
+        if city_filtered is None:
+            return RecommendationToolResponse(
+                results=[_city_not_found_result(intent.city, limit_notice)],
+                ranking_version=RANKING_VERSION,
+            )
+        catalog_df = city_filtered
+
     candidates = _apply_filters(catalog_df, intent)
     if candidates.empty:
         return RecommendationToolResponse(results=[], ranking_version=RANKING_VERSION)
@@ -357,6 +366,31 @@ def _detect_price(tokens: list[str]) -> str | None:
     if any(t in tokens for t in ["expensive", "fine", "premium", "high", "pricey"]):
         return "high"
     return None
+
+
+def _filter_city(df: pd.DataFrame, city: str) -> pd.DataFrame | None:
+    if "city" not in df.columns:
+        return None
+    mask = df["city"].astype(str).str.lower().str.contains(city.lower())
+    subset = df[mask]
+    if subset.empty:
+        return None
+    return subset
+
+
+def _city_not_found_result(city: str, limit_notice: str | None) -> RecommendationResult:
+    message = f"I don't have places for {city} yet."
+    features = {"name": message, "map_url": None}
+    if limit_notice:
+        features["limit_notice"] = limit_notice
+    return RecommendationResult(
+        item_id=f"no-results-{city}",
+        item_type="destination",
+        score=0.0,
+        rank=1,
+        features=features,
+        explanation=message,
+    )
 
 
 __all__ = ["recommendation_tool"]
