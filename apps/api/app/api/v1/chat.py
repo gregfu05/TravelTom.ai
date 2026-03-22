@@ -137,7 +137,6 @@ async def chat(
             orchestration=orchestration,
         )
 
-
     except ApiError:
         raise
     except ValidationError as exc:

@@ -463,8 +463,6 @@ class OrchestratorService:
         )
         base = (
             f"I found {len(results)} places that fit your request. "
-        return (
-            f"I found {len(results)} options that fit your request. "
             f"Top picks:\n{preview_items}"
         )
         if limit_notice:
@@ -522,3 +520,4 @@ class OrchestratorService:
             itinerary=next_state.itinerary.model_dump(),
             state=next_state.model_dump(mode="json"),
         )
+        

@@ -376,7 +376,7 @@ def _filter_city(df: pd.DataFrame, city: str) -> pd.DataFrame | None:
     if subset.empty:
         return None
     return subset
- 
+
 
 def _city_not_found_result(city: str, limit_notice: str | None) -> RecommendationResult:
     message = f"I don't have places for {city} yet."
