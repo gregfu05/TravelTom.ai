@@ -520,4 +520,3 @@ class OrchestratorService:
             itinerary=next_state.itinerary.model_dump(),
             state=next_state.model_dump(mode="json"),
         )
-        
