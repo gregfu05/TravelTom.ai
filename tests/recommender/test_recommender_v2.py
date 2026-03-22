@@ -209,3 +209,4 @@ def test_city_not_found_returns_message() -> None:
     response = recommendor_v2.recommendation_tool(_query("bars in berlin"), catalog=df)
     assert len(response.results) == 1
     assert "don't have places for berlin" in response.results[0].features["name"]
+ 
