@@ -19,13 +19,6 @@ from app.services.recommendation_query import (
     RecommendationTool,
     execute_recommendation_query,
 )
-from app.schemas.auth import AuthenticatedPrincipal
-from app.services.recommendation_query import (
-    InvalidRecommendationResponseError,
-    RecommendationServiceUnavailableError,
-    RecommendationTool,
-    execute_recommendation_query,
-)
 from traveltom.recommendor.recommendor_v2 import recommendation_tool
 
 router = APIRouter()

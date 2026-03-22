@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
 import numpy as np
 import pandas as pd
@@ -281,7 +281,8 @@ def _apply_filters(df: pd.DataFrame, intent: ParsedIntent) -> pd.DataFrame:
         if not subset.empty:
             candidates = subset
 
-    # Future-proof: city/country filters can be added here when columns become available.
+    # Future-proof:
+    # city/country filters can be added here when columns become available.
     return candidates.dropna(subset=["latitude", "longitude"])
 
 
