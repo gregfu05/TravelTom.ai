@@ -872,6 +872,7 @@ a {
 
 .chat-message-map-link:hover {
   text-decoration: underline;
+  white-space: pre-line;
 }
 
 .chat-message-loading {
@@ -945,6 +946,162 @@ a {
   margin: 0;
   color: var(--accent);
   line-height: 1.4;
+}
+
+/* ── Recommendations Panel ── */
+
+.recommendations-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  padding: 1rem;
+  min-width: 0;
+}
+
+.chat-layout-with-recommendations .recommendations-panel {
+  height: clamp(28rem, 64vh, 40rem);
+}
+
+.recommendations-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.recommendations-panel-header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.recommendations-panel-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+/* ── Recommendation List ── */
+
+.recommendation-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 20rem;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.chat-layout-with-recommendations .recommendation-list {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.recommendation-list-item {
+  margin: 0;
+}
+
+.recommendations-collapsed-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+/* ── Recommendation Cards ── */
+
+.recommendation-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  padding: 0.9rem 1rem;
+  transition: box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.recommendation-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  border-color: var(--primary-border);
+}
+
+.recommendation-card-head {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.recommendation-rank {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+.recommendation-card-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.recommendation-type {
+  margin: 0;
+  border-radius: 999px;
+  border: none;
+  background: var(--primary-dim);
+  padding: 0.12rem 0.42rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--primary);
+}
+
+.recommendation-score {
+  margin: 0;
+  border-radius: 999px;
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.12rem 0.42rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.recommendation-card h3 {
+  margin: 0.1rem 0 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.recommendation-subline {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.4;
+  font-size: 0.78rem;
+}
+
+.recommendation-details summary {
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--primary);
+  user-select: none;
 }
 
 /* ── Recommendations Panel ── */
@@ -1209,6 +1366,81 @@ a {
   background: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-dim);
   flex-shrink: 0;
+}
+
+.picks-pill-pulse {
+  animation: pill-pulse 600ms ease;
+}
+
+@keyframes pill-pulse {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+/* ── Drawer Overlay ── */
+
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  animation: overlay-fade-in 200ms ease both;
+}
+
+@keyframes overlay-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Recommendations Drawer ── */
+
+.drawer {
+  position: fixed;
+  z-index: 100;
+  top: 0;
+  right: 0;
+  width: min(24rem, 92vw);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.35);
+  padding: var(--space-lg);
+  transform: translateX(100%);
+  transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1);
+  overflow-y: auto;
+}
+
+.drawer-open {
+  transform: translateX(0);
+}
+
+.drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+  flex-shrink: 0;
+}
+
+.drawer-subtitle {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.drawer .recommendation-list {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
 }
 
 .picks-pill-pulse {

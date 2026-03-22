@@ -463,6 +463,8 @@ class OrchestratorService:
         )
         base = (
             f"I found {len(results)} places that fit your request. "
+        return (
+            f"I found {len(results)} options that fit your request. "
             f"Top picks:\n{preview_items}"
         )
         if limit_notice:
@@ -477,6 +479,14 @@ class OrchestratorService:
             if normalized:
                 if isinstance(map_url, str) and map_url:
                     return f"{normalized} — {map_url}"
+                return normalized
+        return item.item_id
+
+    def _recommendation_display_name(self, item: RecommendationResult) -> str:
+        name = item.features.get("name")
+        if isinstance(name, str):
+            normalized = name.strip()
+            if normalized:
                 return normalized
         return item.item_id
 

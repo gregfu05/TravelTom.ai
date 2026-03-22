@@ -49,6 +49,13 @@ python -m traveltom.cleaning.cleaning
 Optional (legacy SB dataset): `scripts/seed_catalog.py` manages the legacy
 Santa Barbara sample. The active recommender v2 instead reads
 `traveltom/datasets/cleaned_Yelp_DS.parquet` directly (no DB seed required).
+Optional: `scripts/seed_catalog.py` will automatically copy
+`traveltom/datasets/business_SB.parquet` to
+`traveltom/datasets/business_SB_Cleaned.parquet` when the cleaned file is missing.
+
+```bash
+python scripts/seed_catalog.py --truncate
+```
 
 ```bash
 uvicorn app.main:app --reload --app-dir apps/api

@@ -30,6 +30,11 @@ from traveltom.recommendor.recommendor_v2 import recommendation_tool
 
 router = APIRouter()
 
+from traveltom.recommendor.recommendor_v1 import recommendation_tool
+
+router = APIRouter()
+
+
 @lru_cache()
 def get_orchestrator_service() -> OrchestratorService:
     """Return a cached orchestrator service instance."""
@@ -57,6 +62,7 @@ def get_orchestrator_service() -> OrchestratorService:
 
 def get_chat_uow(db: AsyncSession = Depends(get_db)) -> ChatUnitOfWork:
     """Return chat unit of work bound to the request-scoped DB session."""
+
     return ChatUnitOfWork(db)
 
 
@@ -135,6 +141,10 @@ async def chat(
             orchestration=orchestration,
         )
 
+            return _to_chat_response(
+                request_message_id=request.message_id,
+                orchestration=orchestration,
+            )
     except ApiError:
         raise
     except ValidationError as exc:
@@ -149,6 +159,8 @@ async def chat(
             code="chat_processing_failed",
             message="Failed to process chat message",
         ) from exc
+
+    raise RuntimeError("Chat handler completed without producing a response")
 
 
 def _to_chat_response(

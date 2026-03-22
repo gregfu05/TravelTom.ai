@@ -89,3 +89,28 @@ Final:
   - Output per item: place name and a Google Maps link (from latitude/longitude) in `features`; UI only shows these two fields.
   - Future-ready: hook left in filter stage for city/country columns once they are added.
 - Tests: `pytest tests/recommender/test_recommender_v2.py` (covers counts, category/attribute filters, late night, parking, map link format, and no-match handling).
+- Location: `traveltom/recommendor/recommendor_v1.py`
+- API integration:
+  - `apps/api/app/api/v1/recommendations.py` exposes it via `/api/v1/recommendations/query`.
+  - `apps/api/app/api/v1/chat.py` injects the same tool into `OrchestratorService` for chat responses.
+- Behavior:
+  - Loads candidate catalog from PostgreSQL `catalog_items` (returns empty results when the table has no rows).
+  - Uses a dedicated DB access path for recommendation reads (does not reuse
+    request-scoped async session objects across threads).
+  - Applies hard destination filtering from `RecommendationQuery.constraints.destination`
+    against catalog `city`; if no rows match the destination constraint, returns
+    an empty result set.
+  - Applies hard item-type filtering from `RecommendationQuery.filters.item_type`
+    (`destination|hotel|flight`); if no rows match the requested type, returns
+    an empty result set.
+  - Hotel-specific quality gate narrows `item_type=hotel` results to rows with
+    lodging tags (for example `Hotels`, `Resorts`, `Inns`) when such rows are
+    present, to avoid generic travel/tour listings dominating hotel requests.
+  - Uses fields from `rating` + `metadata_json.review_count/popularity` for deterministic scoring.
+  - Infers a `cat_*` category from keyword matches using token boundaries
+    (avoids false matches like `bar` inside `Santa Barbara`); if none match or
+    the filtered set is empty, it ranks the full filtered catalog.
+  - Composite score: `score = stars + 0.25 * log1p(review_count) + 0.25 * popularity`.
+  - Sorting: score desc, then `review_count`, `popularity`, `business_id`.
+  - Returns up to `max_results` (defaults to 5 when missing/invalid) with deterministic ranks.
+- Tests: `pytest tests/recommender/` (covers category routing, composite scoring, max_results, fallback, tie-breaking).
