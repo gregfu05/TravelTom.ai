@@ -480,14 +480,6 @@ class OrchestratorService:
                 return normalized
         return item.item_id
 
-    def _recommendation_display_name(self, item: RecommendationResult) -> str:
-        name = item.features.get("name")
-        if isinstance(name, str):
-            normalized = name.strip()
-            if normalized:
-                return normalized
-        return item.item_id
-
     def _clarification_response(
         self,
         *,
