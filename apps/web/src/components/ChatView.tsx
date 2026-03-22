@@ -307,7 +307,6 @@ export function ChatView() {
       <div
         className={`chat-layout ${hasRecommendations ? "chat-layout-with-recommendations" : ""}`}
       >
-      </div>
         <div className="chat-main-column">
           <div
             className="chat-thread"
@@ -334,7 +333,11 @@ export function ChatView() {
                       key={chip}
                       className="suggestion-chip"
                       type="button"
-                      onClick={() => setDraft((prev) => (prev ? `${prev}, ${chip.toLowerCase()}` : chip))}
+                      onClick={() =>
+                        setDraft((prev) =>
+                          prev ? `${prev}, ${chip.toLowerCase()}` : chip,
+                        )
+                      }
                     >
                       {chip}
                     </button>
@@ -342,7 +345,7 @@ export function ChatView() {
                 </div>
               </div>
             ) : null}
-##
+
             {messages.map((message) => {
               const isLatestAssistantMessage =
                 message.role === "assistant" &&
@@ -356,7 +359,8 @@ export function ChatView() {
                 : message.content;
 
               const displayMessage =
-                primaryMessage || "I found recommendations that match your request.";
+                primaryMessage ||
+                "I found recommendations that match your request.";
 
               return (
                 <article
@@ -542,7 +546,8 @@ export function ChatView() {
               })}
             </ol>
           </aside>
-) : null}
+        ) : null}
+      </div>
 
       {/* ── Mobile drawer overlay ── */}
       {isDrawerOpen ? (
