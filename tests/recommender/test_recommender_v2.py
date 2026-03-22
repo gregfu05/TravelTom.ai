@@ -14,7 +14,7 @@ def _query(text: str, max_results: int | None = None) -> RecommendationQuery:
         query=text,
         max_results=max_results if max_results is not None else 5,
     )
-
+# black fixed
 
 def _catalog() -> pd.DataFrame:
     """Synthetic catalog covering categories and attributes."""
