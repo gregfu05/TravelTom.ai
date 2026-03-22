@@ -30,10 +30,6 @@ from traveltom.recommendor.recommendor_v2 import recommendation_tool
 
 router = APIRouter()
 
-from traveltom.recommendor.recommendor_v1 import recommendation_tool
-
-router = APIRouter()
-
 
 @lru_cache()
 def get_orchestrator_service() -> OrchestratorService:
@@ -141,10 +137,7 @@ async def chat(
             orchestration=orchestration,
         )
 
-            return _to_chat_response(
-                request_message_id=request.message_id,
-                orchestration=orchestration,
-            )
+
     except ApiError:
         raise
     except ValidationError as exc:

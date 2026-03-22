@@ -218,24 +218,15 @@ export function ChatView() {
           className="recommendation-list-item"
         >
           <article className="recommendation-card">
-            <div className="recommendation-card-head">
-              <p className="recommendation-rank">#{item.rank}</p>
-              <div className="recommendation-card-badges">
-                <p className="recommendation-type">{item.itemType}</p>
-                <p className="recommendation-score">
-                  Score {item.score.toFixed(2)}
-                </p>
-              </div>
-            </div>
             <h3>
               {item.metadata?.name
                 ? String(item.metadata.name)
                 : item.itemId}
             </h3>
-            {item.metadata?.map_url ? (
+            {typeof item.metadata?.map_url === "string" ? (
               <a
                 className="recommendation-link"
-                href={String(item.metadata.map_url)}
+                href={item.metadata.map_url}
                 target="_blank"
                 rel="noreferrer"
               >
@@ -244,18 +235,6 @@ export function ChatView() {
             ) : (
               <p className="recommendation-subline">Map link unavailable</p>
             )}
-            <p className="recommendation-subline">
-              {item.metadata?.city
-                ? String(item.metadata.city)
-                : "Location unavailable"}
-              {item.metadata?.stars
-                ? ` - ${String(item.metadata.stars)} stars`
-                : ""}
-            </p>
-            <details className="recommendation-details">
-              <summary>Why this pick</summary>
-              <p>{item.explanation}</p>
-            </details>
           </article>
         </li>
       ))}
@@ -421,18 +400,6 @@ export function ChatView() {
               );
             })}
 
-            {messages.map((message) => (
-              <article
-                key={message.id}
-                className={`chat-message chat-message-${message.role}`}
-              >
-                <p className="chat-message-role">
-                  {message.role === "assistant" ? "Tom" : "You"}
-                </p>
-                <p className="chat-message-content">{message.content}</p>
-              </article>
-            ))}
-
             {isSending ? (
               <article className="chat-message chat-message-assistant chat-message-loading">
                 <p className="chat-message-role">Tom</p>
@@ -501,9 +468,6 @@ export function ChatView() {
         {/* ── Inline side panel (desktop) ── */}
         {hasRecommendations ? (
           <aside
-            className={`recommendations-panel ${
-              recsJustArrived ? "recommendations-panel-arrive" : ""
-            }`}
             className={`recommendations-panel ${recsJustArrived ? "recommendations-panel-arrive" : ""}`}
             aria-live="polite"
           >
@@ -545,20 +509,6 @@ export function ChatView() {
                 );
               })}
             </ol>
-          </aside>
-        ) : null}
-      </div>
-
-      {/* ── Mobile drawer overlay ── */}
-      {isDrawerOpen ? (
-        <div
-          className="drawer-overlay"
-          onClick={() => setIsDrawerOpen(false)}
-          aria-hidden="true"
-        />
-      ) : null}
-
-            {renderRecommendationCards()}
           </aside>
         ) : null}
       </div>
