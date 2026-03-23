@@ -10,6 +10,13 @@ from typing import Sequence
 
 import numpy as np
 import pandas as pd
+import sys
+from pathlib import Path
+
+# Ensure the API package is importable when running outside pytest (e.g., python -c)
+API_ROOT = Path(__file__).resolve().parents[2] / "apps" / "api"
+if str(API_ROOT) not in sys.path:
+    sys.path.insert(0, str(API_ROOT))
 from app.schemas.tools.recommendations import (
     RecommendationQuery,
     RecommendationResult,
@@ -87,6 +94,7 @@ class ParsedIntent:
     price_tier: str | None
     requested_results: int | None
     city: str | None
+    is_specific: bool
 
 
 def recommendation_tool(
@@ -118,11 +126,43 @@ def recommendation_tool(
             )
         catalog_df = city_filtered
 
-    candidates = _apply_filters(catalog_df, intent)
-    if candidates.empty:
+    has_signals = (
+        intent.categories
+        or intent.attributes
+        or intent.require_parking
+        or intent.require_late_night
+        or intent.require_burgers
+        or intent.price_tier
+        or intent.city
+    )
+    if not has_signals and intent.is_specific:
         return RecommendationToolResponse(results=[], ranking_version=RANKING_VERSION)
 
-    ranked = _rank_candidates(candidates)
+    filtered = _apply_filters(catalog_df, intent)
+    if filtered.empty:
+        if intent.is_specific:
+            return RecommendationToolResponse(
+                results=[], ranking_version=RANKING_VERSION
+            )
+        broad_ranked = _rank_candidates(catalog_df)
+        return _build_response(broad_ranked, max_results, limit_notice, intent)
+
+    strict_ranked = _rank_candidates(filtered)
+    if len(strict_ranked) < max_results:
+        backfill = _rank_candidates(catalog_df)
+        selected_ids = set(strict_ranked["business_id"].astype(str))
+        backfill = backfill[~backfill["business_id"].astype(str).isin(selected_ids)]
+        strict_ranked = pd.concat([strict_ranked, backfill], ignore_index=True)
+
+    return _build_response(strict_ranked, max_results, limit_notice, intent)
+
+
+def _build_response(
+    ranked: pd.DataFrame,
+    max_results: int,
+    limit_notice: str | None,
+    intent: ParsedIntent,
+) -> RecommendationToolResponse:
     results: list[RecommendationResult] = []
     for rank, row in enumerate(
         ranked.head(max_results).itertuples(index=False), start=1
@@ -186,6 +226,17 @@ def _parse_intent(text: str) -> ParsedIntent:
 
     requested_results = _extract_requested_count(normalized)
     city = _extract_city(normalized)
+    generic_words = {"top", "best", "good", "nice", "any", "some", "ideas", "places", "options", "recommendations", "recommend"}
+    has_signals = (
+        categories
+        or attributes
+        or require_parking
+        or require_late_night
+        or require_burgers
+        or price_tier
+        or city
+    )
+    is_specific = has_signals or not all(token in generic_words for token in tokens)
 
     return ParsedIntent(
         categories=categories,
@@ -196,6 +247,7 @@ def _parse_intent(text: str) -> ParsedIntent:
         price_tier=price_tier,
         requested_results=requested_results,
         city=city,
+        is_specific=is_specific,
     )
 
 
@@ -250,6 +302,8 @@ def _apply_filters(df: pd.DataFrame, intent: ParsedIntent) -> pd.DataFrame:
     if intent.require_burgers and "cat_Burgers" in candidates.columns:
         candidates = candidates[candidates["cat_Burgers"]]
 
+    base_after_categories = candidates
+
     for attr in intent.attributes:
         if attr in candidates.columns:
             candidates = candidates[candidates[attr] == True]  # noqa: E712
@@ -257,13 +311,20 @@ def _apply_filters(df: pd.DataFrame, intent: ParsedIntent) -> pd.DataFrame:
     if intent.require_parking:
         parking_cols = [col for col in PARKING_COLUMNS if col in candidates.columns]
         if parking_cols:
-            parking_mask = np.logical_or.reduce(
-                [candidates[col] for col in parking_cols]
+            parking_mask = (
+                candidates[parking_cols]
+                .fillna(False)
+                .astype(bool)
+                .any(axis=1)
             )
             candidates = candidates[parking_mask]
 
     if intent.require_late_night and "late_night" in candidates.columns:
         candidates = candidates[candidates["late_night"] == True]  # noqa: E712
+
+    if candidates.empty and not base_after_categories.empty:
+        # soften attribute/parking filters when they eliminate all rows
+        candidates = base_after_categories
 
     if intent.price_tier and "attr_RestaurantsPriceRange2" in candidates.columns:
         if intent.price_tier == "low":
