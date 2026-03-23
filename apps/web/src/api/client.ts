@@ -21,7 +21,7 @@ const recommendationSchema = z.object({
   score: z.number(),
   rank: z.number(),
   explanation: z.string(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  features: z.record(z.string(), z.unknown()).optional(),
 });
 
 const itinerarySchema = z.object({
@@ -145,7 +145,7 @@ function mapChatResponse(raw: z.output<typeof chatResponseSchema>): ChatResponse
       score: item.score,
       rank: item.rank,
       explanation: item.explanation,
-      metadata: item.metadata,
+      metadata: item.features,
     })),
     itinerary: raw.itinerary,
     state: raw.state,

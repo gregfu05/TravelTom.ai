@@ -19,7 +19,7 @@ from app.services.recommendation_query import (
     RecommendationTool,
     execute_recommendation_query,
 )
-from traveltom.recommendor.recommendor_v1 import recommendation_tool
+from traveltom.recommendor.recommendor_v2 import recommendation_tool
 
 router = APIRouter()
 

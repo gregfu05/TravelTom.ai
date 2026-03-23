@@ -26,7 +26,7 @@ from app.services.chat_persistence import (
 from app.services.chat_uow import ChatUnitOfWork
 from app.services.orchestrator.llm_provider import build_orchestrator_llm_models
 from app.services.orchestrator.service import OrchestratorService
-from traveltom.recommendor.recommendor_v1 import recommendation_tool
+from traveltom.recommendor.recommendor_v2 import recommendation_tool
 
 router = APIRouter()
 
@@ -78,6 +78,7 @@ async def chat(
         async with uow:
             owner_user_id = None
             state_user_id = None
+
             if principal is not None:
                 user_row = await uow.user_repository.get_or_create_from_principal(
                     principal
@@ -94,6 +95,7 @@ async def chat(
                 session_row=session_row,
                 owner_user_id=owner_user_id,
             )
+
             state = load_session_state(
                 raw_state=session_row.state_json,
                 session_id=request.session_id,
@@ -104,10 +106,12 @@ async def chat(
                 user_message=request.message,
                 session_state=state,
             )
+
             persisted_state = SessionState.model_validate(orchestration.state)
             persisted_state.session_id = request.session_id
             persisted_state.user_id = state_user_id
             session_row.state_json = persisted_state.model_dump(mode="json")
+
             if owner_user_id is not None:
                 session_row.user_id = owner_user_id
 
@@ -127,10 +131,12 @@ async def chat(
             )
 
             await uow.commit()
-            return _to_chat_response(
-                request_message_id=request.message_id,
-                orchestration=orchestration,
-            )
+
+        return _to_chat_response(
+            request_message_id=request.message_id,
+            orchestration=orchestration,
+        )
+
     except ApiError:
         raise
     except ValidationError as exc:
@@ -167,6 +173,7 @@ def _to_chat_response(
         )
         for item in orchestration.recommendations
     ]
+
     return ChatResponse(
         session_id=orchestration.session_id,
         message_id=request_message_id,

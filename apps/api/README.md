@@ -8,6 +8,8 @@ See `instructions/02-backend/` for design and API contracts.
 ## Runtime notes
 
 - `/api/v1/chat` and `/api/v1/recommendations/query` both use the same deterministic
+  recommender implementation in `traveltom/recommendor/recommendor_v2.py` (Yelp
+  parquet, in-process).
   recommender implementation in `traveltom/recommendor/recommendor_v1.py`.
 - The health endpoint is intentionally split by responsibility:
   - API router in `apps/api/app/api/v1/health.py`.
@@ -29,6 +31,8 @@ See `instructions/02-backend/` for design and API contracts.
   - API router and HTTP mapping in `apps/api/app/api/v1/recommendations.py`.
   - API request/response schemas in `apps/api/app/schemas/api/recommendations.py`.
   - Tool execution + response validation in `apps/api/app/services/recommendation_query.py`.
+- The v2 recommender reads candidates from `traveltom/datasets/cleaned_Yelp_DS.parquet`
+  (no DB seeding required for local tests).
 - The recommender reads candidates from PostgreSQL `catalog_items` (seed this
   table before testing chat recommendations).
 - The orchestrator deterministically extracts constraints from user messages and

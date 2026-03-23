@@ -46,6 +46,9 @@ alembic -c apps/api/alembic.ini upgrade head
 python -m traveltom.cleaning.cleaning
 ```
 
+Optional (legacy SB dataset): `scripts/seed_catalog.py` manages the legacy
+Santa Barbara sample. The active recommender v2 instead reads
+`traveltom/datasets/cleaned_Yelp_DS.parquet` directly (no DB seed required).
 Optional: `scripts/seed_catalog.py` will automatically copy
 `traveltom/datasets/business_SB.parquet` to
 `traveltom/datasets/business_SB_Cleaned.parquet` when the cleaned file is missing.
@@ -57,6 +60,18 @@ python scripts/seed_catalog.py --truncate
 ```bash
 uvicorn app.main:app --reload --app-dir apps/api
 ```
+
+**Recommender v2 (current)**
+- Code: `traveltom/recommendor/recommendor_v2.py`
+- Data: `traveltom/datasets/cleaned_Yelp_DS.parquet`
+- Defaults to top 5 results (1–10 allowed); requests above 10 return a polite notice
+  and cap at 10.
+- City filter runs first: if you specify a city present in the dataset, only that city’s
+  places are considered; if the city is missing, you’ll get a friendly notice.
+- Filters user intents (bars, burgers, late night, parking, wifi, reservations,
+  alcohol, outdoor, kid-friendly, pizza, coffee, brunch, hotels, etc.), ranks with
+  `score = stars + 0.25 * log1p(review_count) + 0.25 * popularity` plus opening-hours
+  boosts; returns place name + Google Maps link (UI only shows those two fields).
 
 **Repository Layout**
 - `apps/` runtime services (API + web).
