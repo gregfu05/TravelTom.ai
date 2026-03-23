@@ -226,7 +226,19 @@ def _parse_intent(text: str) -> ParsedIntent:
 
     requested_results = _extract_requested_count(normalized)
     city = _extract_city(normalized)
-    generic_words = {"top", "best", "good", "nice", "any", "some", "ideas", "places", "options", "recommendations", "recommend"}
+    generic_words = {
+        "top",
+        "best",
+        "good",
+        "nice",
+        "any",
+        "some",
+        "ideas",
+        "places",
+        "options",
+        "recommendations",
+        "recommend",
+    }
     has_signals = (
         categories
         or attributes
@@ -312,10 +324,7 @@ def _apply_filters(df: pd.DataFrame, intent: ParsedIntent) -> pd.DataFrame:
         parking_cols = [col for col in PARKING_COLUMNS if col in candidates.columns]
         if parking_cols:
             parking_mask = (
-                candidates[parking_cols]
-                .fillna(False)
-                .astype(bool)
-                .any(axis=1)
+                candidates[parking_cols].fillna(False).astype(bool).any(axis=1)
             )
             candidates = candidates[parking_mask]
 
