@@ -45,3 +45,17 @@ def test_settings_are_cached(monkeypatch) -> None:
 
     assert first is second
     get_settings.cache_clear()
+
+
+def test_settings_default_to_ollama_for_local_chat(monkeypatch) -> None:
+    get_settings.cache_clear()
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://traveltom:traveltom@localhost:5432/default_db",
+    )
+    monkeypatch.delenv("ORCHESTRATOR_LLM_PROVIDER", raising=False)
+
+    settings = get_settings()
+
+    assert settings.orchestrator_llm_provider == "ollama"
+    get_settings.cache_clear()

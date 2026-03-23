@@ -345,6 +345,8 @@ class DeterministicTravelTomChatModel(_DeterministicToolCallingModel):
             and effective_item_type in {"destination", "hotel", "flight"}
         ):
             filters = {"item_type": effective_item_type}
+        if not filters:
+            filters = {"item_type": "destination"}
         payload = RecommendationQuery(
             session_id=session_state.session_id,
             query=query_text,

@@ -190,12 +190,18 @@ Implementation notes (current):
 - Orchestrator runtime is a real LangChain `create_agent` chat loop with one
   shared `@tool` recommendation tool.
 - `TravelTomAgent` builds the chat agent with LangChain-native OpenAI or Ollama
-  chat models, or a deterministic in-process model when provider mode is
-  `disabled`.
+  chat models for the intended local runtime, or a deterministic in-process
+  model when provider mode is `disabled` fallback/test mode.
 - `OrchestratorService` applies deterministic extraction and carry-forward query
-  shaping before agent invocation, then converts the final agent transcript into
-  the normalized backend response and ignores model-invented recommendation
+  shaping before agent invocation, preserves pending recommendation intent
+  across clarification turns, then converts the final agent transcript into the
+  normalized backend response and ignores model-invented recommendation
   content.
+- Hybrid recommendation policy:
+  - destination exploration can start earlier from partial signal
+  - hotel and flight searches still wait for destination, dates, and budget
+  - if the final required slot arrives and the agent still clarifies, backend
+    runs the deterministic recommendation path immediately
 - Recommendation retrieval remains tool-first and deterministic; router never returns model-invented recommendation items.
 - Request/response Pydantic schemas live in `apps/api/app/schemas/api/chat.py` (`ChatRequest`, `ChatResponse`, `ChatRecommendation`, `ClientContext`).
 - Chat transaction boundary lives in `apps/api/app/services/chat_uow.py`.

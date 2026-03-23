@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from functools import lru_cache
@@ -18,6 +20,7 @@ from app.schemas.api.recommendations import (
 )
 from app.schemas.api.recommendations import RecommendationResponse
 from app.schemas.orchestrator import (
+    LLMComposedResponse,
     OrchestratorPolicyConfig,
     OrchestratorResponse,
     RecommendationToolRuntimePayload,
@@ -34,9 +37,14 @@ from app.services.orchestrator.llm_provider import (
     build_direct_recommendation_model,
     map_provider_exception_to_api_error,
 )
+from app.services.orchestrator.providers import (
+    OllamaStructuredClient,
+    OpenAIStructuredClient,
+)
 from app.services.orchestrator.policies import build_empty_results_message
 from app.services.orchestrator.service import (
     OrchestratorService,
+    PlannerExecutionError,
     build_direct_query_message,
 )
 from app.services.recommendation_query import (
@@ -58,11 +66,19 @@ Runtime notes:
   deterministic carry-forward query hints
 - on underspecified follow-ups like "show me more" or "another option", keep the
   prior recommendation intent unless the user explicitly overrides it
+- if the user is exploring destinations, you may start recommendation_query from
+  partial signal like vibe, trip length, or budget
+- if the user is asking for hotels or flights, wait until destination, dates,
+  and budget are grounded
+- if the user just supplied the final missing detail for an active
+  recommendation flow, call recommendation_query immediately instead of asking
+  them to restate the request
 
 Hard rules:
 - recommendation_query is the only source of recommendation items
 - never invent recommendation items, prices, or availability
-- use only the tool output when describing recommendations
+- do not rely on your own wording for the final user-facing reply; backend
+  response composition happens after transcript normalization
 - if the tool returns no results, explain that there are no strong matches yet
 - if the user message is vague, ask only for the missing trip details you need
 """.strip()
@@ -85,11 +101,14 @@ class TravelTomAgent:
         provider_name: str,
         chat_model: Any,
         direct_recommendation_model: Any,
+        structured_client: Any | None = None,
         recommendation_tool: RecommendationTool = recommendation_tool,
         policy_config: OrchestratorPolicyConfig | None = None,
     ) -> None:
         self._orchestrator = orchestrator_service
         self._provider_name = provider_name
+        self._chat_model = chat_model
+        self._structured_client = structured_client
         self._recommendation_handler = recommendation_tool
         self._policy = policy_config or OrchestratorPolicyConfig()
         self._recommendation_tool = self._build_recommendation_tool()
@@ -132,7 +151,9 @@ class TravelTomAgent:
             session_state=session_state,
             recent_messages=recent_messages,
             agent_executor=self._invoke_chat_agent,
+            planner_executor=self._plan_orchestration,
             recommendation_executor=self._execute_recommendation_query,
+            response_composer=self._compose_grounded_response,
         )
 
     async def handle_recommendation_query(
@@ -194,6 +215,88 @@ class TravelTomAgent:
         return RecommendationResponse.model_validate(
             runtime_payload.response.model_dump(mode="json")
         )
+
+    def _compose_grounded_response(self, prompt: str) -> str | None:
+        if self._provider_name == "disabled":
+            return None
+
+        try:
+            model_response = cast(Any, self._chat_model).invoke(prompt)
+        except Exception:
+            return None
+
+        payload = self._parse_composed_response_payload(
+            self._model_response_text(model_response)
+        )
+        if payload is None:
+            return None
+
+        try:
+            return LLMComposedResponse.model_validate(payload).assistant_message
+        except ValidationError:
+            return None
+
+    def _plan_orchestration(self, prompt: str) -> dict[str, Any] | None:
+        if self._structured_client is None:
+            return None
+
+        try:
+            payload = cast(Any, self._structured_client).plan({"prompt": prompt})
+        except Exception as exc:
+            raise PlannerExecutionError(str(exc)) from exc
+        if not isinstance(payload, dict):
+            raise PlannerExecutionError("Planner response was not a JSON object")
+        return cast(dict[str, Any], payload)
+
+    def _model_response_text(self, model_response: Any) -> str:
+        if isinstance(model_response, str):
+            return model_response
+
+        content = getattr(model_response, "content", "")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            text_parts: list[str] = []
+            for block in content:
+                if isinstance(block, str):
+                    text_parts.append(block)
+                    continue
+                if isinstance(block, dict):
+                    block_text = block.get("text")
+                    if isinstance(block_text, str):
+                        text_parts.append(block_text)
+            return "\n".join(part for part in text_parts if part)
+        return ""
+
+    def _parse_composed_response_payload(
+        self,
+        content: str,
+    ) -> dict[str, Any] | None:
+        normalized = content.strip()
+        if not normalized:
+            return None
+
+        normalized = re.sub(
+            r"^```(?:json)?\s*|\s*```$",
+            "",
+            normalized,
+            flags=re.IGNORECASE | re.DOTALL,
+        ).strip()
+        try:
+            parsed = json.loads(normalized)
+        except json.JSONDecodeError:
+            start = normalized.find("{")
+            end = normalized.rfind("}")
+            if start < 0 or end <= start:
+                return None
+            try:
+                parsed = json.loads(normalized[start : end + 1])
+            except json.JSONDecodeError:
+                return None
+
+        if not isinstance(parsed, dict):
+            return None
+        return parsed
 
     def _build_recommendation_tool(self):
         @tool(
@@ -314,6 +417,30 @@ def get_travel_tom_agent() -> TravelTomAgent:
 
     settings = get_settings()
     policy = OrchestratorPolicyConfig()
+    structured_client: Any | None = None
+    if settings.orchestrator_llm_provider == "ollama":
+        structured_client = OllamaStructuredClient(
+            base_url=settings.ollama_base_url,
+            planning_model_name=settings.ollama_planning_model,
+            response_model_name=settings.ollama_response_model,
+            timeout_seconds=settings.orchestrator_llm_timeout_seconds,
+            temperature=settings.ollama_temperature,
+        )
+    elif settings.orchestrator_llm_provider == "openai":
+        api_key = (settings.openai_api_key or "").strip()
+        if not api_key:
+            raise ValueError(
+                "OPENAI_API_KEY (or ORCHESTRATOR_OPENAI_API_KEY) is required "
+                "when ORCHESTRATOR_LLM_PROVIDER=openai"
+            )
+        structured_client = OpenAIStructuredClient(
+            base_url=settings.openai_base_url,
+            api_key=api_key,
+            planning_model_name=settings.openai_planning_model,
+            response_model_name=settings.openai_response_model,
+            timeout_seconds=settings.orchestrator_llm_timeout_seconds,
+            temperature=settings.openai_temperature,
+        )
     chat_model = build_chat_model(
         provider=settings.orchestrator_llm_provider,
         ollama_base_url=settings.ollama_base_url,
@@ -331,6 +458,7 @@ def get_travel_tom_agent() -> TravelTomAgent:
         provider_name=settings.orchestrator_llm_provider,
         chat_model=chat_model,
         direct_recommendation_model=build_direct_recommendation_model(),
+        structured_client=structured_client,
         recommendation_tool=recommendation_tool,
         policy_config=policy,
     )

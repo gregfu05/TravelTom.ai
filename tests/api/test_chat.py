@@ -205,6 +205,12 @@ def test_chat_endpoint_returns_expected_shape_and_persists_records() -> None:
             "constraints": {},
             "preferences": {"weighted_interests": {}, "dislikes": []},
             "entities": {"destinations": []},
+            "conversation": {
+                "last_requested_slots": ["budget"],
+                "last_user_intent": "recommend",
+                "last_recommendation_item_type": "destination",
+                "last_recommendation_query": "recommend a beach trip",
+            },
             "shortlist": [],
             "itinerary": {"days": []},
             "status": "refine",
@@ -242,6 +248,11 @@ def test_chat_endpoint_returns_expected_shape_and_persists_records() -> None:
     assert sum(isinstance(item, Recommendation) for item in fake_db.added) == 1
     assert sessions[0].user_id is None
     assert sessions[0].state_json["user_id"] is None
+    assert sessions[0].state_json["conversation"]["last_user_intent"] == "recommend"
+    assert (
+        sessions[0].state_json["conversation"]["last_recommendation_query"]
+        == "recommend a beach trip"
+    )
 
 
 def test_chat_endpoint_rejects_invalid_payload() -> None:

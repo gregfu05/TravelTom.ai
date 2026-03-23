@@ -12,14 +12,25 @@ interface PendingRequest {
   messageId: string;
 }
 
-const SUGGESTION_CHIPS = [
-  "Weekend getaway from Madrid",
-  "Beach + relax",
+const LEGACY_SUGGESTION_CHIPS = [
+  "Beach destinations in Europe under 1500 EUR",
+  "City break ideas for 4 days in May",
   "Budget under €500",
-  "No long flights",
-  "City break",
-  "Family-friendly",
+  "Flights from Madrid to Lisbon next weekend",
+  "Family-friendly destinations in June under 2000 USD",
+  "Romantic weekend in Italy under 1200 EUR",
 ] as const;
+
+const SUGGESTION_CHIPS = [
+  "Beach destinations in Europe under 1500 EUR",
+  "City break ideas for 4 days in May",
+  "Hotels in Lisbon next weekend under 1500 EUR",
+  "Flights from Madrid to Lisbon next weekend",
+  "Family-friendly destinations in June under 2000 USD",
+  "Romantic weekend in Italy under 1200 EUR",
+] as const;
+
+void LEGACY_SUGGESTION_CHIPS;
 
 function getClientContext() {
   return {
@@ -308,7 +319,10 @@ export function ChatView() {
                   </svg>
                 </div>
                 <h2 className="chat-welcome-heading">Where to?</h2>
-                <p className="chat-welcome-sub">Tell Tom your dates and vibe.</p>
+                <p className="chat-welcome-sub">
+                  Start with a destination idea, or give Tom destination, dates,
+                  and budget for hotels or flights.
+                </p>
                 <div className="suggestion-chips">
                   {SUGGESTION_CHIPS.map((chip) => (
                     <button
@@ -391,7 +405,7 @@ export function ChatView() {
                     void sendMessage(message, { appendUserMessage: true });
                   }
                 }}
-                placeholder="Tell Tom what kind of trip you want..."
+                placeholder="Share a destination idea, or give destination, dates, and budget..."
                 rows={2}
                 disabled={isSending || isTravelTomCooldownActive}
                 required
@@ -409,7 +423,8 @@ export function ChatView() {
               </button>
             </div>
             <p className="chat-form-hint">
-              Be specific with dates, budget, origin city, and trip vibe.
+              Destination exploration can start broad. For hotels or flights,
+              include destination, dates, and budget.
             </p>
           </form>
         </div>

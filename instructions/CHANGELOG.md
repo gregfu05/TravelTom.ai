@@ -1,6 +1,107 @@
 # Instructions Changelog
 
+## 2026-03-19
+
+- Fixed four high-impact `/api/v1/chat` regressions in the orchestrator layer
+  without changing dataset or recommender behavior:
+  - `apps/api/app/services/orchestrator/providers/ollama.py` now prefers
+    Ollama's OpenAI-compatible structured endpoint with JSON-schema constrained
+    planner output and a higher structured timeout floor, so planner transport
+    failures are no longer caused by the old silent timeout path.
+  - `apps/api/app/services/orchestrator/extraction.py` now uses token-aware and
+    negation-aware interest matching so `Santa Barbara` does not imply `bar`
+    and repair turns like `not restaurants` do not add positive restaurant
+    interest.
+  - `apps/api/app/services/orchestrator/policies.py` and
+    `apps/api/app/services/orchestrator/service.py` now keep meta questions and
+    repair turns conversational, truncate long transcript replay for planning,
+    and suppress duplicate-only `show me more` follow-ups by tracking the last
+    surfaced grounded item ids in `SessionState.conversation`.
+  - `apps/api/app/schemas/state.py`, `tests/orchestrator/test_service.py`,
+    `tests/orchestrator/test_extraction.py`, `tests/orchestrator/test_llm_provider.py`,
+    and `tests/api/test_chat.py` now cover planner transport behavior, Santa
+    Barbara tokenization, repair-turn interest handling, transcript truncation,
+    and duplicate follow-up suppression.
+  - `04-llm-orchestrator/orchestrator-overview.md`,
+    `04-llm-orchestrator/prompts-and-guardrails.md`,
+    `04-llm-orchestrator/session-state-schema.md`, and
+    `02-backend/services-and-modules.md` now document the updated runtime.
+
+- Introduced schema-validated planner-first `/api/v1/chat` orchestration while
+  keeping deterministic recommendation grounding:
+  - `apps/api/app/services/orchestrator/service.py` now runs a structured
+    planner step after deterministic hint extraction, validates
+    `LLMOrchestrationPlan`, merges `state_patch` through
+    `apply_structured_state_patch(...)`, threads validated `query_controls`
+    into hidden recommendation context, and falls back to deterministic
+    behavior when planner output is missing or invalid.
+  - `apps/api/app/services/travel_tom_agent.py` now builds a provider-backed
+    structured planner client for `/chat` while keeping the LangChain
+    `create_agent` loop and deterministic direct recommendation mode intact.
+  - `apps/api/app/services/orchestrator/policies.py` now feeds the planner raw
+    user text, bounded recent transcript, validated current state, and
+    deterministic extraction/carry-forward hints.
+  - `tests/orchestrator/test_service.py` now covers planner prompt context,
+    planner-authored natural slot filling, planner query-control shaping, and
+    deterministic fallback when planner state patches fail validation.
+  - `04-llm-orchestrator/orchestrator-overview.md`,
+    `04-llm-orchestrator/prompts-and-guardrails.md`,
+    `04-llm-orchestrator/session-state-schema.md`, and
+    `02-backend/services-and-modules.md` now describe the hybrid
+    planner-plus-deterministic runtime.
+
+- Tightened destination extraction guardrails so greetings and meta replies no
+  longer seed fake trip state:
+  - `apps/api/app/services/orchestrator/extraction.py` now only accepts
+    assignment-style `destination ...` phrases, rejects conversational bare
+    phrases like `Hello Tommy`, and avoids treating meta uses of the word
+    `destination` as active destination-exploration intent.
+  - `tests/orchestrator/test_extraction.py` and
+    `tests/orchestrator/test_service.py` now cover the exact greeting/meta
+    repro and verify that those turns keep destination state empty while real
+    bare replies like `Lisbon` still work.
+  - `04-llm-orchestrator/orchestrator-overview.md`,
+    `04-llm-orchestrator/prompts-and-guardrails.md`, and
+    `04-llm-orchestrator/session-state-schema.md` now document the stricter
+    destination-capture behavior.
+
 ## 2026-03-18
+
+- Fixed chat recommendation deadlocks and restored grounded reply composition:
+  - `apps/api/app/services/orchestrator/service.py` now preserves pending
+    recommendation query/item-type memory during clarification, re-asks the same
+    missing slot until captured, and runs the deterministic recommendation path
+    immediately when the final required detail arrives but the agent still
+    clarifies.
+  - `apps/api/app/services/orchestrator/extraction.py` now rejects vague bare
+    phrases such as `Beach + relax`, `recommend a beach trip`, `show me more`,
+    and `cheaper` as destinations while still carrying recommendation intent
+    through slot-filling turns.
+  - `apps/api/app/services/orchestrator/policies.py` now implements the hybrid
+    recommendation policy: destination exploration can start from partial signal,
+    while hotel and flight searches still require destination, dates, and
+    budget.
+  - `apps/api/app/services/travel_tom_agent.py` now adds provider-backed
+    grounded response composition after validated tool/state normalization so
+    Ollama/OpenAI replies stay natural without allowing model-invented items.
+  - `apps/api/app/core/config.py`, `.env`, and `.env.example` now default local
+    chat to `ORCHESTRATOR_LLM_PROVIDER=ollama`; `disabled` remains the fallback
+    and test mode.
+  - `apps/web/src/components/ChatView.tsx` now uses planner chips and helper
+    copy that match backend recommendation timing.
+- Updated regression coverage and docs for the new behavior:
+  - `tests/orchestrator/test_service.py`
+  - `tests/orchestrator/test_extraction.py`
+  - `tests/api/test_chat.py`
+  - `tests/test_settings.py`
+  - `04-llm-orchestrator/orchestrator-overview.md`
+  - `04-llm-orchestrator/prompts-and-guardrails.md`
+  - `04-llm-orchestrator/session-state-schema.md`
+  - `02-backend/api-design.md`
+  - `02-backend/services-and-modules.md`
+  - `05-frontend/frontend-architecture.md`
+  - `05-frontend/ux-flows.md`
+  - `07-infra-ops/local-dev.md`
 
 - Restored `/api/v1/chat` to a true LangChain `create_agent` loop while keeping
   deterministic recommendation shaping:

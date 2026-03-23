@@ -5,19 +5,46 @@
 - The assistant is a travel orchestrator, not a recommendation source.
 - Recommendations must come only from the recommendation tool response.
 - Tool input and output contracts are always schema-validated.
+- Persisted `/chat` state may only change through a validated
+  `LLMOrchestrationPlan.state_patch` merged by backend code.
 - If chat-agent execution misses a safe grounded answer, fail safe and continue
   with deterministic fallback logic.
 - API routes enter through `TravelTomAgent`, which selects either:
-  - chat `create_agent` orchestration for `/api/v1/chat`
+  - structured planning plus chat `create_agent` orchestration for
+    `/api/v1/chat`
   - direct LangChain `create_agent` recommendation mode for
     `/api/v1/recommendations/query`
+
+## Planner prompt
+
+Before the chat agent runs, the planner receives:
+
+- validated current `SessionState`
+- bounded recent transcript replay
+- raw latest user text
+- deterministic extraction and carry-forward hints from `extraction.py`
+
+Hard planner instructions:
+
+- return JSON only matching `LLMOrchestrationPlan`
+- keep it compact: single-line JSON, omit optional keys you are not setting
+- treat deterministic hints as advisory, not authoritative
+- use `state_patch` for persisted state changes; never rely on free-form chat
+  text to mutate state
+- do not let greetings, meta questions, or repair turns fill trip constraints
+  unless the surrounding context clearly supports it
+- do not emit unsupported keys like `conversation`, `shortlist`, or itinerary
+  fields inside `state_patch`; invalid planner keys must fall back
+- if a safe recommendation search is not ready, return one next-most-useful
+  clarification message
+- never invent recommendation items, prices, or availability
 
 ## Chat agent prompt
 
 The chat agent receives bounded context that includes:
 
 - validated `SessionState` JSON in a hidden system message
-- deterministic carry-forward recommendation context in a hidden system message
+- validated planner-shaped recommendation context in a hidden system message
 - bounded recent transcript replay from persisted messages
 - the latest user message
 
@@ -26,6 +53,13 @@ Hard chat-agent instructions:
 - use recent transcript plus state to avoid re-asking for captured details
 - on underspecified follow-ups, preserve prior recommendation intent unless the
   user explicitly overrides it
+- while clarifying, preserve pending recommendation item type and carried query
+  so the user does not need to restate `recommend`
+- destination exploration may call `recommendation_query` from partial signal
+  like vibe, trip length, or budget
+- hotel and flight searches still wait for destination, dates, and budget
+- if the latest user turn supplies the final missing slot for an active
+  recommendation flow, call `recommendation_query` immediately
 - if clarification is needed, ask for one next-most-useful missing detail
 - never invent recommendation items, prices, or availability
 - recommendation names and travel facts must come only from validated tool output
@@ -51,26 +85,57 @@ The runtime artifact records:
 
 ## Deterministic guardrails kept in runtime
 
-- Deterministic extraction still enriches missed constraints from user text.
-- Deterministic extraction runs before chat-agent invocation.
+- Deterministic extraction still enriches missed constraints from user text, but
+  primarily as planner hint input and deterministic fallback state.
+- Deterministic extraction runs before planner state merging and before
+  chat-agent invocation.
+- Interest extraction is token-aware and negation-aware:
+  - `Santa Barbara` must not imply `bar` or `nightlife`
+  - repair phrases like `not restaurants` must not add positive `food` interest
+- Planner output is validated against `LLMOrchestrationPlan`, and
+  `state_patch` merges through `apply_structured_state_patch(...)` before any
+  updated state is persisted or shown to the chat agent.
+- Explicit `destination ...` extraction only accepts assignment-like forms such
+  as `destination is Lisbon` or `destination: Lisbon`; conversational mentions
+  of the word `destination` do not capture a place value.
+- Bare destination extraction still accepts concise location replies like
+  `Lisbon`, but rejects greetings and meta chat so those turns do not mutate
+  trip slots or seed fake destination context.
 - Deterministic carry-forward helpers resolve the effective query text and item
-  type for elliptical refine turns before the agent runs.
+  type for elliptical refine turns and slot-filling clarification turns before
+  the agent runs, and planner `query_controls` may refine those values when
+  they validate cleanly.
 - Query filter guardrail normalizes item types to `destination|hotel|flight`.
 - Recommendation ranking version stays deterministic (`heuristic-v1`).
 - `SessionState.conversation` tracks `last_requested_slots` and
   `last_user_intent` so clarification stays progressive across turns.
 - `SessionState.conversation.last_recommendation_item_type` and
   `last_recommendation_query` preserve recommender carry-forward semantics
-  across follow-up turns.
+  across follow-up turns and pending recommendation clarifications.
+- `SessionState.conversation.last_recommendation_result_ids` preserves the last
+  grounded item ids shown to the user so follow-up turns can prefer unseen
+  results and explicitly say when only duplicates remain.
+- Deterministic clarification keeps asking for the same missing slot until that
+  slot is captured, instead of skipping ahead.
+- Long recent transcript lines are flattened and truncated before planner
+  replay so recommendation list copy does not dominate local-model prompt time.
+- If the chat agent returns another clarification after the final required slot
+  arrives, runtime executes the deterministic recommendation path immediately.
 - `OrchestratorService` only trusts validated recommendation payloads for
   recommendation data and destination-specific claims.
+- Provider-backed chat still uses backend-owned grounded response composition
+  after tool/state normalization; raw agent transcript text is not the final UX.
 - Direct recommendation mode bypasses conversational composition and returns only
   schema-validated tool output.
 
 ## Fallback response requirements
 
-- Chat-agent execution failure:
+- Planner execution failure, missing planner output, invalid planner JSON, or
+  invalid planner state patch:
   - Use deterministic extraction plus deterministic guardrail planning.
+- Chat-agent execution failure:
+  - Use the validated planner-or-deterministic state plus deterministic
+    guardrail planning.
   - If the fallback plan still supports a search, run deterministic
     recommendation execution and deterministic grounded copy.
 - Invalid request after tool-call validation:

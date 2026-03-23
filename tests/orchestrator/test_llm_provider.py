@@ -11,6 +11,7 @@ from app.services.orchestrator.llm_provider import (
     build_direct_recommendation_model,
     map_provider_exception_to_api_error,
 )
+from app.services.orchestrator.providers import OllamaStructuredClient
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
@@ -87,6 +88,48 @@ def test_build_chat_model_returns_langchain_ollama_model() -> None:
 def test_build_direct_recommendation_model_returns_deterministic_model() -> None:
     model = build_direct_recommendation_model()
     assert isinstance(model, DeterministicRecommendationAgentModel)
+
+
+def test_ollama_structured_client_uses_timeout_floor_for_planner_requests() -> None:
+    captured_timeouts: list[float] = []
+    captured_request: dict[str, object] = {}
+
+    def transport(url: str, payload: dict[str, object], timeout: float) -> dict[str, object]:
+        captured_request["url"] = url
+        captured_request["payload"] = payload
+        captured_timeouts.append(timeout)
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"intent":"clarify","should_call_recommendation_tool":false}'
+                    }
+                }
+            ]
+        }
+
+    client = OllamaStructuredClient(
+        base_url="http://127.0.0.1:11434",
+        planning_model_name="llama3.1:8b",
+        response_model_name="llama3.1:8b",
+        timeout_seconds=20.0,
+        temperature=0.0,
+        transport=transport,
+    )
+    client._available_model_names = lambda: ["llama3.1:8b"]
+
+    payload = client.plan({"prompt": "hello"})
+
+    assert payload == {
+        "intent": "clarify",
+        "should_call_recommendation_tool": False,
+    }
+    assert captured_timeouts == [60.0]
+    assert str(captured_request["url"]).endswith("/v1/chat/completions")
+    response_format = dict(captured_request["payload"]).get("response_format")
+    assert isinstance(response_format, dict)
+    assert response_format["type"] == "json_schema"
+    assert isinstance(response_format["json_schema"], dict)
 
 
 class _FakeResponse:

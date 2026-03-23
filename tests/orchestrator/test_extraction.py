@@ -92,11 +92,138 @@ def test_extracts_relative_dates_and_qualitative_budget() -> None:
     assert updated.constraints.party_size.children == 0
 
 
+def test_santa_barbara_does_not_false_match_bar_nightlife_interest() -> None:
+    state = SessionState(session_id="sess-santa-barbara")
+
+    updated = apply_message_state_updates(
+        message="recommend something in santa barbara",
+        session_state=state,
+        today=date(2026, 2, 23),
+    )
+
+    assert updated.constraints.destination == "Santa Barbara"
+    assert "nightlife" not in updated.preferences.weighted_interests
+
+
+def test_bars_in_santa_barbara_still_capture_nightlife_interest() -> None:
+    state = SessionState(session_id="sess-santa-barbara-bars")
+
+    updated = apply_message_state_updates(
+        message="recommend bars in santa barbara",
+        session_state=state,
+        today=date(2026, 2, 23),
+    )
+
+    assert updated.constraints.destination == "Santa Barbara"
+    assert updated.preferences.weighted_interests["nightlife"] == 0.8
+
+
+def test_negated_restaurant_repair_does_not_add_food_interest() -> None:
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-repair",
+            "constraints": {"destination": "Santa Barbara"},
+            "entities": {"destinations": ["Santa Barbara"]},
+        }
+    )
+
+    updated = apply_message_state_updates(
+        message="not restaurants, more like sightseeing",
+        session_state=state,
+        today=date(2026, 2, 23),
+    )
+
+    assert updated.constraints.destination == "Santa Barbara"
+    assert "food" not in updated.preferences.weighted_interests
+
+
 def test_extracts_bare_destination_reply() -> None:
     state = SessionState(session_id="sess-1")
 
     updated = apply_message_state_updates(
         message="Lisbon",
+        session_state=state,
+        today=date(2026, 2, 23),
+    )
+
+    assert updated.constraints.destination == "Lisbon"
+    assert updated.entities.destinations == ["Lisbon"]
+
+
+@pytest.mark.parametrize(
+    ("message",),
+    [
+        ("Hello Tommy",),
+        ("How do you have my destination what do you mean",),
+    ],
+)
+def test_greetings_and_meta_turns_do_not_persist_destination(message: str) -> None:
+    state = SessionState(session_id="sess-1")
+
+    updated = apply_message_state_updates(
+        message=message,
+        session_state=state,
+        today=date(2026, 2, 23),
+    )
+
+    assert updated.constraints.destination is None
+    assert updated.entities.destinations == []
+
+
+def test_assignment_style_destination_still_extracts_destination() -> None:
+    state = SessionState(session_id="sess-1")
+
+    updated = apply_message_state_updates(
+        message="destination: Lisbon",
+        session_state=state,
+        today=date(2026, 2, 23),
+    )
+
+    assert updated.constraints.destination == "Lisbon"
+    assert updated.entities.destinations == ["Lisbon"]
+
+
+@pytest.mark.parametrize(
+    ("message",),
+    [
+        ("Beach + relax",),
+        ("City break",),
+        ("recommend a beach trip",),
+        ("I'm flexible",),
+    ],
+)
+def test_broad_vibe_prompts_do_not_persist_as_destinations(message: str) -> None:
+    state = SessionState(session_id="sess-1")
+
+    updated = apply_message_state_updates(
+        message=message,
+        session_state=state,
+        today=date(2026, 2, 23),
+    )
+
+    assert updated.constraints.destination is None
+    assert updated.entities.destinations == []
+
+
+@pytest.mark.parametrize(
+    ("message",),
+    [
+        ("show me more",),
+        ("another option",),
+        ("cheaper",),
+    ],
+)
+def test_follow_up_refinements_do_not_overwrite_destination(message: str) -> None:
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-1",
+            "constraints": {"destination": "Lisbon"},
+            "entities": {"destinations": ["Lisbon"]},
+        }
+    )
+
+    updated = apply_message_state_updates(
+        message=message,
         session_state=state,
         today=date(2026, 2, 23),
     )
@@ -170,6 +297,29 @@ def test_follow_up_refinement_reuses_prior_item_type_and_query_terms() -> None:
             session_state=state,
         )
         == "show me more hotel Lisbon nightlife"
+    )
+
+
+def test_clarification_slot_fill_turn_reuses_prior_item_type_and_query_terms() -> None:
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-1",
+            "conversation": {
+                "last_requested_slots": ["destination"],
+                "last_user_intent": "recommend",
+                "last_recommendation_item_type": "hotel",
+                "last_recommendation_query": "recommend hotels with nightlife",
+            },
+        }
+    )
+
+    assert resolve_effective_item_type(message="Lisbon", session_state=state) == "hotel"
+    assert (
+        build_effective_recommendation_query_text(
+            message="Lisbon",
+            session_state=state,
+        )
+        == "Lisbon recommend hotels with nightlife"
     )
 
 

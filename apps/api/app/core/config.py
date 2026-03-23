@@ -61,7 +61,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("CORS_ALLOWED_ORIGINS"),
     )
     orchestrator_llm_provider: Literal["disabled", "ollama", "openai"] = Field(
-        "disabled",
+        "ollama",
         validation_alias=AliasChoices("ORCHESTRATOR_LLM_PROVIDER"),
     )
     orchestrator_llm_timeout_seconds: float = Field(

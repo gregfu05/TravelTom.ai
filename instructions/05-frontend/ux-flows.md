@@ -27,6 +27,9 @@
 - Chat screen
   - Route: `/planner`
   - Empty state
+  - Empty-state chips encourage either:
+    - broad destination exploration prompts, or
+    - concrete hotel/flight prompts with destination, dates, and budget
   - Loading state (assistant typing)
   - Error state
   - Retry action for last failed message

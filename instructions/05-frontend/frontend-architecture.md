@@ -17,6 +17,10 @@
 - Added recommendations rendering in planner from `/api/v1/chat` responses
   (latest response snapshot) with a split chat + recommendation rail layout so
   chat stays visible while recommendation cards are present.
+- Planner empty-state suggestion chips and helper copy now align with backend
+  recommendation timing:
+  broad destination exploration prompts are valid, while hotel and flight
+  prompts should include destination, dates, and budget.
 
 ## Component structure
 

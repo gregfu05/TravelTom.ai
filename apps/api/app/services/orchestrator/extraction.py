@@ -68,6 +68,72 @@ _DESTINATION_STOPWORDS = {
     "fall",
 } | set(_MONTH_NAME_TO_NUMBER.keys())
 
+_BARE_DESTINATION_DISALLOWED_TOKENS = {
+    "another",
+    "break",
+    "cheaper",
+    "cheapest",
+    "explore",
+    "family",
+    "family-friendly",
+    "find",
+    "flexible",
+    "friendly",
+    "getaway",
+    "greetings",
+    "hello",
+    "help",
+    "hey",
+    "holiday",
+    "how",
+    "idea",
+    "ideas",
+    "i",
+    "i'm",
+    "hi",
+    "im",
+    "me",
+    "mean",
+    "more",
+    "option",
+    "options",
+    "plan",
+    "please",
+    "recommend",
+    "relax",
+    "show",
+    "suggest",
+    "suggestion",
+    "suggestions",
+    "thank",
+    "thanks",
+    "tommy",
+    "trip",
+    "trips",
+    "traveltom",
+    "vacation",
+    "what",
+    "when",
+    "where",
+    "who",
+    "why",
+    "destination",
+}
+_LOCATION_JOINER_WORDS = {
+    "and",
+    "da",
+    "de",
+    "del",
+    "do",
+    "dos",
+    "la",
+    "las",
+    "los",
+    "of",
+    "the",
+}
+_BARE_DESTINATION_WORD_PATTERN = re.compile(r"^[a-z][a-z.'-]*$", flags=re.IGNORECASE)
+
 _TRAILING_LOCATION_WORDS = {
     "for",
     "with",
@@ -98,12 +164,22 @@ _TRAILING_LOCATION_WORDS = {
 }
 
 _INTEREST_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "food": ("food", "restaurant", "dining", "cafe"),
-    "nightlife": ("nightlife", "bar", "club", "cocktail", "pub"),
-    "shopping": ("shopping", "shop", "boutique", "mall", "fashion"),
-    "beaches": ("beach", "coast", "seaside"),
-    "culture": ("museum", "art", "history", "gallery"),
-    "nature": ("nature", "hiking", "mountain", "park", "outdoors"),
+    "food": ("food", "restaurant", "restaurants", "dining", "cafe", "cafes"),
+    "nightlife": (
+        "nightlife",
+        "bar",
+        "bars",
+        "club",
+        "clubs",
+        "cocktail",
+        "cocktails",
+        "pub",
+        "pubs",
+    ),
+    "shopping": ("shopping", "shop", "shops", "boutique", "boutiques", "mall", "fashion"),
+    "beaches": ("beach", "beaches", "coast", "seaside"),
+    "culture": ("museum", "museums", "art", "history", "gallery", "galleries"),
+    "nature": ("nature", "hiking", "mountain", "mountains", "park", "parks", "outdoors"),
 }
 
 _ROUTE_PATTERN = re.compile(
@@ -129,7 +205,13 @@ _DESTINATION_PATTERNS = (
         flags=re.IGNORECASE,
     ),
     re.compile(
-        r"\bdestination(?:\s+is)?\s*[:\-]?\s*"
+        r"\bdestination\s+(?:is|will be|would be|should be)\s+"
+        r"(?P<destination>[a-z][a-z .'-]{1,64}?)(?=(?:\s+(?:for|with|on|between|"
+        r"under|over|budget|from|starting|start|end|in|at|by)\b)|[,.!?;]|$)",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bdestination\s*[:=\-]\s*"
         r"(?P<destination>[a-z][a-z .'-]{1,64}?)(?=(?:\s+(?:for|with|on|between|"
         r"under|over|budget|from|starting|start|end|in|at|by)\b)|[,.!?;]|$)",
         flags=re.IGNORECASE,
@@ -227,8 +309,8 @@ _ITEM_TYPE_PATTERNS: dict[str, tuple[str, ...]] = {
         r"\bairports\b",
     ),
     "destination": (
-        r"\bdestination\b",
         r"\bdestinations\b",
+        r"\bdestination\s+(?:ideas|options|recommendations?|suggestions?)\b",
         r"\bwhere should i go\b",
         r"\bplaces to visit\b",
     ),
@@ -351,8 +433,16 @@ def resolve_effective_item_type(
     if explicit_item_type is not None:
         return explicit_item_type
 
+    remembered_item_type = session_state.conversation.last_recommendation_item_type
     if is_follow_up_refinement(message):
-        return session_state.conversation.last_recommendation_item_type
+        return remembered_item_type
+
+    if (
+        remembered_item_type is not None
+        and session_state.conversation.last_requested_slots
+        and session_state.conversation.last_user_intent in {"recommend", "refine"}
+    ):
+        return remembered_item_type
     return None
 
 
@@ -367,12 +457,21 @@ def build_effective_recommendation_query_text(
     if not normalized_message:
         return normalized_message
 
+    prior_query = (session_state.conversation.last_recommendation_query or "").strip()
+    explicit_item_type = extract_query_filters(normalized_message).get("item_type")
+
     if not is_follow_up_refinement(normalized_message):
+        if (
+            prior_query
+            and explicit_item_type is None
+            and session_state.conversation.last_requested_slots
+            and session_state.conversation.last_user_intent in {"recommend", "refine"}
+        ):
+            return _merge_query_fragments(normalized_message, prior_query)
         return normalized_message
 
-    prior_query = (session_state.conversation.last_recommendation_query or "").strip()
     if prior_query:
-        return f"{normalized_message} {prior_query}".strip()
+        return _merge_query_fragments(normalized_message, prior_query)
 
     fragments: list[str] = [normalized_message]
     effective_item_type = resolve_effective_item_type(
@@ -461,7 +560,17 @@ def _extract_bare_destination(message: str) -> str | None:
         return None
     if re.search(r"[,.!?;:]", message):
         return None
-    return _normalize_location(message)
+    if is_follow_up_refinement(message):
+        return None
+    if extract_query_filters(message):
+        return None
+
+    destination = _normalize_location(message)
+    if destination is None:
+        return None
+    if not _looks_like_bare_destination(destination):
+        return None
+    return destination
 
 
 def _normalize_location(value: str) -> str | None:
@@ -701,10 +810,10 @@ def _extract_party_size(message: str) -> PartySize | None:
 
 
 def _extract_weighted_interests(message: str) -> dict[str, float]:
-    lowered = message.casefold()
+    lowered = " ".join(message.casefold().split())
     weights: dict[str, float] = {}
     for interest, keywords in _INTEREST_KEYWORDS.items():
-        if any(keyword in lowered for keyword in keywords):
+        if any(_has_positive_keyword_phrase(lowered, keyword) for keyword in keywords):
             weights[interest] = 0.8
     return weights
 
@@ -732,3 +841,68 @@ def _normalize_patch_value(value: Any) -> Any:
     if hasattr(value, "model_dump"):
         return value.model_dump(mode="python")
     return value
+
+
+def _merge_query_fragments(*fragments: str) -> str:
+    normalized_fragments = [
+        fragment.strip() for fragment in fragments if fragment and fragment.strip()
+    ]
+    return " ".join(dict.fromkeys(normalized_fragments))
+
+
+def _contains_keyword_phrase(message: str, keyword: str) -> bool:
+    normalized_keyword = " ".join(keyword.casefold().split())
+    if not normalized_keyword:
+        return False
+    pattern = rf"(?<![a-z0-9]){re.escape(normalized_keyword)}(?![a-z0-9])"
+    return re.search(pattern, message) is not None
+
+
+def _has_positive_keyword_phrase(message: str, keyword: str) -> bool:
+    normalized_keyword = " ".join(keyword.casefold().split())
+    if not normalized_keyword:
+        return False
+    pattern = rf"(?<![a-z0-9]){re.escape(normalized_keyword)}(?![a-z0-9])"
+    for match in re.finditer(pattern, message):
+        if not _match_is_negated(message=message, start_index=match.start()):
+            return True
+    return False
+
+
+def _match_is_negated(*, message: str, start_index: int) -> bool:
+    prefix_tokens = re.findall(r"[a-z0-9]+", message[:start_index])
+    if not prefix_tokens:
+        return False
+
+    if prefix_tokens[-1] in {"no", "not", "without", "avoid", "avoiding", "skip"}:
+        return True
+
+    if len(prefix_tokens) >= 2 and tuple(prefix_tokens[-2:]) in {
+        ("rather", "than"),
+        ("instead", "of"),
+    }:
+        return True
+
+    return False
+
+
+def _looks_like_bare_destination(value: str) -> bool:
+    tokens = value.casefold().split()
+    if not tokens:
+        return False
+
+    non_joiner_tokens = [
+        token for token in tokens if token not in _LOCATION_JOINER_WORDS
+    ]
+    if not non_joiner_tokens:
+        return False
+
+    for token in non_joiner_tokens:
+        if token in _BARE_DESTINATION_DISALLOWED_TOKENS:
+            return False
+        if token in _DESTINATION_STOPWORDS:
+            return False
+        if not _BARE_DESTINATION_WORD_PATTERN.fullmatch(token):
+            return False
+
+    return True

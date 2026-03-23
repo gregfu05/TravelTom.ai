@@ -29,7 +29,7 @@ Services:
 - `CHAT_RATE_LIMIT_ENABLED` (optional; defaults to `false` in local/dev and
   `true` outside local/dev)
 - `CORS_ALLOWED_ORIGINS` (space- or comma-separated, default `http://localhost:5173 http://127.0.0.1:5173`)
-- `ORCHESTRATOR_LLM_PROVIDER=disabled|ollama|openai`
+- `ORCHESTRATOR_LLM_PROVIDER=ollama|openai|disabled`
 - `ORCHESTRATOR_LLM_TIMEOUT_SECONDS` (default `20`)
 - `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`)
 - `OLLAMA_PLANNING_MODEL` (default `llama3.1:8b`)
@@ -43,11 +43,23 @@ Services:
 
 Store these in a local `.env` file (copy from `.env.example`) and do not hard-code them in code.
 
-To enable local Ollama orchestration:
+Local chat runtime default:
+
+- `.env.example`, the checked-in local `.env`, and backend config default to
+  `ORCHESTRATOR_LLM_PROVIDER=ollama` so local chat uses a provider-backed,
+  natural-language runtime by default.
+- Set `ORCHESTRATOR_LLM_PROVIDER=disabled` only when you explicitly want the
+  deterministic fallback/test path.
+
+To use the default local Ollama orchestration:
 
 1. Run Ollama locally and pull a model (for example `ollama pull llama3.1:8b`).
 2. Set `ORCHESTRATOR_LLM_PROVIDER=ollama` in `.env`.
 3. Restart the API process so cached service dependencies reload.
+
+If you are not running Ollama locally, switch `.env`
+`ORCHESTRATOR_LLM_PROVIDER=disabled` so chat stays on the deterministic fallback
+path instead of failing provider calls.
 
 To enable OpenAI orchestration:
 
