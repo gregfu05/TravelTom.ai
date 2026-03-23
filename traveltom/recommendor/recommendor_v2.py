@@ -10,13 +10,6 @@ from typing import Sequence
 
 import numpy as np
 import pandas as pd
-import sys
-from pathlib import Path
-
-# Ensure the API package is importable when running outside pytest (e.g., python -c)
-API_ROOT = Path(__file__).resolve().parents[2] / "apps" / "api"
-if str(API_ROOT) not in sys.path:
-    sys.path.insert(0, str(API_ROOT))
 from app.schemas.tools.recommendations import (
     RecommendationQuery,
     RecommendationResult,
