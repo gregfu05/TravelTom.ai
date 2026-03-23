@@ -241,7 +241,9 @@ def _parse_intent(text: str) -> ParsedIntent:
         or price_tier
         or city
     )
-    is_specific = bool(has_signals or not all(token in generic_words for token in tokens))
+    is_specific = bool(
+        has_signals or not all(token in generic_words for token in tokens)
+    )
 
     return ParsedIntent(
         categories=categories,
