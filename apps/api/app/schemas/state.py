@@ -101,16 +101,22 @@ class ConversationState(BaseModel):
 
     last_requested_slots: list[str] = Field(default_factory=list)
     last_user_intent: Literal["recommend", "refine", "clarify"] | None = None
-    last_clarification_kind: Literal[
-        "core_slot",
-        "search_type",
-        "refine_preference",
-    ] | None = None
-    last_search_outcome: Literal[
-        "results",
-        "empty_results",
-        "no_new_results",
-    ] | None = None
+    last_clarification_kind: (
+        Literal[
+            "core_slot",
+            "search_type",
+            "refine_preference",
+        ]
+        | None
+    ) = None
+    last_search_outcome: (
+        Literal[
+            "results",
+            "empty_results",
+            "no_new_results",
+        ]
+        | None
+    ) = None
     last_recommendation_item_type: Literal["destination", "hotel", "flight"] | None = (
         None
     )

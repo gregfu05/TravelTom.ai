@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 from app.core.errors import ApiError
 from app.services.orchestrator.llm_provider import (
@@ -95,11 +97,17 @@ def test_build_direct_recommendation_model_returns_deterministic_model() -> None
     assert isinstance(model, DeterministicRecommendationAgentModel)
 
 
-def test_ollama_structured_client_uses_configured_timeout_for_planner_requests() -> None:
+def test_ollama_structured_client_uses_configured_timeout_for_planner_requests(
+    monkeypatch,
+) -> (
+    None
+):
     captured_timeouts: list[float] = []
     captured_request: dict[str, object] = {}
 
-    def transport(url: str, payload: dict[str, object], timeout: float) -> dict[str, object]:
+    def transport(
+        url: str, payload: dict[str, object], timeout: float
+    ) -> dict[str, object]:
         captured_request["url"] = url
         captured_request["payload"] = payload
         captured_timeouts.append(timeout)
@@ -107,7 +115,10 @@ def test_ollama_structured_client_uses_configured_timeout_for_planner_requests()
             "choices": [
                 {
                     "message": {
-                        "content": '{"intent":"clarify","should_call_recommendation_tool":false}'
+                        "content": (
+                            '{"intent":"clarify",'
+                            '"should_call_recommendation_tool":false}'
+                        )
                     }
                 }
             ]
@@ -121,7 +132,12 @@ def test_ollama_structured_client_uses_configured_timeout_for_planner_requests()
         temperature=0.0,
         transport=transport,
     )
-    client._available_model_names = lambda: ["llama3.1:8b"]
+    monkeypatch.setattr(
+        client,
+        "_available_model_names",
+        lambda: ["llama3.1:8b"],
+        raising=False,
+    )
 
     payload = client.plan({"prompt": "hello"})
 
@@ -131,7 +147,8 @@ def test_ollama_structured_client_uses_configured_timeout_for_planner_requests()
     }
     assert captured_timeouts == [20.0]
     assert str(captured_request["url"]).endswith("/v1/chat/completions")
-    response_format = dict(captured_request["payload"]).get("response_format")
+    response_payload = cast(dict[str, object], captured_request["payload"])
+    response_format = response_payload.get("response_format")
     assert isinstance(response_format, dict)
     assert response_format["type"] == "json_schema"
     assert isinstance(response_format["json_schema"], dict)

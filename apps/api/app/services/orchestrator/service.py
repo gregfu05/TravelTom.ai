@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from collections.abc import Mapping
 from typing import Any, Callable, Literal, Sequence, cast
 
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
@@ -145,9 +145,7 @@ def build_runtime_recommendation_context_message(
         )
 
     effective_item_type = _normalize_item_type_value(
-        query_controls.filters.get("item_type")
-        if query_controls is not None
-        else None
+        query_controls.filters.get("item_type") if query_controls is not None else None
     )
     if effective_item_type is None:
         effective_item_type = _normalize_item_type_value(
@@ -451,7 +449,10 @@ class OrchestratorService:
             previous_state=previous_state,
             recent_messages=recent_messages,
             recommendation_executor=recommendation_executor,
-            max_results=plan.query_controls.max_results,
+            max_results=(
+                plan.query_controls.max_results
+                or self._policy.max_recommendation_results
+            ),
             query_text_override=plan.query_controls.query,
             filters_override=plan.query_controls.filters,
             response_composer=response_composer,
@@ -532,14 +533,20 @@ class OrchestratorService:
         )
 
         if tool_message is None:
-            if plan.should_call_recommendation_tool and recommendation_executor is not None:
+            if (
+                plan.should_call_recommendation_tool
+                and recommendation_executor is not None
+            ):
                 return self._run_recommendation_fallback(
                     user_message=user_message,
                     session_state=session_state,
                     previous_state=previous_state,
                     recent_messages=recent_messages,
                     recommendation_executor=recommendation_executor,
-                    max_results=plan.query_controls.max_results,
+                    max_results=(
+                        plan.query_controls.max_results
+                        or self._policy.max_recommendation_results
+                    ),
                     query_text_override=plan.query_controls.query,
                     filters_override=plan.query_controls.filters,
                     response_composer=response_composer,
@@ -792,7 +799,10 @@ class OrchestratorService:
             previous_state=previous_state,
             recent_messages=recent_messages,
             recommendation_executor=recommendation_executor,
-            max_results=plan.query_controls.max_results,
+            max_results=(
+                plan.query_controls.max_results
+                or self._policy.max_recommendation_results
+            ),
             query_text_override=plan.query_controls.query,
             filters_override=plan.query_controls.filters,
             response_composer=response_composer,
@@ -981,14 +991,18 @@ class OrchestratorService:
         previous_state: SessionState,
         user_message: str,
     ) -> int:
-        base_max_results = requested_max_results or self._policy.max_recommendation_results
+        base_max_results = (
+            requested_max_results or self._policy.max_recommendation_results
+        )
         if not self._is_duplicate_sensitive_follow_up(
             user_message=user_message,
             previous_state=previous_state,
         ):
             return base_max_results
 
-        prior_result_count = len(previous_state.conversation.last_recommendation_result_ids)
+        prior_result_count = len(
+            previous_state.conversation.last_recommendation_result_ids
+        )
         if prior_result_count <= 0:
             return base_max_results
 
@@ -1007,7 +1021,9 @@ class OrchestratorService:
         ):
             return results[: self._policy.max_recommendation_results], False
 
-        prior_result_ids = set(previous_state.conversation.last_recommendation_result_ids)
+        prior_result_ids = set(
+            previous_state.conversation.last_recommendation_result_ids
+        )
         if not prior_result_ids:
             return results[: self._policy.max_recommendation_results], False
 
@@ -1230,20 +1246,19 @@ class OrchestratorService:
                 normalized_nested_value = self._prune_null_patch_values(nested_value)
                 if normalized_nested_value is None:
                     continue
-                if isinstance(normalized_nested_value, dict) and not normalized_nested_value:
+                if (
+                    isinstance(normalized_nested_value, dict)
+                    and not normalized_nested_value
+                ):
                     continue
                 cleaned[str(key)] = normalized_nested_value
             return cleaned
         if isinstance(value, list):
-            cleaned_list = [
-                self._prune_null_patch_values(item)
-                for item in value
-            ]
+            cleaned_list = [self._prune_null_patch_values(item) for item in value]
             return [
                 item
                 for item in cleaned_list
-                if item is not None
-                and not (isinstance(item, dict) and not item)
+                if item is not None and not (isinstance(item, dict) and not item)
             ]
         return value
 
@@ -1294,14 +1309,17 @@ class OrchestratorService:
         if should_call_recommendation_tool:
             clarification_message = None
         elif clarification_message is None:
-            clarification_message = guardrail_plan.clarification_message or build_clarification_message(
-                session_state,
-                acknowledged_slots=self._captured_core_slots(
-                    previous_state=previous_state,
-                    next_state=session_state,
+            clarification_message = (
+                guardrail_plan.clarification_message
+                or build_clarification_message(
+                    session_state,
+                    acknowledged_slots=self._captured_core_slots(
+                        previous_state=previous_state,
+                        next_state=session_state,
+                    )
+                    or None,
+                    message=user_message,
                 )
-                or None,
-                message=user_message,
             )
 
         return LLMOrchestrationPlan(
@@ -1380,7 +1398,9 @@ class OrchestratorService:
         user_message: str,
         recommendations: list[RecommendationResult],
         fallback_message: str,
-        outcome: Literal["clarification", "results", "empty_results", "invalid_request"],
+        outcome: Literal[
+            "clarification", "results", "empty_results", "invalid_request"
+        ],
         response_composer: ResponseComposer | None,
         candidate_message: str | None = None,
     ) -> str:
@@ -1613,11 +1633,9 @@ class OrchestratorService:
                 previous_state.conversation.last_recommendation_item_type
             )
         next_state.conversation.last_recommendation_item_type = remembered_item_type
-        remembered_query = (
-            build_effective_recommendation_query_text(
-                message=user_message,
-                session_state=previous_state,
-            )
+        remembered_query = build_effective_recommendation_query_text(
+            message=user_message,
+            session_state=previous_state,
         )
         if remembered_query:
             next_state.conversation.last_recommendation_query = remembered_query

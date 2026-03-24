@@ -113,7 +113,9 @@ def test_orchestrator_planner_prompt_includes_transcript_and_deterministic_hints
             TranscriptMessage(role="assistant", content="Here are grounded options."),
         ],
         planner_executor=planner_executor,
-        agent_executor=lambda _messages: {"messages": [AIMessage(content="Need more detail")]},
+        agent_executor=lambda _messages: {
+            "messages": [AIMessage(content="Need more detail")]
+        },
     )
 
     assert (
@@ -122,7 +124,10 @@ def test_orchestrator_planner_prompt_includes_transcript_and_deterministic_hints
     )
     assert "user: I want a relaxing trip." in captured_prompt["value"]
     assert "assistant: Here are grounded options." in captured_prompt["value"]
-    assert '"effective_query":"I want something calm and scenic, not sure where yet"' in captured_prompt["value"]
+    assert (
+        '"effective_query":"I want something calm and scenic, not sure where yet"'
+        in captured_prompt["value"]
+    )
 
 
 def test_orchestrator_planner_prompt_truncates_long_transcript_messages() -> None:
@@ -145,7 +150,9 @@ def test_orchestrator_planner_prompt_truncates_long_transcript_messages() -> Non
             TranscriptMessage(role="assistant", content=long_assistant_message),
         ],
         planner_executor=planner_executor,
-        agent_executor=lambda _messages: {"messages": [AIMessage(content="Need more detail")]},
+        agent_executor=lambda _messages: {
+            "messages": [AIMessage(content="Need more detail")]
+        },
         recommendation_executor=None,
     )
 
@@ -160,18 +167,21 @@ def test_orchestrator_greeting_uses_planner_when_available() -> None:
     service = OrchestratorService()
     planner_called = {"value": False}
 
-    response = service.handle_message(
-        user_message="Hello Tommy",
-        session_state=SessionState(session_id="sess-greeting-planner"),
-        planner_executor=lambda _prompt: planner_called.__setitem__("value", True)
-        or {
+    def planner_executor(_prompt: str) -> dict[str, Any]:
+        planner_called["value"] = True
+        return {
             "intent": "clarify",
             "should_call_recommendation_tool": False,
             "clarification_message": (
                 "Hi, I'm Tom. Tell me where you want to go, or share destination, "
                 "dates, and budget and I'll turn that into grounded recommendations."
             ),
-        },
+        }
+
+    response = service.handle_message(
+        user_message="Hello Tommy",
+        session_state=SessionState(session_id="sess-greeting-planner"),
+        planner_executor=planner_executor,
         agent_executor=lambda _messages: (_ for _ in ()).throw(
             AssertionError("planner clarification should bypass the agent")
         ),
@@ -183,9 +193,8 @@ def test_orchestrator_greeting_uses_planner_when_available() -> None:
     assert response.state["entities"]["destinations"] == []
 
 
-def test_orchestrator_planner_state_patch_updates_state_before_direct_clarification() -> (
-    None
-):
+def test_orchestrator_planner_state_patch_updates_state_before_direct_clarification(
+) -> None:
     service = OrchestratorService()
     state = SessionState(session_id="sess-planner-slot")
 
@@ -227,7 +236,9 @@ def test_orchestrator_invalid_planner_patch_falls_back_to_deterministic_state() 
 
     def agent_executor(messages: list[dict[str, str]]) -> dict[str, Any]:
         captured_messages["value"] = messages
-        return {"messages": [AIMessage(content="What travel dates should I plan around?")]}
+        return {
+            "messages": [AIMessage(content="What travel dates should I plan around?")]
+        }
 
     response = service.handle_message(
         user_message="Lisbon",
@@ -236,9 +247,7 @@ def test_orchestrator_invalid_planner_patch_falls_back_to_deterministic_state() 
             "intent": "recommend",
             "should_call_recommendation_tool": False,
             "state_patch": {
-                "constraints": {
-                    "budget": {"min": 1000, "max": 10, "currency": "USD"}
-                }
+                "constraints": {"budget": {"min": 1000, "max": 10, "currency": "USD"}}
             },
         },
         agent_executor=agent_executor,
@@ -263,7 +272,9 @@ def test_orchestrator_logs_planner_failure_and_falls_back_safely(caplog: Any) ->
             session_state=state,
             planner_executor=planner_executor,
             agent_executor=lambda _messages: {
-                "messages": [AIMessage(content="What travel dates should I plan around?")]
+                "messages": [
+                    AIMessage(content="What travel dates should I plan around?")
+                ]
             },
         )
 
@@ -278,7 +289,21 @@ def test_orchestrator_follow_up_refine_uses_planner_when_available() -> None:
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
     planner_called = {"value": False}
 
-    def recommendation_executor(query: RecommendationQuery) -> RecommendationToolResponse:
+    def planner_executor(_prompt: str) -> dict[str, Any]:
+        planner_called["value"] = True
+        return {
+            "intent": "refine",
+            "should_call_recommendation_tool": True,
+            "state_patch": {},
+            "query_controls": {
+                "query": "show me more hotel Lisbon nightlife",
+                "filters": {"item_type": "hotel"},
+            },
+        }
+
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
         captured_query["value"] = query
         return RecommendationToolResponse.model_validate(
             {
@@ -299,17 +324,10 @@ def test_orchestrator_follow_up_refine_uses_planner_when_available() -> None:
     response = service.handle_message(
         user_message="show me more",
         session_state=_base_state(),
-        planner_executor=lambda _prompt: planner_called.__setitem__("value", True)
-        or {
-            "intent": "refine",
-            "should_call_recommendation_tool": True,
-            "state_patch": {},
-            "query_controls": {
-                "query": "show me more hotel Lisbon nightlife",
-                "filters": {"item_type": "hotel"},
-            },
+        planner_executor=planner_executor,
+        agent_executor=lambda _messages: {
+            "messages": [AIMessage(content="Tell me more")]
         },
-        agent_executor=lambda _messages: {"messages": [AIMessage(content="Tell me more")]},
         recommendation_executor=recommendation_executor,
     )
 
@@ -688,9 +706,7 @@ def test_orchestrator_generic_trip_flow_asks_for_search_type_after_budget() -> N
             "conversation": {
                 "last_requested_slots": ["budget"],
                 "last_user_intent": "recommend",
-                "last_recommendation_query": (
-                    "Santa Barbara 10th May to 20th May"
-                ),
+                "last_recommendation_query": ("Santa Barbara 10th May to 20th May"),
             },
         }
     )
@@ -785,6 +801,18 @@ def test_orchestrator_search_type_reply_uses_planner_when_available() -> None:
             }
         )
 
+    def planner_executor(_prompt: str) -> dict[str, Any]:
+        planner_called["value"] = True
+        return {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "state_patch": {},
+            "query_controls": {
+                "query": "hotel Santa Barbara 10th May to 20th May 2000 euros",
+                "filters": {"item_type": "hotel"},
+            },
+        }
+
     response = service.handle_message(
         user_message="I want hotels to be honest",
         session_state=state,
@@ -797,16 +825,7 @@ def test_orchestrator_search_type_reply_uses_planner_when_available() -> None:
                 ),
             )
         ],
-        planner_executor=lambda _prompt: planner_called.__setitem__("value", True)
-        or {
-            "intent": "recommend",
-            "should_call_recommendation_tool": True,
-            "state_patch": {},
-            "query_controls": {
-                "query": "hotel Santa Barbara 10th May to 20th May 2000 euros",
-                "filters": {"item_type": "hotel"},
-            },
-        },
+        planner_executor=planner_executor,
         agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
         recommendation_executor=recommendation_executor,
     )
@@ -820,7 +839,8 @@ def test_orchestrator_search_type_reply_uses_planner_when_available() -> None:
     assert response.state["conversation"]["last_recommendation_item_type"] == "hotel"
 
 
-def test_orchestrator_vague_search_type_reply_defaults_to_hotels_for_known_destination() -> None:
+def test_orchestrator_vague_search_type_reply_defaults_to_hotels_for_known_destination(
+) -> None:
     service = OrchestratorService()
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
     state = SessionState.model_validate(
@@ -1009,6 +1029,7 @@ def test_orchestrator_planner_first_trip_flow_reaches_hotel_recommendation() -> 
 def test_orchestrator_planner_search_type_reply_bypasses_agent_when_ready() -> None:
     service = OrchestratorService()
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+    planner_called = {"value": False}
     state = SessionState.model_validate(
         {
             "session_id": "sess-search-type-bypass",
@@ -1039,16 +1060,17 @@ def test_orchestrator_planner_search_type_reply_bypasses_agent_when_ready() -> N
                         "score": 0.95,
                         "rank": 1,
                         "features": {"name": "Planner Bypass Hotel"},
-                        "explanation": "Grounded hotel returned without chat-agent lag.",
+                        "explanation": (
+                            "Grounded hotel returned without chat-agent lag."
+                        ),
                     }
                 ],
             }
         )
 
-    response = service.handle_message(
-        user_message="I want hotels to be honest",
-        session_state=state,
-        planner_executor=lambda _prompt: {
+    def planner_executor(_prompt: str) -> dict[str, Any]:
+        planner_called["value"] = True
+        return {
             "intent": "recommend",
             "should_call_recommendation_tool": True,
             "clarification_message": None,
@@ -1057,7 +1079,12 @@ def test_orchestrator_planner_search_type_reply_bypasses_agent_when_ready() -> N
                 "query": "hotel Santa Barbara 10th May to 20th May 2000 euros",
                 "filters": {"item_type": "hotel"},
             },
-        },
+        }
+
+    response = service.handle_message(
+        user_message="I want hotels to be honest",
+        session_state=state,
+        planner_executor=planner_executor,
         agent_executor=lambda _messages: (_ for _ in ()).throw(
             AssertionError("agent should be bypassed")
         ),
@@ -1065,6 +1092,7 @@ def test_orchestrator_planner_search_type_reply_bypasses_agent_when_ready() -> N
     )
 
     query = captured_query["value"]
+    assert planner_called["value"] is True
     assert query is not None
     assert query.filters["item_type"] == "hotel"
     assert query.constraints.destination == "Santa Barbara"
@@ -1115,7 +1143,10 @@ def test_orchestrator_lower_cost_keeps_hotel_context_when_planner_clarifies() ->
         agent_executor=lambda _messages: {
             "messages": [
                 AIMessage(
-                    content="What budget cap should I target for lower-cost hotel options?"
+                    content=(
+                        "What budget cap should I target for lower-cost hotel "
+                        "options?"
+                    )
                 )
             ]
         },
@@ -1186,13 +1217,17 @@ def test_orchestrator_vague_reply_after_empty_results_gives_stronger_guidance() 
                 "last_clarification_kind": "refine_preference",
                 "last_search_outcome": "empty_results",
                 "last_recommendation_item_type": "hotel",
-                "last_recommendation_query": "hotel Santa Barbara 10th May to 20th May 2000 euros",
+                "last_recommendation_query": (
+                    "hotel Santa Barbara 10th May to 20th May 2000 euros"
+                ),
             },
         }
     )
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
 
-    def recommendation_executor(query: RecommendationQuery) -> RecommendationToolResponse:
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
         captured_query["value"] = query
         return RecommendationToolResponse.model_validate(
             {
@@ -1220,7 +1255,9 @@ def test_orchestrator_vague_reply_after_empty_results_gives_stronger_guidance() 
 
     assert captured_query["value"] is None
     assert "still do not have grounded hotel matches" in response.assistant_message
-    assert response.state["conversation"]["last_clarification_kind"] == "refine_preference"
+    assert (
+        response.state["conversation"]["last_clarification_kind"] == "refine_preference"
+    )
     assert response.state["conversation"]["last_search_outcome"] == "empty_results"
 
 
@@ -1308,7 +1345,10 @@ def test_orchestrator_day_first_dates_fill_advances_past_dates_slot() -> None:
         recent_messages=[
             TranscriptMessage(
                 role="assistant",
-                content="What travel dates should I use for these hotel recommendations?",
+                content=(
+                    "What travel dates should I use for these hotel "
+                    "recommendations?"
+                ),
             )
         ],
         agent_executor=lambda _messages: {
@@ -1372,12 +1412,13 @@ def test_orchestrator_bare_budget_reply_executes_recommendation_after_budget_slo
         recent_messages=[
             TranscriptMessage(
                 role="assistant",
-                content="What budget range should I use for these hotel recommendations?",
+                content=(
+                    "What budget range should I use for these hotel "
+                    "recommendations?"
+                ),
             )
         ],
-        agent_executor=lambda _messages: {
-            "messages": [AIMessage(content="ignored")]
-        },
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
         recommendation_executor=recommendation_executor,
     )
 
@@ -1407,9 +1448,7 @@ def test_orchestrator_greeting_and_meta_turns_do_not_persist_destination() -> No
     assert first_response.state["entities"]["destinations"] == []
     assert first_response.state["conversation"]["last_requested_slots"] == []
     assert first_response.state["conversation"]["last_user_intent"] == "clarify"
-    assert (
-        first_response.state["conversation"]["last_recommendation_item_type"] is None
-    )
+    assert first_response.state["conversation"]["last_recommendation_item_type"] is None
     assert first_response.state["conversation"]["last_recommendation_query"] is None
 
     state = SessionState.model_validate(first_response.state)
@@ -1543,6 +1582,10 @@ def test_orchestrator_uses_grounded_response_composer_after_tool_result() -> Non
     service = OrchestratorService()
     captured_prompts: list[str] = []
 
+    def response_composer(prompt: str) -> str:
+        captured_prompts.append(prompt)
+        return "Here is a more natural grounded hotel update."
+
     response = service.handle_message(
         user_message="show me more",
         session_state=_base_state(),
@@ -1589,8 +1632,7 @@ def test_orchestrator_uses_grounded_response_composer_after_tool_result() -> Non
                 AIMessage(content="Raw transcript copy that should not be returned."),
             ]
         },
-        response_composer=lambda prompt: captured_prompts.append(prompt)
-        or "Here is a more natural grounded hotel update.",
+        response_composer=response_composer,
     )
 
     assert response.assistant_message == "Here is a more natural grounded hotel update."
@@ -1599,9 +1641,8 @@ def test_orchestrator_uses_grounded_response_composer_after_tool_result() -> Non
     assert "Raw transcript copy" not in response.assistant_message
 
 
-def test_orchestrator_multi_turn_slot_filling_reaches_recommendation_on_final_turn() -> (
-    None
-):
+def test_orchestrator_multi_turn_slot_filling_reaches_recommendation_on_final_turn(
+) -> None:
     service = OrchestratorService()
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
 

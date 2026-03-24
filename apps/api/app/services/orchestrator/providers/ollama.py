@@ -259,8 +259,7 @@ class OllamaStructuredClient:
                 "model": model_name,
                 "prompt": (
                     "Return only valid JSON matching the requested schema. "
-                    "Do not include markdown.\n\n"
-                    + prompt
+                    "Do not include markdown.\n\n" + prompt
                 ),
                 "stream": False,
                 "format": schema,

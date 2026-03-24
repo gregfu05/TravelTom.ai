@@ -150,7 +150,9 @@ def test_extracts_bare_budget_reply_with_symbol_when_budget_slot_requested() -> 
     assert updated.constraints.budget.currency == "USD"
 
 
-def test_extracts_bare_budget_reply_with_currency_word_when_budget_slot_requested() -> None:
+def test_extracts_bare_budget_reply_with_currency_word_when_budget_slot_requested() -> (
+    None
+):
     state = SessionState.model_validate(
         {
             "session_id": "sess-budget-word",
@@ -198,7 +200,8 @@ def test_bars_in_santa_barbara_still_capture_nightlife_interest() -> None:
     assert updated.preferences.weighted_interests["nightlife"] == 0.8
 
 
-def test_extracts_one_shot_destination_dates_and_budget_without_treating_budget_as_year() -> None:
+def test_extracts_one_shot_destination_dates_and_budget_without_treating_budget_as_year(
+) -> None:
     state = SessionState(session_id="sess-one-shot")
 
     updated = apply_message_state_updates(
@@ -505,12 +508,17 @@ def test_search_type_reply_reuses_prior_query_context() -> None:
             "conversation": {
                 "last_user_intent": "recommend",
                 "last_clarification_kind": "search_type",
-                "last_recommendation_query": "Santa Barbara 10th May to 20th May 2000 euros",
+                "last_recommendation_query": (
+                    "Santa Barbara 10th May to 20th May 2000 euros"
+                ),
             },
         }
     )
 
-    assert resolve_effective_item_type(message="Anything works", session_state=state) == "hotel"
+    assert (
+        resolve_effective_item_type(message="Anything works", session_state=state)
+        == "hotel"
+    )
     assert is_vague_acceptance_reply("Anything works") is True
     assert (
         build_effective_recommendation_query_text(

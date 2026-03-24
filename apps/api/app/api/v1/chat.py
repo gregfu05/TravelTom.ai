@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import ValidationError
@@ -14,6 +16,7 @@ from app.core.security import (
     enforce_chat_rate_limit,
     require_authenticated_principal,
 )
+from app.db.models.message import Message
 from app.db.session import get_db
 from app.schemas.api.chat import (
     ChatRecommendation,
@@ -191,8 +194,8 @@ async def get_chat_session(
                 user_id=state_user_id,
             )
             messages = await uow.chat_repository.get_messages(pk=pk)
-            latest_snapshot = await uow.chat_repository.get_latest_recommendation_snapshot(
-                pk=pk
+            latest_snapshot = (
+                await uow.chat_repository.get_latest_recommendation_snapshot(pk=pk)
             )
             return _to_chat_session_response(
                 session_id=session_id,
@@ -210,6 +213,16 @@ async def get_chat_session(
             code="invalid_session_state",
             message="Invalid session state payload",
         ) from exc
+    except ApiError:
+        raise
+    except Exception as exc:
+        raise ApiError(
+            status_code=500,
+            code="chat_session_read_failed",
+            message="Failed to load chat session",
+        ) from exc
+
+    raise RuntimeError("Chat session handler completed without producing a response")
 
 
 def _to_chat_response(
@@ -244,20 +257,20 @@ def _to_chat_session_response(
     *,
     session_id: str,
     state: SessionState,
-    messages: list[object],
-    raw_recommendations: list[object],
+    messages: Sequence[Message],
+    raw_recommendations: Sequence[Mapping[str, Any]],
 ) -> ChatSessionResponse:
     """Map persisted session records to the session hydration API response."""
 
     transcript = [
         ChatSessionMessage(
-            id=str(getattr(message, "id")),
-            role=getattr(message, "role"),
-            content=getattr(message, "content"),
-            created_at=getattr(message, "created_at"),
+            id=str(message.id),
+            role=message.role,
+            content=message.content,
+            created_at=message.created_at,
         )
         for message in messages
-        if getattr(message, "role", None) in {"user", "assistant"}
+        if message.role in {"user", "assistant"}
     ]
     recommendations = [
         ChatRecommendation(
@@ -266,7 +279,9 @@ def _to_chat_session_response(
             score=float(item["score"]),
             rank=int(item["rank"]),
             explanation=str(item["explanation"]),
-            metadata=item.get("features") if isinstance(item.get("features"), dict) else None,
+            metadata=(
+                item.get("features") if isinstance(item.get("features"), dict) else None
+            ),
         )
         for item in raw_recommendations
         if isinstance(item, dict)

@@ -141,7 +141,10 @@ def is_greeting(message: str) -> bool:
     lowered = stripped_message.casefold()
     if any(keyword in lowered for keyword in _RECOMMEND_KEYWORDS + _REFINE_KEYWORDS):
         return False
-    return any(re.search(pattern, stripped_message, flags=re.IGNORECASE) for pattern in _GREETING_PATTERNS)
+    return any(
+        re.search(pattern, stripped_message, flags=re.IGNORECASE)
+        for pattern in _GREETING_PATTERNS
+    )
 
 
 def build_greeting_message() -> str:
@@ -179,7 +182,8 @@ def decide_next_action(message: str, state: SessionState) -> OrchestrationDecisi
 
     if (
         state.conversation.last_clarification_kind == "refine_preference"
-        and state.conversation.last_search_outcome in {"empty_results", "no_new_results"}
+        and state.conversation.last_search_outcome
+        in {"empty_results", "no_new_results"}
         and is_vague_acceptance_reply(message)
     ):
         return OrchestrationDecision(
@@ -197,7 +201,9 @@ def decide_next_action(message: str, state: SessionState) -> OrchestrationDecisi
         state,
         item_type_override=resolved_item_type,
     )
-    needs_search_type = needs_search_type_clarification(state) and resolved_item_type is None
+    needs_search_type = (
+        needs_search_type_clarification(state) and resolved_item_type is None
+    )
 
     if active_intent in {"recommend", "refine"}:
         if needs_search_type:
@@ -222,9 +228,8 @@ def decide_next_action(message: str, state: SessionState) -> OrchestrationDecisi
         message=message,
         state=state,
     )
-    if (
-        effective_item_type == "destination"
-        and _has_destination_exploration_signal(message=message, state=state)
+    if effective_item_type == "destination" and _has_destination_exploration_signal(
+        message=message, state=state
     ):
         return OrchestrationDecision(
             intent="recommend",
@@ -310,7 +315,8 @@ def build_clarification_message(
         if (
             message is not None
             and is_vague_acceptance_reply(message)
-            and session_state.conversation.last_search_outcome in {
+            and session_state.conversation.last_search_outcome
+            in {
                 "empty_results",
                 "no_new_results",
             }
@@ -486,7 +492,8 @@ def build_planning_prompt_context(
     return (
         "You are the TravelTom orchestration planner.\n"
         "Return JSON only.\n"
-        "Use a single-line compact JSON object and omit optional keys you are not setting.\n"
+        "Use a single-line compact JSON object and omit optional keys you are "
+        "not setting.\n"
         "Primary duties: interpret intent, extract grounded trip details from the "
         "latest user turn, choose whether to call recommendation tool, and propose "
         "structured state updates.\n"
@@ -505,10 +512,11 @@ def build_planning_prompt_context(
         "Natural examples you should handle with state_patch:\n"
         '- "I want to go to Santa Barbara" -> constraints.destination="Santa Barbara"\n'
         '- "Hotels in Santa Barbara May 10th to May 20th under 2000 euros" -> '
-        'constraints.destination, constraints.dates, constraints.budget, '
+        "constraints.destination, constraints.dates, constraints.budget, "
         'query_controls.filters.item_type="hotel"\n'
         '- "I want hotels to be honest" after destination, dates, and budget are '
-        'known -> query_controls.filters.item_type="hotel" and should_call_recommendation_tool=true\n'
+        'known -> query_controls.filters.item_type="hotel" and '
+        'should_call_recommendation_tool=true\n'
         "Never fabricate recommendation items.\n"
         f"Recommendation max_results hard limit for this turn: {max_results}.\n"
         "Valid JSON shape:\n"
@@ -537,7 +545,8 @@ def build_planning_prompt_context(
         "  }\n"
         "}\n"
         f"Current session state JSON: {state_payload}\n"
-        f"Deterministic extraction and carry-forward hints JSON: {deterministic_hint_payload}\n"
+        "Deterministic extraction and carry-forward hints JSON: "
+        f"{deterministic_hint_payload}\n"
         f"Recent transcript:\n{recent_transcript}\n"
         f"Latest user message: {user_message}"
     )

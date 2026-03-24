@@ -203,10 +203,26 @@ _INTEREST_KEYWORDS: dict[str, tuple[str, ...]] = {
         "pub",
         "pubs",
     ),
-    "shopping": ("shopping", "shop", "shops", "boutique", "boutiques", "mall", "fashion"),
+    "shopping": (
+        "shopping",
+        "shop",
+        "shops",
+        "boutique",
+        "boutiques",
+        "mall",
+        "fashion",
+    ),
     "beaches": ("beach", "beaches", "coast", "seaside"),
     "culture": ("museum", "museums", "art", "history", "gallery", "galleries"),
-    "nature": ("nature", "hiking", "mountain", "mountains", "park", "parks", "outdoors"),
+    "nature": (
+        "nature",
+        "hiking",
+        "mountain",
+        "mountains",
+        "park",
+        "parks",
+        "outdoors",
+    ),
 }
 
 _ROUTE_PATTERN = re.compile(
@@ -781,7 +797,9 @@ def _extract_leading_destination_fragment(message: str) -> str | None:
     leading_fragment = message[:first_digit_index].strip()
     if not leading_fragment:
         return None
-    if re.search(r"\b(?:from|to|in|between|under|over|budget|for|with)\b", leading_fragment):
+    if re.search(
+        r"\b(?:from|to|in|between|under|over|budget|for|with)\b", leading_fragment
+    ):
         return None
     if is_vague_acceptance_reply(leading_fragment):
         return None

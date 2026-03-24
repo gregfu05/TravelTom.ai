@@ -147,11 +147,7 @@ class ChatRepository:
             .where(Message.session_id == pk)
             .order_by(Message.created_at.asc())
         )
-        return [
-            row
-            for row in result.scalars()
-            if row.role in {"user", "assistant"}
-        ]
+        return [row for row in result.scalars() if row.role in {"user", "assistant"}]
 
     async def get_latest_recommendation_snapshot(
         self,
