@@ -200,8 +200,7 @@ def test_bars_in_santa_barbara_still_capture_nightlife_interest() -> None:
     assert updated.preferences.weighted_interests["nightlife"] == 0.8
 
 
-def test_extracts_one_shot_destination_dates_and_budget_without_treating_budget_as_year(
-) -> None:
+def test_extracts_one_shot_trip_without_budget_year_collision() -> None:
     state = SessionState(session_id="sess-one-shot")
 
     updated = apply_message_state_updates(

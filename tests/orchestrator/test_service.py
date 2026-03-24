@@ -193,8 +193,7 @@ def test_orchestrator_greeting_uses_planner_when_available() -> None:
     assert response.state["entities"]["destinations"] == []
 
 
-def test_orchestrator_planner_state_patch_updates_state_before_direct_clarification(
-) -> None:
+def test_orchestrator_planner_patch_updates_state_before_clarification() -> None:
     service = OrchestratorService()
     state = SessionState(session_id="sess-planner-slot")
 
@@ -839,8 +838,7 @@ def test_orchestrator_search_type_reply_uses_planner_when_available() -> None:
     assert response.state["conversation"]["last_recommendation_item_type"] == "hotel"
 
 
-def test_orchestrator_vague_search_type_reply_defaults_to_hotels_for_known_destination(
-) -> None:
+def test_orchestrator_vague_search_type_defaults_to_hotels() -> None:
     service = OrchestratorService()
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
     state = SessionState.model_validate(
@@ -1639,8 +1637,7 @@ def test_orchestrator_uses_grounded_response_composer_after_tool_result() -> Non
     assert "Raw transcript copy" not in response.assistant_message
 
 
-def test_orchestrator_multi_turn_slot_filling_reaches_recommendation_on_final_turn(
-) -> None:
+def test_orchestrator_slot_filling_reaches_recommendation_on_final_turn() -> None:
     service = OrchestratorService()
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
 
