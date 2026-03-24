@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.main import app
 from app.api.v1.recommendations import get_recommendation_tool
+from app.main import app
 from fastapi.testclient import TestClient
 
 

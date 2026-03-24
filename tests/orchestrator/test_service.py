@@ -604,7 +604,9 @@ def test_orchestrator_follow_up_uses_carried_item_type_and_query() -> None:
     )
 
     assert captured["messages"][-1]["content"] == "show me more"
-    assert response.assistant_message.startswith("I found 1 places that fit your request.")
+    assert response.assistant_message.startswith(
+        "I found 1 places that fit your request."
+    )
     assert response.recommendations[0].item_id == "hotel-lisbon-1"
     assert response.state["conversation"]["last_recommendation_item_type"] == "hotel"
     assert (
