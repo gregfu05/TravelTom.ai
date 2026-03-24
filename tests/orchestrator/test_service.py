@@ -1346,8 +1346,7 @@ def test_orchestrator_day_first_dates_fill_advances_past_dates_slot() -> None:
             TranscriptMessage(
                 role="assistant",
                 content=(
-                    "What travel dates should I use for these hotel "
-                    "recommendations?"
+                    "What travel dates should I use for these hotel " "recommendations?"
                 ),
             )
         ],
@@ -1413,8 +1412,7 @@ def test_orchestrator_bare_budget_reply_executes_recommendation_after_budget_slo
             TranscriptMessage(
                 role="assistant",
                 content=(
-                    "What budget range should I use for these hotel "
-                    "recommendations?"
+                    "What budget range should I use for these hotel " "recommendations?"
                 ),
             )
         ],

@@ -99,9 +99,7 @@ def test_build_direct_recommendation_model_returns_deterministic_model() -> None
 
 def test_ollama_structured_client_uses_configured_timeout_for_planner_requests(
     monkeypatch,
-) -> (
-    None
-):
+) -> None:
     captured_timeouts: list[float] = []
     captured_request: dict[str, object] = {}
 

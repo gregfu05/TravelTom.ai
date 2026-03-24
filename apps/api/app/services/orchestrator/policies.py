@@ -516,7 +516,7 @@ def build_planning_prompt_context(
         'query_controls.filters.item_type="hotel"\n'
         '- "I want hotels to be honest" after destination, dates, and budget are '
         'known -> query_controls.filters.item_type="hotel" and '
-        'should_call_recommendation_tool=true\n'
+        "should_call_recommendation_tool=true\n"
         "Never fabricate recommendation items.\n"
         f"Recommendation max_results hard limit for this turn: {max_results}.\n"
         "Valid JSON shape:\n"
