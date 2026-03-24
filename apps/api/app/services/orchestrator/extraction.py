@@ -68,6 +68,99 @@ _DESTINATION_STOPWORDS = {
     "fall",
 } | set(_MONTH_NAME_TO_NUMBER.keys())
 
+_BARE_DESTINATION_DISALLOWED_TOKENS = {
+    "another",
+    "break",
+    "cheaper",
+    "cheapest",
+    "explore",
+    "family",
+    "family-friendly",
+    "find",
+    "flexible",
+    "friendly",
+    "getaway",
+    "greetings",
+    "hello",
+    "help",
+    "hey",
+    "holiday",
+    "how",
+    "idea",
+    "ideas",
+    "i",
+    "i'm",
+    "hi",
+    "im",
+    "me",
+    "mean",
+    "more",
+    "option",
+    "options",
+    "plan",
+    "please",
+    "let's",
+    "lets",
+    "do",
+    "something",
+    "like",
+    "recommend",
+    "relax",
+    "show",
+    "suggest",
+    "suggestion",
+    "suggestions",
+    "thank",
+    "thanks",
+    "tommy",
+    "trip",
+    "trips",
+    "traveltom",
+    "vacation",
+    "what",
+    "when",
+    "where",
+    "who",
+    "why",
+    "destination",
+}
+_CURRENCY_ALIASES = {
+    "usd": "USD",
+    "dollar": "USD",
+    "dollars": "USD",
+    "eur": "EUR",
+    "euro": "EUR",
+    "euros": "EUR",
+    "gbp": "GBP",
+    "pound": "GBP",
+    "pounds": "GBP",
+    "cad": "CAD",
+    "aud": "AUD",
+    "jpy": "JPY",
+    "yen": "JPY",
+    "inr": "INR",
+    "rupee": "INR",
+    "rupees": "INR",
+}
+_CURRENCY_WORD_GROUP = "|".join(
+    re.escape(token)
+    for token in sorted(_CURRENCY_ALIASES.keys(), key=len, reverse=True)
+)
+_LOCATION_JOINER_WORDS = {
+    "and",
+    "da",
+    "de",
+    "del",
+    "do",
+    "dos",
+    "la",
+    "las",
+    "los",
+    "of",
+    "the",
+}
+_BARE_DESTINATION_WORD_PATTERN = re.compile(r"^[a-z][a-z.'-]*$", flags=re.IGNORECASE)
+
 _TRAILING_LOCATION_WORDS = {
     "for",
     "with",
@@ -98,18 +191,49 @@ _TRAILING_LOCATION_WORDS = {
 }
 
 _INTEREST_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "food": ("food", "restaurant", "dining", "cafe"),
-    "nightlife": ("nightlife", "bar", "club", "cocktail", "pub"),
-    "shopping": ("shopping", "shop", "boutique", "mall", "fashion"),
-    "beaches": ("beach", "coast", "seaside"),
-    "culture": ("museum", "art", "history", "gallery"),
-    "nature": ("nature", "hiking", "mountain", "park", "outdoors"),
+    "food": ("food", "restaurant", "restaurants", "dining", "cafe", "cafes"),
+    "nightlife": (
+        "nightlife",
+        "bar",
+        "bars",
+        "club",
+        "clubs",
+        "cocktail",
+        "cocktails",
+        "pub",
+        "pubs",
+    ),
+    "shopping": (
+        "shopping",
+        "shop",
+        "shops",
+        "boutique",
+        "boutiques",
+        "mall",
+        "fashion",
+    ),
+    "beaches": ("beach", "beaches", "coast", "seaside"),
+    "culture": ("museum", "museums", "art", "history", "gallery", "galleries"),
+    "nature": (
+        "nature",
+        "hiking",
+        "mountain",
+        "mountains",
+        "park",
+        "parks",
+        "outdoors",
+    ),
 }
 
 _ROUTE_PATTERN = re.compile(
     r"\bfrom\s+(?P<origin>[a-z][a-z .'-]{1,64}?)\s+to\s+"
     r"(?P<destination>[a-z][a-z .'-]{1,64}?)(?=(?:\s+(?:for|with|on|between|"
     r"under|over|budget|from|starting|start|end|in|at|by)\b)|[,.!?;]|$)",
+    flags=re.IGNORECASE,
+)
+_BARE_ROUTE_PATTERN = re.compile(
+    r"^\s*(?P<origin>[a-z][a-z .'-]{1,64}?)\s+to\s+"
+    r"(?P<destination>[a-z][a-z .'-]{1,64}?)\s*$",
     flags=re.IGNORECASE,
 )
 _ORIGIN_PATTERN = re.compile(
@@ -129,7 +253,13 @@ _DESTINATION_PATTERNS = (
         flags=re.IGNORECASE,
     ),
     re.compile(
-        r"\bdestination(?:\s+is)?\s*[:\-]?\s*"
+        r"\bdestination\s+(?:is|will be|would be|should be)\s+"
+        r"(?P<destination>[a-z][a-z .'-]{1,64}?)(?=(?:\s+(?:for|with|on|between|"
+        r"under|over|budget|from|starting|start|end|in|at|by)\b)|[,.!?;]|$)",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bdestination\s*[:=\-]\s*"
         r"(?P<destination>[a-z][a-z .'-]{1,64}?)(?=(?:\s+(?:for|with|on|between|"
         r"under|over|budget|from|starting|start|end|in|at|by)\b)|[,.!?;]|$)",
         flags=re.IGNORECASE,
@@ -142,6 +272,20 @@ _DESTINATION_PATTERNS = (
     ),
 )
 
+_NON_DESTINATION_PREFIX_PATTERN = re.compile(
+    r"^(?:(?:want\s+to\s+)?go|travel(?:ing|ling)?|fly(?:ing)?|"
+    r"head(?:ing)?|stay(?:ing)?)\s+to\s+",
+    flags=re.IGNORECASE,
+)
+_NON_DESTINATION_PHRASES = {
+    "be honest",
+    "to be honest",
+    "lower cost",
+    "lower price",
+    "more affordable",
+    "less expensive",
+}
+
 _ISO_DATE_PATTERN = re.compile(
     r"\b(?P<year>\d{4})[-/](?P<month>\d{1,2})[-/](?P<day>\d{1,2})\b"
 )
@@ -150,9 +294,30 @@ _MONTH_WORD = (
     r"jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|"
     r"nov(?:ember)?|dec(?:ember)?"
 )
+_DESTINATION_DATE_AWARE_PATTERNS = (
+    re.compile(
+        rf"\bto\s+(?P<destination>[a-z][a-z .'-]{{1,64}}?)(?=(?:\s+(?:for|with|on|"
+        rf"between|under|over|budget|from|starting|start|end|in|at|by|{_MONTH_WORD})\b|\s+\d)|[,.!?;]|$)",
+        flags=re.IGNORECASE,
+    ),
+    re.compile(
+        rf"\bin\s+(?P<destination>[a-z][a-z .'-]{{1,64}}?)(?=(?:\s+(?:for|with|on|"
+        rf"between|under|over|budget|from|starting|start|end|at|by|{_MONTH_WORD})\b|\s+\d)|[,.!?;]|$)",
+        flags=re.IGNORECASE,
+    ),
+)
+_DESTINATION_DATE_SUFFIX_PATTERN = re.compile(
+    rf"\s+(?:(?:next|this)\s+weekend\b|{_MONTH_WORD}\b|\d)",
+    flags=re.IGNORECASE,
+)
 _MONTH_NAME_DATE_PATTERN = re.compile(
-    rf"\b(?P<month>{_MONTH_WORD})\.?\s+(?P<day>\d{{1,2}})"
-    rf"(?:,\s*|\s+)?(?P<year>\d{{4}})?\b",
+    rf"\b(?P<month>{_MONTH_WORD})\.?\s+(?P<day>\d{{1,2}})(?:st|nd|rd|th)?"
+    rf"(?:(?:,\s*|\s+)(?P<year>\d{{4}})(?!\s*(?:{_CURRENCY_WORD_GROUP})\b))?\b",
+    flags=re.IGNORECASE,
+)
+_DAY_FIRST_MONTH_NAME_DATE_PATTERN = re.compile(
+    rf"\b(?P<day>\d{{1,2}})(?:st|nd|rd|th)?(?:\s+of)?\s+(?P<month>{_MONTH_WORD})\.?"
+    rf"(?:(?:,\s*|\s+)(?P<year>\d{{4}})(?!\s*(?:{_CURRENCY_WORD_GROUP})\b))?\b",
     flags=re.IGNORECASE,
 )
 
@@ -186,6 +351,21 @@ _BUDGET_MAX_PATTERN = re.compile(
 _BUDGET_SINGLE_PATTERN = re.compile(
     rf"\bbudget(?:\s+is|\s+around|\s+about|\s+of)?\s*[{_CURRENCY_SYMBOL_CLASS}]?\s*"
     r"(?P<amount>\d[\d,]*(?:\.\d+)?k?)\s*(?P<currency>usd|eur|gbp|cad|aud|jpy|inr)?\b",
+    flags=re.IGNORECASE,
+)
+_BARE_BUDGET_REPLY_PATTERN = re.compile(
+    rf"^\s*(?:budget(?:\s+is|\s+around|\s+about|\s+of)?\s+)?"
+    r"(?:(?:about|around|roughly|approximately|something like)\s+)?"
+    rf"[{_CURRENCY_SYMBOL_CLASS}]?\s*(?P<amount>\d[\d,]*(?:\.\d+)?k?)"
+    r"\s*(?P<currency>usd|eur|euro|euros|gbp|pound|pounds|cad|aud|jpy|yen|inr|rupee|rupees|dollar|dollars)?"
+    rf"\s*[{_CURRENCY_SYMBOL_CLASS}]?\s*[.!?]?\s*$",
+    flags=re.IGNORECASE,
+)
+_TRAILING_BUDGET_REPLY_PATTERN = re.compile(
+    rf"(?:^|[\s,;:])"
+    rf"[{_CURRENCY_SYMBOL_CLASS}]?\s*(?P<amount>\d[\d,]*(?:\.\d+)?k?)"
+    r"\s*(?P<currency>usd|eur|euro|euros|gbp|pound|pounds|cad|aud|jpy|yen|inr|rupee|rupees|dollar|dollars)"
+    rf"\s*[{_CURRENCY_SYMBOL_CLASS}]?\s*[.!?]?\s*$",
     flags=re.IGNORECASE,
 )
 
@@ -227,12 +407,44 @@ _ITEM_TYPE_PATTERNS: dict[str, tuple[str, ...]] = {
         r"\bairports\b",
     ),
     "destination": (
-        r"\bdestination\b",
         r"\bdestinations\b",
+        r"\bdestination\s+(?:ideas|options|recommendations?|suggestions?)\b",
         r"\bwhere should i go\b",
         r"\bplaces to visit\b",
     ),
 }
+
+_FOLLOW_UP_PATTERNS = (
+    r"\banother option\b",
+    r"\banother one\b",
+    r"\bshow me more\b",
+    r"\bmore options\b",
+    r"\bmore please\b",
+    r"\bwhat else\b",
+    r"\bsomething else\b",
+    r"\bany others\b",
+    r"\bother options\b",
+    r"\bmore like this\b",
+    r"\bcheaper\b",
+    r"\bcheapest\b",
+    r"\bless expensive\b",
+    r"\blower cost\b",
+    r"\blower price\b",
+    r"\bmore affordable\b",
+    r"\bbudget option\b",
+    r"\bsimilar\b",
+)
+_VAGUE_ACCEPTANCE_PATTERNS = (
+    r"\banything works\b",
+    r"\bwhatever works\b",
+    r"\beither is fine\b",
+    r"\bany is fine\b",
+    r"\bi am flexible\b",
+    r"\bi'm flexible\b",
+    r"\bno preference\b",
+    r"\bwhatever\b",
+    r"\bany(?:thing)? is okay\b",
+)
 
 
 def apply_message_state_updates(
@@ -250,15 +462,35 @@ def apply_message_state_updates(
     extraction_day = today or date.today()
     next_state = session_state.model_copy(deep=True)
 
-    origin, destination = _extract_route(normalized_message)
+    destination_source: str | None = None
+    origin, destination = _extract_route(
+        normalized_message,
+        session_state=session_state,
+    )
+    if destination is not None:
+        destination_source = "route"
     if origin is None:
         origin = _extract_origin(normalized_message)
     if destination is None:
         destination = _extract_destination(normalized_message)
+        if destination is not None:
+            destination_source = "pattern"
+    if destination is None:
+        destination = _extract_bare_destination(normalized_message)
+        if destination is not None:
+            destination_source = "bare"
+    if destination is None:
+        destination = _extract_leading_destination_fragment(normalized_message)
+        if destination is not None:
+            destination_source = "leading"
 
     if origin is not None:
         next_state.constraints.origin = origin
-    if destination is not None:
+    if destination is not None and _should_persist_destination_update(
+        session_state=session_state,
+        destination=destination,
+        source=destination_source or "pattern",
+    ):
         next_state.constraints.destination = destination
         if all(
             existing.casefold() != destination.casefold()
@@ -282,8 +514,24 @@ def apply_message_state_updates(
         if next_state.constraints.budget is not None
         else None
     )
+    allow_bare_budget_amount = (
+        "budget" in session_state.conversation.last_requested_slots
+        or (
+            _extract_currency(normalized_message) is not None
+            and (
+                destination is not None
+                or parsed_dates is not None
+                or (
+                    session_state.constraints.destination is not None
+                    and session_state.constraints.dates is not None
+                )
+            )
+        )
+    )
     parsed_budget = _extract_budget(
-        normalized_message, fallback_currency=fallback_currency
+        normalized_message,
+        fallback_currency=fallback_currency,
+        allow_bare_amount=allow_bare_budget_amount,
     )
     if parsed_budget is not None:
         next_state.constraints.budget = parsed_budget
@@ -311,6 +559,137 @@ def extract_query_filters(message: str) -> dict[str, str]:
         if any(re.search(pattern, lowered) for pattern in patterns):
             return {"item_type": item_type}
     return {}
+
+
+def is_follow_up_refinement(message: str) -> bool:
+    """Return whether the user message looks like an underspecified follow-up."""
+
+    lowered = message.casefold()
+    return any(re.search(pattern, lowered) for pattern in _FOLLOW_UP_PATTERNS)
+
+
+def is_vague_acceptance_reply(message: str) -> bool:
+    """Return whether the user is giving a non-specific acceptance reply."""
+
+    lowered = message.casefold()
+    return any(re.search(pattern, lowered) for pattern in _VAGUE_ACCEPTANCE_PATTERNS)
+
+
+def resolve_search_type_reply(
+    *,
+    message: str,
+    session_state: SessionState,
+) -> str | None:
+    """Resolve a reply to a pending search-type clarification."""
+
+    explicit_item_type = extract_query_filters(message).get("item_type")
+    if explicit_item_type is not None:
+        return explicit_item_type
+
+    route_origin, route_destination = _extract_route(
+        message,
+        session_state=session_state,
+    )
+    if route_origin is not None and route_destination is not None:
+        return "flight"
+
+    if _extract_origin(message) is not None:
+        return "flight"
+
+    if not is_vague_acceptance_reply(message):
+        return None
+
+    if session_state.constraints.destination:
+        return "hotel"
+    return "destination"
+
+
+def resolve_effective_item_type(
+    *,
+    message: str,
+    session_state: SessionState,
+) -> str | None:
+    """Resolve the effective recommendation item type for this turn."""
+
+    explicit_item_type = extract_query_filters(message).get("item_type")
+    if explicit_item_type is not None:
+        return explicit_item_type
+
+    if session_state.conversation.last_clarification_kind == "search_type":
+        resolved_search_type = resolve_search_type_reply(
+            message=message,
+            session_state=session_state,
+        )
+        if resolved_search_type is not None:
+            return resolved_search_type
+
+    remembered_item_type = session_state.conversation.last_recommendation_item_type
+    if is_follow_up_refinement(message):
+        return remembered_item_type
+
+    if (
+        remembered_item_type is not None
+        and session_state.conversation.last_requested_slots
+        and session_state.conversation.last_user_intent in {"recommend", "refine"}
+    ):
+        return remembered_item_type
+    return None
+
+
+def build_effective_recommendation_query_text(
+    *,
+    message: str,
+    session_state: SessionState,
+) -> str:
+    """Build deterministic carry-forward query text for recommendation turns."""
+
+    normalized_message = " ".join(message.strip().split())
+    if not normalized_message:
+        return normalized_message
+
+    prior_query = (session_state.conversation.last_recommendation_query or "").strip()
+    explicit_item_type = extract_query_filters(normalized_message).get("item_type")
+
+    if not is_follow_up_refinement(normalized_message):
+        if (
+            prior_query
+            and session_state.conversation.last_clarification_kind == "search_type"
+        ):
+            return _merge_query_fragments(normalized_message, prior_query)
+        if (
+            prior_query
+            and explicit_item_type is None
+            and session_state.conversation.last_requested_slots
+            and session_state.conversation.last_user_intent in {"recommend", "refine"}
+        ):
+            return _merge_query_fragments(normalized_message, prior_query)
+        return normalized_message
+
+    if prior_query:
+        return _merge_query_fragments(normalized_message, prior_query)
+
+    fragments: list[str] = [normalized_message]
+    effective_item_type = resolve_effective_item_type(
+        message=normalized_message,
+        session_state=session_state,
+    )
+    if effective_item_type is not None:
+        fragments.append(effective_item_type)
+
+    if session_state.constraints.destination:
+        fragments.append(session_state.constraints.destination)
+
+    weighted_interests = sorted(
+        session_state.preferences.weighted_interests.items(),
+        key=lambda item: (-item[1], item[0]),
+    )
+    for interest, _weight in weighted_interests[:3]:
+        fragments.append(interest)
+
+    normalized_fragments = [
+        fragment.strip() for fragment in fragments if fragment and fragment.strip()
+    ]
+    return " ".join(dict.fromkeys(normalized_fragments))
 
 
 def apply_structured_state_patch(
@@ -342,12 +721,28 @@ def apply_structured_state_patch(
     return next_state
 
 
-def _extract_route(message: str) -> tuple[str | None, str | None]:
+def _extract_route(
+    message: str,
+    *,
+    session_state: SessionState | None = None,
+) -> tuple[str | None, str | None]:
     match = _ROUTE_PATTERN.search(message)
-    if match is None:
+    if match is not None:
+        origin = _normalize_location(match.group("origin"))
+        destination = _normalize_destination_candidate(match.group("destination"))
+        return origin, destination
+
+    if not _should_try_bare_route(message=message, session_state=session_state):
         return None, None
-    origin = _normalize_location(match.group("origin"))
-    destination = _normalize_location(match.group("destination"))
+
+    bare_match = _BARE_ROUTE_PATTERN.search(message)
+    if bare_match is None:
+        return None, None
+
+    origin = _normalize_location(bare_match.group("origin"))
+    destination = _normalize_destination_candidate(bare_match.group("destination"))
+    if origin is None or destination is None:
+        return None, None
     return origin, destination
 
 
@@ -359,14 +754,95 @@ def _extract_origin(message: str) -> str | None:
 
 
 def _extract_destination(message: str) -> str | None:
-    for pattern in _DESTINATION_PATTERNS:
+    for pattern in _DESTINATION_PATTERNS + _DESTINATION_DATE_AWARE_PATTERNS:
         match = pattern.search(message)
         if match is None:
             continue
-        destination = _normalize_location(match.group("destination"))
+        destination = _normalize_destination_candidate(match.group("destination"))
         if destination is not None:
             return destination
     return None
+
+
+def _extract_bare_destination(message: str) -> str | None:
+    if any(character.isdigit() for character in message):
+        return None
+    if re.search(r"\b(?:from|to|in|between|under|over|budget|for|with)\b", message):
+        return None
+    if re.search(r"[,.!?;:]", message):
+        return None
+    if is_follow_up_refinement(message):
+        return None
+    if is_vague_acceptance_reply(message):
+        return None
+    if extract_query_filters(message):
+        return None
+
+    destination = _normalize_destination_candidate(message)
+    if destination is None:
+        return None
+    if not _looks_like_bare_destination(destination):
+        return None
+    return destination
+
+
+def _extract_leading_destination_fragment(message: str) -> str | None:
+    first_digit_index = next(
+        (index for index, character in enumerate(message) if character.isdigit()),
+        None,
+    )
+    if first_digit_index is None or first_digit_index <= 0:
+        return None
+
+    leading_fragment = message[:first_digit_index].strip()
+    if not leading_fragment:
+        return None
+    if re.search(
+        r"\b(?:from|to|in|between|under|over|budget|for|with)\b", leading_fragment
+    ):
+        return None
+    if is_vague_acceptance_reply(leading_fragment):
+        return None
+    if extract_query_filters(leading_fragment):
+        return None
+
+    destination = _normalize_destination_candidate(leading_fragment)
+    if destination is None or not _looks_like_bare_destination(destination):
+        return None
+    return destination
+
+
+def _normalize_destination_candidate(value: str) -> str | None:
+    cleaned = value.strip(" ,.;:!?")
+    cleaned = _NON_DESTINATION_PREFIX_PATTERN.sub("", cleaned)
+    suffix_match = _DESTINATION_DATE_SUFFIX_PATTERN.search(cleaned)
+    if suffix_match is not None:
+        cleaned = cleaned[: suffix_match.start()]
+
+    destination = _normalize_location(cleaned)
+    if destination is None:
+        return None
+    if destination.casefold() in _NON_DESTINATION_PHRASES:
+        return None
+    return destination
+
+
+def _should_persist_destination_update(
+    *,
+    session_state: SessionState,
+    destination: str,
+    source: str,
+) -> bool:
+    existing_destination = session_state.constraints.destination
+    if existing_destination is None:
+        return True
+    if existing_destination.casefold() == destination.casefold():
+        return True
+    if source in {"route", "pattern"}:
+        return True
+    if "destination" in session_state.conversation.last_requested_slots:
+        return True
+    return False
 
 
 def _normalize_location(value: str) -> str | None:
@@ -432,24 +908,25 @@ def _collect_explicit_dates(message: str, *, today: date) -> list[date]:
         if parsed_date is not None:
             candidates.append((match.start(), parsed_date))
 
-    for match in _MONTH_NAME_DATE_PATTERN.finditer(message):
-        month_key = match.group("month").casefold().rstrip(".")
-        month = _MONTH_NAME_TO_NUMBER.get(month_key)
-        if month is None:
-            continue
+    for pattern in (_MONTH_NAME_DATE_PATTERN, _DAY_FIRST_MONTH_NAME_DATE_PATTERN):
+        for match in pattern.finditer(message):
+            month_key = match.group("month").casefold().rstrip(".")
+            month = _MONTH_NAME_TO_NUMBER.get(month_key)
+            if month is None:
+                continue
 
-        parsed_year_text = match.group("year")
-        year = int(parsed_year_text) if parsed_year_text else today.year
-        parsed_date = _safe_date(year, month, int(match.group("day")))
-        if parsed_date is None:
-            continue
-
-        if parsed_year_text is None and parsed_date < today:
-            parsed_date = _safe_date(year + 1, month, int(match.group("day")))
+            parsed_year_text = match.group("year")
+            year = int(parsed_year_text) if parsed_year_text else today.year
+            parsed_date = _safe_date(year, month, int(match.group("day")))
             if parsed_date is None:
                 continue
 
-        candidates.append((match.start(), parsed_date))
+            if parsed_year_text is None and parsed_date < today:
+                parsed_date = _safe_date(year + 1, month, int(match.group("day")))
+                if parsed_date is None:
+                    continue
+
+            candidates.append((match.start(), parsed_date))
 
     candidates.sort(key=lambda item: item[0])
     unique_dates: list[date] = []
@@ -512,6 +989,7 @@ def _extract_budget(
     message: str,
     *,
     fallback_currency: str | None,
+    allow_bare_amount: bool = False,
 ) -> BudgetRange | None:
     currency = _extract_currency(message) or fallback_currency or "USD"
 
@@ -545,6 +1023,19 @@ def _extract_budget(
         if amount is not None:
             return BudgetRange(min=0.0, max=amount, currency=currency.upper())
 
+    if allow_bare_amount:
+        bare_amount_match = _BARE_BUDGET_REPLY_PATTERN.search(message)
+        if bare_amount_match is None:
+            bare_amount_match = _TRAILING_BUDGET_REPLY_PATTERN.search(message)
+        if bare_amount_match is not None:
+            amount = _parse_amount(bare_amount_match.group("amount"))
+            if amount is not None:
+                bare_currency = (
+                    _normalize_currency_code(bare_amount_match.group("currency"))
+                    or currency.upper()
+                )
+                return BudgetRange(min=0.0, max=amount, currency=bare_currency)
+
     lowered = message.casefold()
     if any(token in lowered for token in ("cheap", "budget-friendly", "low budget")):
         return BudgetRange(min=0.0, max=1500.0, currency=currency.upper())
@@ -558,9 +1049,9 @@ def _extract_budget(
 
 def _extract_currency(message: str) -> str | None:
     lowered = message.casefold()
-    for code in ("usd", "eur", "gbp", "cad", "aud", "jpy", "inr"):
-        if re.search(rf"\b{code}\b", lowered):
-            return code.upper()
+    for token, code in _CURRENCY_ALIASES.items():
+        if re.search(rf"\b{token}\b", lowered):
+            return code
     if "$" in message:
         return "USD"
     if "\u20ac" in message:
@@ -568,6 +1059,12 @@ def _extract_currency(message: str) -> str | None:
     if "\u00a3" in message:
         return "GBP"
     return None
+
+
+def _normalize_currency_code(raw_currency: str | None) -> str | None:
+    if raw_currency is None:
+        return None
+    return _CURRENCY_ALIASES.get(raw_currency.strip().casefold())
 
 
 def _parse_amount(raw_value: str) -> float | None:
@@ -606,10 +1103,10 @@ def _extract_party_size(message: str) -> PartySize | None:
 
 
 def _extract_weighted_interests(message: str) -> dict[str, float]:
-    lowered = message.casefold()
+    lowered = " ".join(message.casefold().split())
     weights: dict[str, float] = {}
     for interest, keywords in _INTEREST_KEYWORDS.items():
-        if any(keyword in lowered for keyword in keywords):
+        if any(_has_positive_keyword_phrase(lowered, keyword) for keyword in keywords):
             weights[interest] = 0.8
     return weights
 
@@ -637,3 +1134,89 @@ def _normalize_patch_value(value: Any) -> Any:
     if hasattr(value, "model_dump"):
         return value.model_dump(mode="python")
     return value
+
+
+def _merge_query_fragments(*fragments: str) -> str:
+    normalized_fragments = [
+        fragment.strip() for fragment in fragments if fragment and fragment.strip()
+    ]
+    return " ".join(dict.fromkeys(normalized_fragments))
+
+
+def _contains_keyword_phrase(message: str, keyword: str) -> bool:
+    normalized_keyword = " ".join(keyword.casefold().split())
+    if not normalized_keyword:
+        return False
+    pattern = rf"(?<![a-z0-9]){re.escape(normalized_keyword)}(?![a-z0-9])"
+    return re.search(pattern, message) is not None
+
+
+def _has_positive_keyword_phrase(message: str, keyword: str) -> bool:
+    normalized_keyword = " ".join(keyword.casefold().split())
+    if not normalized_keyword:
+        return False
+    pattern = rf"(?<![a-z0-9]){re.escape(normalized_keyword)}(?![a-z0-9])"
+    for match in re.finditer(pattern, message):
+        if not _match_is_negated(message=message, start_index=match.start()):
+            return True
+    return False
+
+
+def _match_is_negated(*, message: str, start_index: int) -> bool:
+    prefix_tokens = re.findall(r"[a-z0-9]+", message[:start_index])
+    if not prefix_tokens:
+        return False
+
+    if prefix_tokens[-1] in {"no", "not", "without", "avoid", "avoiding", "skip"}:
+        return True
+
+    if len(prefix_tokens) >= 2 and tuple(prefix_tokens[-2:]) in {
+        ("rather", "than"),
+        ("instead", "of"),
+    }:
+        return True
+
+    return False
+
+
+def _looks_like_bare_destination(value: str) -> bool:
+    tokens = value.casefold().split()
+    if not tokens:
+        return False
+
+    non_joiner_tokens = [
+        token for token in tokens if token not in _LOCATION_JOINER_WORDS
+    ]
+    if not non_joiner_tokens:
+        return False
+
+    for token in non_joiner_tokens:
+        if token in _BARE_DESTINATION_DISALLOWED_TOKENS:
+            return False
+        if token in _DESTINATION_STOPWORDS:
+            return False
+        if not _BARE_DESTINATION_WORD_PATTERN.fullmatch(token):
+            return False
+
+    return True
+
+
+def _should_try_bare_route(
+    *,
+    message: str,
+    session_state: SessionState | None,
+) -> bool:
+    if extract_query_filters(message).get("item_type") == "flight":
+        return True
+    if session_state is None:
+        return False
+    if session_state.conversation.last_recommendation_item_type == "flight":
+        return True
+    if "origin" in session_state.conversation.last_requested_slots:
+        return True
+    if (
+        "destination" in session_state.conversation.last_requested_slots
+        and session_state.conversation.last_recommendation_item_type == "flight"
+    ):
+        return True
+    return False

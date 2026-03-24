@@ -10,7 +10,7 @@ export function PlannerPage() {
 
   useEffect(() => {
     if (!authToken) {
-      navigate("/login");
+      navigate("/login", { replace: true, state: { from: "/planner" } });
     }
   }, [authToken, navigate]);
 

@@ -52,14 +52,27 @@ class Settings(BaseSettings):
         "30/minute",
         validation_alias=AliasChoices("CHAT_RATE_LIMIT"),
     )
+    chat_rate_limit_enabled: bool | None = Field(
+        default=None,
+        validation_alias=AliasChoices("CHAT_RATE_LIMIT_ENABLED"),
+    )
+    cors_allowed_origins: str = Field(
+        "http://localhost:5173 http://127.0.0.1:5173",
+        validation_alias=AliasChoices("CORS_ALLOWED_ORIGINS"),
+    )
     orchestrator_llm_provider: Literal["disabled", "ollama", "openai"] = Field(
-        "disabled",
+        "ollama",
         validation_alias=AliasChoices("ORCHESTRATOR_LLM_PROVIDER"),
     )
     orchestrator_llm_timeout_seconds: float = Field(
         20.0,
         ge=1.0,
         validation_alias=AliasChoices("ORCHESTRATOR_LLM_TIMEOUT_SECONDS"),
+    )
+    orchestrator_structured_timeout_seconds: float = Field(
+        10.0,
+        ge=1.0,
+        validation_alias=AliasChoices("ORCHESTRATOR_STRUCTURED_TIMEOUT_SECONDS"),
     )
     ollama_base_url: str = Field(
         "http://127.0.0.1:11434",
@@ -119,6 +132,11 @@ class Settings(BaseSettings):
         return [scope for scope in raw_scopes if scope]
 
     @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        raw_origins = self.cors_allowed_origins.replace(",", " ").split()
+        return [origin for origin in raw_origins if origin]
+
+    @property
     def auth_openid_config_url(self) -> str | None:
         if not self.auth_tenant_name or not self.auth_policy_name:
             return None
@@ -134,6 +152,17 @@ class Settings(BaseSettings):
     def local_auth_enabled(self) -> bool:
         secret = (self.local_auth_token_secret or "").strip()
         return bool(secret)
+
+    @property
+    def is_local_environment(self) -> bool:
+        normalized = self.environment.strip().casefold()
+        return normalized in {"local", "dev", "development"}
+
+    @property
+    def chat_rate_limit_enabled_effective(self) -> bool:
+        if self.chat_rate_limit_enabled is not None:
+            return self.chat_rate_limit_enabled
+        return not self.is_local_environment
 
 
 @lru_cache()

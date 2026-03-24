@@ -22,11 +22,13 @@ class ApiError(Exception):
         code: str,
         message: str,
         details: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         self.status_code = status_code
         self.code = code
         self.message = message
         self.details = details
+        self.headers = headers or {}
         super().__init__(message)
 
 
@@ -48,6 +50,7 @@ def _error_response(
     code: str,
     message: str,
     details: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     payload = ErrorResponse(
         error=ErrorBody(
@@ -62,6 +65,8 @@ def _error_response(
         content=payload.model_dump(mode="json"),
     )
     response.headers["X-Trace-ID"] = payload.error.trace_id
+    for header_name, header_value in (headers or {}).items():
+        response.headers[header_name] = header_value
     return response
 
 
@@ -83,6 +88,7 @@ def register_error_handlers(application: FastAPI) -> None:
             code=exc.code,
             message=exc.message,
             details=exc.details,
+            headers=exc.headers,
         )
 
     @application.exception_handler(RequestValidationError)

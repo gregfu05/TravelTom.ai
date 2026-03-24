@@ -30,3 +30,31 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+    @property
+    def hashed_password(self) -> str:
+        """Expose the password hash under the fastapi-users protocol name."""
+
+        return self.password_hash or ""
+
+    @hashed_password.setter
+    def hashed_password(self, value: str) -> None:
+        self.password_hash = value
+
+    @property
+    def is_active(self) -> bool:
+        """Local and external identities are active unless disabled elsewhere."""
+
+        return True
+
+    @property
+    def is_superuser(self) -> bool:
+        """TravelTom does not persist backend superuser flags on users."""
+
+        return False
+
+    @property
+    def is_verified(self) -> bool:
+        """Local accounts are treated as usable immediately after signup."""
+
+        return True

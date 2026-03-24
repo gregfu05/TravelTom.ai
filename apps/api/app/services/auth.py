@@ -3,34 +3,27 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from fastapi_users import exceptions as fastapi_users_exceptions
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.core.local_auth import (
     create_access_token,
-    hash_password,
     normalize_email,
-    verify_password,
 )
 from app.db.models.auth_session import AuthSession
 from app.db.models.user import User
 from app.repositories.auth_sessions import AuthSessionRepository
 from app.repositories.users import UserRepository
-from app.schemas.auth import AuthenticatedPrincipal, LocalAccessTokenClaims
-
-
-@dataclass(frozen=True)
-class AuthSessionResult:
-    """Response payload pieces for a successful local-auth exchange."""
-
-    access_token: str
-    expires_in: int
-    idle_timeout_in: int
-    user: User
+from app.schemas.auth import (
+    AuthenticatedPrincipal,
+    AuthSessionResult,
+    LocalAccessTokenClaims,
+)
+from app.services.local_user_manager import get_local_user_manager
 
 
 class AuthService:
@@ -41,39 +34,44 @@ class AuthService:
         self._settings = settings
         self._users = UserRepository(session)
         self._auth_sessions = AuthSessionRepository(session)
+        self._local_user_manager = get_local_user_manager(session=session)
 
     async def signup(self, *, email: str, password: str) -> AuthSessionResult:
         """Create a local account and issue a bearer token."""
 
         secret = self._local_auth_secret()
         normalized_email = normalize_email(email)
-        existing_user = await self._users.get_by_email(normalized_email)
-        if existing_user is not None:
+        try:
+            user = await self._local_user_manager.create_local_user(
+                email=normalized_email,
+                password=password,
+            )
+        except fastapi_users_exceptions.UserAlreadyExists:
             raise ApiError(
                 status_code=409,
                 code="conflict",
                 message="An account with that email already exists",
             )
-
-        user = await self._users.create_local_user(
-            email=normalized_email,
-            password_hash=hash_password(password),
-        )
+        except fastapi_users_exceptions.InvalidPasswordException as exc:
+            raise ApiError(
+                status_code=400,
+                code="bad_request",
+                message=str(exc.reason),
+            ) from exc
+        # Flush the new user row before creating the dependent auth session so
+        # the FK target exists even without ORM relationship ordering metadata.
+        await self._session.flush()
         return await self._issue_local_session(user, secret=secret)
 
     async def login(self, *, email: str, password: str) -> AuthSessionResult:
         """Authenticate a local account and issue a bearer token."""
 
         secret = self._local_auth_secret()
-        normalized_email = normalize_email(email)
-        user = await self._users.get_by_email(normalized_email)
-        if user is None or not user.password_hash:
-            raise ApiError(
-                status_code=401,
-                code="unauthorized",
-                message="Invalid email or password",
-            )
-        if not verify_password(password, user.password_hash):
+        user = await self._local_user_manager.authenticate_local_user(
+            email=normalize_email(email),
+            password=password,
+        )
+        if user is None:
             raise ApiError(
                 status_code=401,
                 code="unauthorized",
@@ -169,7 +167,8 @@ class AuthService:
             access_token=access_token,
             expires_in=self._settings.local_auth_token_ttl_seconds,
             idle_timeout_in=self._settings.local_auth_token_idle_timeout_seconds,
-            user=user,
+            user_id=str(user.id),
+            email=user.email,
         )
 
     def _local_auth_secret(self) -> str:

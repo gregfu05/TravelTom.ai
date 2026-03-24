@@ -6,22 +6,24 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from app.api.v1.chat import get_orchestrator_service
 from app.core.config import get_settings
 from app.core.local_auth import (
     LOCAL_AUTH_ISSUER,
     create_access_token,
     decode_access_token,
     hash_password,
+    verify_password,
 )
 from app.core.security import get_azure_b2c_scheme, get_chat_rate_limiter
 from app.db.models.auth_session import AuthSession
+from app.db.models.message import Message
 from app.db.models.session import Session
 from app.db.models.user import User
 from app.db.session import get_db
 from app.main import app
-from app.schemas.orchestrator import OrchestratorResponse
+from app.schemas.orchestrator import OrchestratorResponse, TranscriptMessage
 from app.services.chat_persistence import session_pk
+from app.services.travel_tom_agent import get_travel_tom_agent
 from fastapi.testclient import TestClient
 
 PASSWORD_FIELD = "pass" "word"
@@ -34,6 +36,11 @@ class _FakeResult:
     def scalar_one_or_none(self) -> Any:
         return self._value
 
+    def scalars(self) -> list[Any]:
+        if isinstance(self._value, list):
+            return self._value
+        return []
+
 
 class _FakeAsyncSession:
     def __init__(
@@ -41,10 +48,12 @@ class _FakeAsyncSession:
         existing_session: Session | None = None,
         existing_user: User | None = None,
         existing_auth_session: AuthSession | None = None,
+        existing_messages: list[Message] | None = None,
     ) -> None:
         self.existing_session = existing_session
         self.existing_user = existing_user
         self.existing_auth_session = existing_auth_session
+        self.existing_messages = existing_messages or []
         self.added: list[Any] = []
         self.committed = False
         self.rolled_back = False
@@ -61,6 +70,8 @@ class _FakeAsyncSession:
         entity = statement.column_descriptions[0].get("entity")
         if entity is Session:
             return _FakeResult(self.existing_session)
+        if entity is Message:
+            return _FakeResult(list(reversed(self.existing_messages)))
         if entity is AuthSession:
             filters = self._filters(statement)
             auth_session_id = filters.get("id")
@@ -163,7 +174,7 @@ def _credentials_payload(*, email: str, submitted_value: str) -> dict[str, str]:
     }
 
 
-class _FakeOrchestratorService:
+class _FakeTravelTomAgent:
     def __init__(
         self,
         *,
@@ -172,15 +183,22 @@ class _FakeOrchestratorService:
     ) -> None:
         self.assistant_message = assistant_message
         self.state = state
+        self.recent_messages_seen: list[TranscriptMessage] | None = None
 
-    def handle_message(
+    @property
+    def recent_history_limit(self) -> int:
+        return 6
+
+    def handle_chat(
         self,
         *,
         user_message: str,
         session_state: Any,
+        recent_messages: list[TranscriptMessage] | None = None,
     ) -> OrchestratorResponse:
         del user_message
         del session_state
+        self.recent_messages_seen = recent_messages
         return OrchestratorResponse.model_validate(
             {
                 "session_id": self.state["session_id"],
@@ -193,7 +211,7 @@ class _FakeOrchestratorService:
 
 
 def _enable_local_auth(monkeypatch, *, auth_enabled: bool = False) -> str:
-    secret = "traveltom-local-secret"
+    secret = "traveltom-local-secret-with-32-bytes"
     monkeypatch.setenv("LOCAL_AUTH_TOKEN_SECRET", secret)
     monkeypatch.setenv("LOCAL_AUTH_TOKEN_TTL_SECONDS", "3600")
     monkeypatch.setenv("LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS", "1800")
@@ -229,8 +247,10 @@ def test_signup_creates_local_account_and_returns_bearer_token(monkeypatch) -> N
     assert body["user"]["email"] == "traveler@example.com"
     assert fake_db.existing_user is not None
     assert fake_db.existing_auth_session is not None
+    assert fake_db.flushed is True
     assert fake_db.existing_user.password_hash is not None
     assert fake_db.existing_user.password_hash != "VeryStrong123"
+    assert verify_password("VeryStrong123", fake_db.existing_user.password_hash)
     claims = decode_access_token(token=body["access_token"], secret=secret)
     assert claims.sub == str(fake_db.existing_user.id)
     assert claims.jti == str(fake_db.existing_auth_session.id)
@@ -391,7 +411,7 @@ def test_chat_accepts_local_bearer_token_when_auth_is_enabled(monkeypatch) -> No
             session_id=token_id,
         ),
     )
-    fake_orchestrator = _FakeOrchestratorService(
+    fake_agent = _FakeTravelTomAgent(
         assistant_message="Here are a few ideas.",
         state={
             "state_version": "v1",
@@ -416,7 +436,7 @@ def test_chat_accepts_local_bearer_token_when_auth_is_enabled(monkeypatch) -> No
     )
 
     app.dependency_overrides[get_db] = _override_db(fake_db)
-    app.dependency_overrides[get_orchestrator_service] = lambda: fake_orchestrator
+    app.dependency_overrides[get_travel_tom_agent] = lambda: fake_agent
 
     try:
         client = TestClient(app)

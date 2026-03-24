@@ -22,7 +22,7 @@ def _query(text: str, max_results: int | None = None) -> RecommendationQuery:
 def _catalog() -> pd.DataFrame:
     """Synthetic catalog covering categories and attributes."""
 
-    base = {
+    base: dict[str, object] = {
         "attributes": None,
         "categories": None,
         "categories_list": [],

@@ -5,6 +5,13 @@
 - Database connection failure
   - Check `DATABASE_URL`.
   - Verify Postgres service health.
+- Chat 429
+  - Capture HTTP status, `error.code`, `details.retry_after_seconds`,
+    `X-Trace-ID`, and `Retry-After`.
+  - If `error.code=rate_limit_exceeded`, inspect TravelTom limiter logs for the
+    same trace ID before changing provider settings.
+  - If `error.code=provider_rate_limited`, inspect provider quota/rate-limit
+    status before changing TravelTom throttling.
 - LLM timeout
   - Check Azure OpenAI status.
   - Increase timeout temporarily.

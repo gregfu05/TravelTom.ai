@@ -21,6 +21,14 @@ All errors return JSON:
 }
 ```
 
+Rate-limit note:
+
+- TravelTom-owned chat throttling uses `error.code = rate_limit_exceeded`.
+- Upstream provider quota/rate-limit failures use
+  `error.code = provider_rate_limited`.
+- TravelTom-owned chat throttling also returns `Retry-After` and
+  `details.retry_after_seconds`.
+
 ## Endpoints
 
 ### POST /api/v1/auth/signup
@@ -61,7 +69,10 @@ Implementation notes (current):
 - Endpoint lives in `apps/api/app/api/v1/auth.py`.
 - API request/response schemas live in `apps/api/app/schemas/api/auth.py`.
 - Shared auth runtime schemas live in `apps/api/app/schemas/auth.py`.
-- Local account creation and token issuance live in `apps/api/app/services/auth.py`.
+- Local account creation and credential verification live in `apps/api/app/services/auth.py`
+  via an app-owned `fastapi-users` adapter.
+- TravelTom token issuance remains app-owned so the public response contract stays
+  unchanged.
 - Local auth-session persistence lives in `apps/api/app/repositories/auth_sessions.py`.
 
 ### POST /api/v1/auth/login
@@ -90,7 +101,7 @@ Auth:
 - Accepts a TravelTom-issued local bearer token.
 - Local tokens must reference an active persisted auth session and may be rejected
   after logout, absolute expiry, or idle timeout.
-- Azure AD B2C bearer-token support remains deferred for deployment work.
+- Azure AD B2C bearer validation remains available through the security dependency.
 
 Response:
 
@@ -173,8 +184,24 @@ Response:
 
 Implementation notes (current):
 
-- Endpoint lives in `apps/api/app/api/v1/chat.py` (thin router, orchestration + persistence wiring only).
-- Orchestrator runtime is LLM-first for intent interpretation, clarification strategy, and response composition.
+- Endpoint lives in `apps/api/app/api/v1/chat.py` (thin router, agent invocation + persistence wiring only).
+- Router resolves `apps/api/app/services/travel_tom_agent.py:get_travel_tom_agent`
+  and calls `TravelTomAgent.handle_chat(...)`.
+- Orchestrator runtime is a real LangChain `create_agent` chat loop with one
+  shared `@tool` recommendation tool.
+- `TravelTomAgent` builds the chat agent with LangChain-native OpenAI or Ollama
+  chat models for the intended local runtime, or a deterministic in-process
+  model when provider mode is `disabled` fallback/test mode.
+- `OrchestratorService` applies deterministic extraction and carry-forward query
+  shaping before agent invocation, preserves pending recommendation intent
+  across clarification turns, then converts the final agent transcript into the
+  normalized backend response and ignores model-invented recommendation
+  content.
+- Hybrid recommendation policy:
+  - destination exploration can start earlier from partial signal
+  - hotel and flight searches still wait for destination, dates, and budget
+  - if the final required slot arrives and the agent still clarifies, backend
+    runs the deterministic recommendation path immediately
 - Recommendation retrieval remains tool-first and deterministic; router never returns model-invented recommendation items.
 - Request/response Pydantic schemas live in `apps/api/app/schemas/api/chat.py` (`ChatRequest`, `ChatResponse`, `ChatRecommendation`, `ClientContext`).
 - Chat transaction boundary lives in `apps/api/app/services/chat_uow.py`.
@@ -191,8 +218,10 @@ Implementation notes (current):
   - one `messages` row for the assistant message
   - one `recommendations` snapshot row (empty `results` is valid in placeholder mode)
 - Tool and model failure behavior:
-  - planner/model output failures fall back to deterministic orchestration guards
+  - chat-model or agent failures fall back to deterministic orchestration guards
   - tool timeout/invalid payload/empty results return explicit safe assistant copy
+  - upstream provider quota/rate-limit failures escape the fallback path and are
+    returned as structured `429 provider_rate_limited` errors instead
 
 ### POST /api/v1/recommendations/query
 
@@ -245,9 +274,16 @@ Response:
 Notes:
 - `max_results` default is 20.
 - `max_results` hard cap is 50 (debug and evaluation use only).
-- Endpoint lives in `apps/api/app/api/v1/recommendations.py` (thin router, DI + HTTP mapping only).
+- Endpoint lives in `apps/api/app/api/v1/recommendations.py` (thin router, shared agent DI + HTTP mapping only).
+- Router resolves `apps/api/app/services/travel_tom_agent.py:get_travel_tom_agent`
+  and calls `TravelTomAgent.handle_recommendation_query(...)`.
 - API request/response schemas live in `apps/api/app/schemas/api/recommendations.py`.
-- Recommendation tool execution/validation lives in `apps/api/app/services/recommendation_query.py`.
+- Deterministic recommendation tool registration/invocation lives in
+  `apps/api/app/services/travel_tom_agent.py` and uses LangChain `@tool`.
+- The endpoint uses a separate deterministic `create_agent` configuration that
+  forces one validated recommendation tool call and returns only tool-backed results.
+- Recommendation tool error/normalization helpers live in
+  `apps/api/app/services/recommendation_query.py`.
 - Service validates tool payloads using `app/schemas/tools/recommendations.py` contracts.
 - In placeholder mode, results may be an empty list while recommender integration is pending.
 
@@ -308,4 +344,6 @@ Returns the current itinerary for a session.
 - 404 Not Found: Missing resource.
 - 409 Conflict: Idempotency conflict.
 - 429 Too Many Requests: Rate limit.
+  - `rate_limit_exceeded`: TravelTom-owned throttling.
+  - `provider_rate_limited`: upstream model/provider quota or rate limit.
 - 500 Internal Server Error: Unhandled errors.

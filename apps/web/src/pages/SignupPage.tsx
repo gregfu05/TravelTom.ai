@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+
 import { apiClient } from "../api/client";
-import "./SignupPage.css";
+import { useSessionStore } from "../store/session";
+import "../styles/auth.css";
 
 export function SignupPage() {
   const [email, setEmail] = useState("");
@@ -10,6 +12,7 @@ export function SignupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { resetConversation, setAuthToken } = useSessionStore();
 
   async function handleSignup(event: React.FormEvent) {
     event.preventDefault();
@@ -22,9 +25,11 @@ export function SignupPage() {
     setError(null);
 
     try {
-      await apiClient.signup({ email, password });
-      navigate("/login");
-    } catch (err) {
+      const response = await apiClient.signup({ email, password });
+      resetConversation();
+      setAuthToken(response.accessToken);
+      navigate("/planner", { replace: true });
+    } catch {
       setError("Failed to create account. Please try again.");
     } finally {
       setIsLoading(false);
@@ -71,7 +76,7 @@ export function SignupPage() {
         </button>
       </form>
       <p className="login-link">
-        Already have an account? <a href="/login">Login</a>
+        Already have an account? <Link to="/login">Login</Link>
       </p>
     </div>
   );

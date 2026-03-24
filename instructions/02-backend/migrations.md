@@ -20,3 +20,10 @@
 - Use `alembic -c apps/api/alembic.ini history` to confirm revision order.
 - Use `alembic -c apps/api/alembic.ini current` after upgrade.
 - Run DB smoke tests that validate critical tables exist.
+
+## Current auth migration note
+
+- The local-auth library migration is expected to reuse the existing `users.password_hash`
+  and `auth_sessions` schema.
+- No new Alembic revision is required unless the `users` table shape changes beyond
+  that existing compatibility surface.

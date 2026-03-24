@@ -1,16 +1,38 @@
-"""Shared schema models for orchestrator planning and responses."""
+"""Shared schema models for orchestration responses and runtime payloads."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.state import BudgetRange, DateRange, PartySize
-from app.schemas.tools.recommendations import RecommendationResult
+from app.schemas.tools.recommendations import (
+    RecommendationResult,
+    RecommendationToolResponse,
+)
 
 Intent = Literal["recommend", "refine", "clarify"]
 SessionStatus = Literal["explore", "refine", "itinerary", "booking"]
+
+
+@dataclass(frozen=True)
+class OrchestratorPolicyConfig:
+    """Static policy settings for orchestrator runtime behavior."""
+
+    recommendation_timeout_seconds: float = 4.0
+    max_recommendation_results: int = 5
+    recent_history_message_limit: int = 6
+
+
+@dataclass(frozen=True)
+class OrchestrationDecision:
+    """Output of deterministic guardrail logic before tool execution."""
+
+    intent: Intent
+    should_call_recommendation_tool: bool
+    reason: str
 
 
 class ConstraintPatch(BaseModel):
@@ -99,6 +121,26 @@ class LLMComposedResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     assistant_message: str = Field(min_length=1)
+
+
+class TranscriptMessage(BaseModel):
+    """Bounded persisted transcript item used for orchestration context."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1)
+
+
+class RecommendationToolRuntimePayload(BaseModel):
+    """Normalized artifact returned by the LangChain recommendation tool."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["success", "timeout", "invalid_payload", "failure"]
+    response: RecommendationToolResponse | None = None
+    error_code: str | None = None
+    error_message: str | None = None
 
 
 class OrchestratorResponse(BaseModel):

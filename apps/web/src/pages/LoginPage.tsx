@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+
 import { apiClient } from "../api/client";
 import { useSessionStore } from "../store/session";
-import "./LoginPage.css";
+import "../styles/auth.css";
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
@@ -10,7 +11,8 @@ export function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { setAuthToken } = useSessionStore();
+  const location = useLocation();
+  const { resetConversation, setAuthToken } = useSessionStore();
 
   async function handleLogin(event: React.FormEvent) {
     event.preventDefault();
@@ -19,9 +21,12 @@ export function LoginPage() {
 
     try {
       const response = await apiClient.login({ email, password });
-      setAuthToken(response.token);
-      navigate("/planner");
-    } catch (err) {
+      resetConversation();
+      setAuthToken(response.accessToken);
+      const redirectTo =
+        typeof location.state?.from === "string" ? location.state.from : "/planner";
+      navigate(redirectTo, { replace: true });
+    } catch {
       setError("Invalid email or password.");
     } finally {
       setIsLoading(false);
@@ -58,7 +63,7 @@ export function LoginPage() {
         </button>
       </form>
       <p className="signup-link">
-        Don’t have an account? <a href="/signup">Sign up</a>
+        Don&apos;t have an account? <Link to="/signup">Sign up</Link>
       </p>
     </div>
   );

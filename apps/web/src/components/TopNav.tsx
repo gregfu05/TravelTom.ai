@@ -17,10 +17,21 @@ export function TopNav() {
   });
 
   const apiStatus = getApiStatusText(healthQuery.isSuccess, healthQuery.isError);
-  const { authToken, setAuthToken } = useSessionStore();
+  const { authToken, resetConversation, setAuthToken } = useSessionStore();
 
-  function handleLogout() {
-    setAuthToken(null);
+  async function handleLogout() {
+    if (!authToken) {
+      return;
+    }
+
+    try {
+      await apiClient.logout(authToken);
+    } catch {
+      // Clear local auth state even if backend logout fails or token already expired.
+    } finally {
+      resetConversation();
+      setAuthToken(null);
+    }
   }
 
   return (
@@ -46,7 +57,7 @@ export function TopNav() {
           {apiStatus}
         </span>
         {authToken ? (
-          <button className="button button-sm" onClick={handleLogout}>
+          <button className="button button-sm" onClick={() => void handleLogout()}>
             Logout
           </button>
         ) : (

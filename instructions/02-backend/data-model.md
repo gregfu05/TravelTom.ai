@@ -8,7 +8,7 @@
 - auth_issuer (text, nullable)
 - external_subject (text, nullable, unique with auth_issuer)
 - email (text, unique, nullable)
-- password_hash (text, nullable for non-local identities)
+- password_hash (text, nullable for non-local identities; managed by `fastapi-users`/`pwdlib` for local accounts)
 - created_at (timestamptz)
 
 ### auth_sessions
