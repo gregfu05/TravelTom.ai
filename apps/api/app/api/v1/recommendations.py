@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 from fastapi import APIRouter, Depends
 
 from app.core.errors import ApiError
@@ -14,23 +16,35 @@ from app.schemas.auth import AuthenticatedPrincipal
 from app.services.recommendation_query import (
     InvalidRecommendationResponseError,
     RecommendationServiceUnavailableError,
+    RecommendationTool,
+    execute_recommendation_query,
 )
-from app.services.travel_tom_agent import TravelTomAgent, get_travel_tom_agent
+from traveltom.recommendor.recommendor_v2 import recommendation_tool
 
 router = APIRouter()
+
+
+@lru_cache()
+def get_recommendation_tool() -> RecommendationTool:
+    """Return the active recommendation tool implementation."""
+
+    return recommendation_tool
 
 
 @router.post("/recommendations/query", response_model=RecommendationResponse)
 async def query_recommendations(
     request: RecommendationQuery,
     principal: AuthenticatedPrincipal | None = Depends(require_authenticated_principal),
-    agent: TravelTomAgent = Depends(get_travel_tom_agent),
+    recommendation_tool: RecommendationTool = Depends(get_recommendation_tool),
 ) -> RecommendationResponse:
     """Return deterministic recommendation results for a validated query."""
 
     del principal
     try:
-        return await agent.handle_recommendation_query(request=request)
+        return await execute_recommendation_query(
+            request=request,
+            recommendation_tool=recommendation_tool,
+        )
     except InvalidRecommendationResponseError as exc:
         raise ApiError(
             status_code=502,

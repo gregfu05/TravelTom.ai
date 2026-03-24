@@ -72,8 +72,23 @@ Final:
 - Hotels
 - Flights
 
-## Minimal recommender v1.1 (temporary)
+## Recommender v2 (active, Yelp parquet)
 
+- Location: `traveltom/recommendor/recommendor_v2.py`
+- Dataset: `traveltom/datasets/cleaned_Yelp_DS.parquet` (returns empty results if missing).
+- API integration:
+  - `apps/api/app/api/v1/recommendations.py` uses v2 for `/api/v1/recommendations/query`.
+  - `apps/api/app/api/v1/chat.py` injects v2 into `OrchestratorService`.
+- Behavior:
+  - Parses user intent for categories (bars, restaurants, pizza, burgers, coffee, shopping, beauty, nightlife, hotels, active life, automotive) and attributes (parking, late night, kid-friendly, outdoor seating, reservations, wifi, alcohol).
+  - City is the primary filter: if a city is mentioned and present, only that city’s rows are considered; if the city is absent in the dataset, a friendly message is returned.
+  - Filters candidates first on intent (parking via parking columns, late night flag, burgers category, wifi/reservations/alcohol/outdoor/kid-friendly, price tiers) using `cat_*`, `categories_list`, and `categories` text.
+  - Ranking: `score = stars + 0.25 * log1p(review_count) + 0.25 * popularity` plus boosts for `weekly_open_minutes` and `weekend_open_minutes`; tie-breaks on `review_count`, `popularity`, `business_id`.
+  - Uses additional dataset signals: `categories_list/categories` text, weekly/weekend open minutes boost, price-range filters, parking attributes, wifi/alcohol/reservations/outdoor/kid-friendly flags, burgers category, late-night flag. City filter is active now and ready for country later.
+  - Result count: default 5; accepts 1–10; requests above 10 return a polite notice and cap at 10; below 1 defaults to 5.
+  - Output per item: place name and a Google Maps link (from latitude/longitude) in `features`; UI only shows these two fields.
+  - Future-ready: hook left in filter stage for city/country columns once they are added.
+- Tests: `pytest tests/recommender/test_recommender_v2.py` (covers counts, category/attribute filters, late night, parking, map link format, and no-match handling).
 - Location: `traveltom/recommendor/recommendor_v1.py`
 - API integration:
   - `apps/api/app/api/v1/recommendations.py` exposes it via `/api/v1/recommendations/query`.

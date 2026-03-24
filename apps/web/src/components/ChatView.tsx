@@ -1,6 +1,6 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 
-import { ApiClientError, apiClient } from "../api/client";
+import { ApiClientError, apiClient, type Recommendation } from "../api/client";
 import {
   buildChatErrorState,
   getCooldownRemainingSeconds,
@@ -62,6 +62,23 @@ function createMessage(
   };
 }
 
+function stripTopPicksSegment(content: string): string {
+  const marker = "top picks:";
+  const markerIndex = content.toLowerCase().indexOf(marker);
+  if (markerIndex === -1) {
+    return content;
+  }
+  return content.slice(0, markerIndex).trim();
+}
+
+function getRecommendationName(item: Recommendation): string {
+  const name = item.metadata?.name;
+  if (typeof name === "string" && name.trim()) {
+    return name;
+  }
+  return item.itemId;
+}
+
 export function ChatView() {
   const {
     sessionId,
@@ -103,6 +120,9 @@ export function ChatView() {
   );
   const isTravelTomCooldownActive =
     chatError?.kind === "traveltom_rate_limit" && cooldownRemainingSeconds > 0;
+  const latestAssistantMessageId = [...messages]
+    .reverse()
+    .find((item) => item.role === "assistant")?.id;
 
   // Detect new recommendations → glow avatar + pulse pill
   useEffect(() => {
@@ -312,11 +332,7 @@ export function ChatView() {
                 </p>
               </div>
             </div>
-            <h3>
-              {item.metadata?.name
-                ? String(item.metadata.name)
-                : item.itemId}
-            </h3>
+            <h3>{getRecommendationName(item)}</h3>
             <p className="recommendation-subline">
               {item.metadata?.city
                 ? String(item.metadata.city)
@@ -325,6 +341,16 @@ export function ChatView() {
                 ? ` - ${String(item.metadata.stars)} stars`
                 : ""}
             </p>
+            {typeof item.metadata?.map_url === "string" ? (
+              <a
+                className="recommendation-map-link"
+                href={item.metadata.map_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View on map
+              </a>
+            ) : null}
             <details className="recommendation-details">
               <summary>Why this pick</summary>
               <p>{item.explanation}</p>
@@ -418,17 +444,71 @@ export function ChatView() {
               </div>
             ) : null}
 
-            {messages.map((message) => (
-              <article
-                key={message.id}
-                className={`chat-message chat-message-${message.role}`}
-              >
-                <p className="chat-message-role">
-                  {message.role === "assistant" ? "Tom" : "You"}
-                </p>
-                <p className="chat-message-content">{message.content}</p>
-              </article>
-            ))}
+            {messages.map((message) => {
+              const isLatestAssistantMessage =
+                message.role === "assistant" &&
+                message.id === latestAssistantMessageId;
+              const shouldRenderRecommendationSummary =
+                isLatestAssistantMessage && topRecommendations.length > 0;
+              const primaryMessage = shouldRenderRecommendationSummary
+                ? stripTopPicksSegment(message.content)
+                : message.content;
+              const displayMessage =
+                primaryMessage ||
+                "I found recommendations that match your request.";
+
+              return (
+                <article
+                  key={message.id}
+                  className={`chat-message chat-message-${message.role}`}
+                >
+                  <p className="chat-message-role">
+                    {message.role === "assistant" ? "TravelTom" : "You"}
+                  </p>
+                  <p className="chat-message-content">{displayMessage}</p>
+                  {shouldRenderRecommendationSummary ? (
+                    <section className="chat-message-recommendation-block">
+                      <div className="chat-message-divider" aria-hidden="true" />
+                      <p className="chat-message-list-title">
+                        Recommended options
+                      </p>
+                      <ol
+                        className="chat-message-recommendation-list"
+                        aria-label="Top recommendations"
+                      >
+                        {topRecommendations.map((item) => {
+                          const mapUrl =
+                            typeof item.metadata?.map_url === "string"
+                              ? item.metadata.map_url
+                              : undefined;
+
+                          return (
+                            <li
+                              key={`summary-${item.itemId}-${item.rank}`}
+                              className="chat-message-recommendation-item"
+                            >
+                              <span className="chat-message-recommendation-name">
+                                {getRecommendationName(item)}
+                              </span>
+                              {mapUrl ? (
+                                <a
+                                  href={mapUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="chat-message-map-link"
+                                >
+                                  View on map
+                                </a>
+                              ) : null}
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    </section>
+                  ) : null}
+                </article>
+              );
+            })}
 
             {isSending ? (
               <article className="chat-message chat-message-assistant chat-message-loading">

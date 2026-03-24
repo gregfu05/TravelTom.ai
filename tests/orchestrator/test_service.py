@@ -604,9 +604,7 @@ def test_orchestrator_follow_up_uses_carried_item_type_and_query() -> None:
     )
 
     assert captured["messages"][-1]["content"] == "show me more"
-    assert response.assistant_message.startswith(
-        "I found 1 grounded option(s) that fit what you asked for."
-    )
+    assert response.assistant_message.startswith("I found 1 places that fit your request.")
     assert response.recommendations[0].item_id == "hotel-lisbon-1"
     assert response.state["conversation"]["last_recommendation_item_type"] == "hotel"
     assert (
@@ -1772,7 +1770,7 @@ def test_orchestrator_build_results_message_falls_back_to_item_id_without_name()
         ]
     )
 
-    assert "My top picks are:\n1. dest-lisbon" in message
+    assert "Top picks:\n1. dest-lisbon" in message
 
 
 def test_orchestrator_extracts_direct_recommendation_payload_from_tool_message() -> (

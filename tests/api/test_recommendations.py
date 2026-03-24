@@ -5,9 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.main import app
-from app.schemas.api.recommendations import RecommendationResponse
-from app.services.recommendation_query import InvalidRecommendationResponseError
-from app.services.travel_tom_agent import get_travel_tom_agent
+from app.api.v1.recommendations import get_recommendation_tool
 from fastapi.testclient import TestClient
 
 
@@ -27,26 +25,25 @@ def _base_payload() -> dict[str, Any]:
 
 
 def test_recommendations_query_returns_placeholder_response() -> None:
-    class _FakeTravelTomAgent:
-        async def handle_recommendation_query(self, *, request):
-            del request
-            return RecommendationResponse.model_validate(
+    def _fake_recommendation_tool(query):
+        del query
+        return {
+            "ranking_version": "heuristic-v1",
+            "results": [
                 {
-                    "ranking_version": "heuristic-v1",
-                    "results": [
-                        {
-                            "item_id": "dest-1",
-                            "item_type": "destination",
-                            "score": 0.91,
-                            "rank": 1,
-                            "features": {"name": "Example"},
-                            "explanation": "Deterministic sample result.",
-                        }
-                    ],
+                    "item_id": "dest-1",
+                    "item_type": "destination",
+                    "score": 0.91,
+                    "rank": 1,
+                    "features": {"name": "Example"},
+                    "explanation": "Deterministic sample result.",
                 }
-            )
+            ],
+        }
 
-    app.dependency_overrides[get_travel_tom_agent] = lambda: _FakeTravelTomAgent()
+    app.dependency_overrides[get_recommendation_tool] = (
+        lambda: _fake_recommendation_tool
+    )
     try:
         client = TestClient(app)
         response = client.post("/api/v1/recommendations/query", json=_base_payload())
@@ -72,14 +69,13 @@ def test_recommendations_query_rejects_invalid_payload() -> None:
 
 
 def test_recommendations_query_handles_invalid_tool_response() -> None:
-    class _InvalidTravelTomAgent:
-        async def handle_recommendation_query(self, *, request):
-            del request
-            raise InvalidRecommendationResponseError(
-                "Invalid recommendation service response"
-            )
+    def _invalid_recommendation_tool(query):
+        del query
+        return {"ranking_version": "heuristic-v1", "results": [{"item_id": 123}]}
 
-    app.dependency_overrides[get_travel_tom_agent] = lambda: _InvalidTravelTomAgent()
+    app.dependency_overrides[get_recommendation_tool] = (
+        lambda: _invalid_recommendation_tool
+    )
     try:
         client = TestClient(app)
         response = client.post("/api/v1/recommendations/query", json=_base_payload())

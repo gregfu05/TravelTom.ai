@@ -500,14 +500,25 @@ class OrchestratorService:
         """Build deterministic grounded copy from recommendation results."""
 
         preview_limit = max(1, self._policy.max_recommendation_results)
+        limit_notice = next(
+            (
+                str(item.features.get("limit_notice"))
+                for item in results
+                if isinstance(item.features, dict) and item.features.get("limit_notice")
+            ),
+            None,
+        )
         preview_items = "\n".join(
             f"{i}. {self._recommendation_display_name(item)}"
             for i, item in enumerate(results[:preview_limit], start=1)
         )
-        return (
-            f"I found {len(results)} grounded option(s) that fit what you asked for. "
-            f"My top picks are:\n{preview_items}"
+        base = (
+            f"I found {len(results)} places that fit your request. "
+            f"Top picks:\n{preview_items}"
         )
+        if limit_notice:
+            return f"{limit_notice} {base}"
+        return base
 
     def _response_from_agent_result(
         self,
@@ -1384,9 +1395,12 @@ class OrchestratorService:
 
     def _recommendation_display_name(self, item: RecommendationResult) -> str:
         name = item.features.get("name")
+        map_url = item.features.get("map_url")
         if isinstance(name, str):
             normalized = name.strip()
             if normalized:
+                if isinstance(map_url, str) and map_url:
+                    return f"{normalized} - {map_url}"
                 return normalized
         return item.item_id
 

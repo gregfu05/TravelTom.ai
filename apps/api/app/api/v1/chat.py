@@ -63,6 +63,7 @@ async def chat(
         async with uow:
             owner_user_id = None
             state_user_id = None
+
             if principal is not None:
                 user_row = await uow.user_repository.get_or_create_from_principal(
                     principal
@@ -79,6 +80,7 @@ async def chat(
                 session_row=session_row,
                 owner_user_id=owner_user_id,
             )
+
             state = load_session_state(
                 raw_state=session_row.state_json,
                 session_id=request.session_id,
@@ -94,10 +96,12 @@ async def chat(
                 session_state=state,
                 recent_messages=recent_messages,
             )
+
             persisted_state = SessionState.model_validate(orchestration.state)
             persisted_state.session_id = request.session_id
             persisted_state.user_id = state_user_id
             session_row.state_json = persisted_state.model_dump(mode="json")
+
             if owner_user_id is not None:
                 session_row.user_id = owner_user_id
 
@@ -243,6 +247,7 @@ def _to_chat_response(
         )
         for item in orchestration.recommendations
     ]
+
     return ChatResponse(
         session_id=orchestration.session_id,
         message_id=request_message_id,
