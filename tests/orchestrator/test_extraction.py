@@ -11,6 +11,7 @@ from app.services.orchestrator.extraction import (
     apply_structured_state_patch,
     build_effective_recommendation_query_text,
     is_follow_up_refinement,
+    is_vague_acceptance_reply,
     resolve_effective_item_type,
 )
 from pydantic import ValidationError
@@ -92,6 +93,85 @@ def test_extracts_relative_dates_and_qualitative_budget() -> None:
     assert updated.constraints.party_size.children == 0
 
 
+def test_extracts_day_first_month_date_ranges_with_ordinals() -> None:
+    state = SessionState(session_id="sess-day-first-dates")
+    updated = apply_message_state_updates(
+        message="Let's go for something like 10th of May to 20th of May.",
+        session_state=state,
+        today=date(2026, 3, 23),
+    )
+
+    assert updated.constraints.dates is not None
+    assert updated.constraints.dates.start.isoformat() == "2026-05-10"
+    assert updated.constraints.dates.end.isoformat() == "2026-05-20"
+    assert updated.constraints.trip_length_days == 11
+
+
+def test_day_first_date_reply_does_not_overwrite_existing_destination() -> None:
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-day-first-destination",
+            "constraints": {"destination": "Santa Barbara"},
+            "entities": {"destinations": ["Santa Barbara"]},
+        }
+    )
+
+    updated = apply_message_state_updates(
+        message="Let's do something like 10th May to 20th may",
+        session_state=state,
+        today=date(2026, 3, 23),
+    )
+
+    assert updated.constraints.destination == "Santa Barbara"
+    assert updated.constraints.dates is not None
+    assert updated.constraints.dates.start.isoformat() == "2026-05-10"
+    assert updated.constraints.dates.end.isoformat() == "2026-05-20"
+
+
+def test_extracts_bare_budget_reply_with_symbol_when_budget_slot_requested() -> None:
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-budget-symbol",
+            "conversation": {
+                "last_requested_slots": ["budget"],
+                "last_user_intent": "recommend",
+            },
+        }
+    )
+    updated = apply_message_state_updates(
+        message="2000$",
+        session_state=state,
+        today=date(2026, 3, 23),
+    )
+
+    assert updated.constraints.budget is not None
+    assert updated.constraints.budget.min == 0.0
+    assert updated.constraints.budget.max == 2000.0
+    assert updated.constraints.budget.currency == "USD"
+
+
+def test_extracts_bare_budget_reply_with_currency_word_when_budget_slot_requested() -> None:
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-budget-word",
+            "conversation": {
+                "last_requested_slots": ["budget"],
+                "last_user_intent": "recommend",
+            },
+        }
+    )
+    updated = apply_message_state_updates(
+        message="2000 euros",
+        session_state=state,
+        today=date(2026, 3, 23),
+    )
+
+    assert updated.constraints.budget is not None
+    assert updated.constraints.budget.min == 0.0
+    assert updated.constraints.budget.max == 2000.0
+    assert updated.constraints.budget.currency == "EUR"
+
+
 def test_santa_barbara_does_not_false_match_bar_nightlife_interest() -> None:
     state = SessionState(session_id="sess-santa-barbara")
 
@@ -116,6 +196,25 @@ def test_bars_in_santa_barbara_still_capture_nightlife_interest() -> None:
 
     assert updated.constraints.destination == "Santa Barbara"
     assert updated.preferences.weighted_interests["nightlife"] == 0.8
+
+
+def test_extracts_one_shot_destination_dates_and_budget_without_treating_budget_as_year() -> None:
+    state = SessionState(session_id="sess-one-shot")
+
+    updated = apply_message_state_updates(
+        message="Santa Barbara 10th May to 20th May 2000 euros",
+        session_state=state,
+        today=date(2026, 3, 23),
+    )
+
+    assert updated.constraints.destination == "Santa Barbara"
+    assert updated.constraints.dates is not None
+    assert updated.constraints.dates.start.isoformat() == "2026-05-10"
+    assert updated.constraints.dates.end.isoformat() == "2026-05-20"
+    assert updated.constraints.trip_length_days == 11
+    assert updated.constraints.budget is not None
+    assert updated.constraints.budget.max == 2000.0
+    assert updated.constraints.budget.currency == "EUR"
 
 
 def test_negated_restaurant_repair_does_not_add_food_interest() -> None:
@@ -148,6 +247,19 @@ def test_extracts_bare_destination_reply() -> None:
 
     assert updated.constraints.destination == "Lisbon"
     assert updated.entities.destinations == ["Lisbon"]
+
+
+def test_extracts_go_to_destination_reply() -> None:
+    state = SessionState(session_id="sess-go-to-destination")
+
+    updated = apply_message_state_updates(
+        message="I want to go to Santa Barbara",
+        session_state=state,
+        today=date(2026, 3, 23),
+    )
+
+    assert updated.constraints.destination == "Santa Barbara"
+    assert updated.entities.destinations == ["Santa Barbara"]
 
 
 @pytest.mark.parametrize(
@@ -211,6 +323,7 @@ def test_broad_vibe_prompts_do_not_persist_as_destinations(message: str) -> None
         ("show me more",),
         ("another option",),
         ("cheaper",),
+        ("lower cost",),
     ],
 )
 def test_follow_up_refinements_do_not_overwrite_destination(message: str) -> None:
@@ -230,6 +343,42 @@ def test_follow_up_refinements_do_not_overwrite_destination(message: str) -> Non
 
     assert updated.constraints.destination == "Lisbon"
     assert updated.entities.destinations == ["Lisbon"]
+
+
+def test_item_type_selection_does_not_overwrite_existing_destination() -> None:
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-item-type-follow-up",
+            "constraints": {"destination": "Santa Barbara"},
+            "entities": {"destinations": ["Santa Barbara"]},
+            "conversation": {
+                "last_clarification_kind": "search_type",
+                "last_user_intent": "recommend",
+            },
+        }
+    )
+
+    updated = apply_message_state_updates(
+        message="I want hotels to be honest",
+        session_state=state,
+        today=date(2026, 3, 23),
+    )
+
+    assert updated.constraints.destination == "Santa Barbara"
+    assert updated.entities.destinations == ["Santa Barbara"]
+
+
+def test_lower_cost_without_destination_does_not_persist_destination() -> None:
+    state = SessionState(session_id="sess-lower-cost")
+
+    updated = apply_message_state_updates(
+        message="lower cost",
+        session_state=state,
+        today=date(2026, 3, 23),
+    )
+
+    assert updated.constraints.destination is None
+    assert updated.entities.destinations == []
 
 
 def test_apply_structured_state_patch_merges_llm_payload() -> None:
@@ -342,3 +491,71 @@ def test_explicit_item_type_override_beats_carried_type() -> None:
         )
         == "actually flights"
     )
+
+
+def test_search_type_reply_reuses_prior_query_context() -> None:
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-search-type-reply",
+            "constraints": {
+                "destination": "Santa Barbara",
+                "dates": {"start": "2026-05-10", "end": "2026-05-20"},
+                "budget": {"min": 0, "max": 2000, "currency": "EUR"},
+            },
+            "conversation": {
+                "last_user_intent": "recommend",
+                "last_clarification_kind": "search_type",
+                "last_recommendation_query": "Santa Barbara 10th May to 20th May 2000 euros",
+            },
+        }
+    )
+
+    assert resolve_effective_item_type(message="Anything works", session_state=state) == "hotel"
+    assert is_vague_acceptance_reply("Anything works") is True
+    assert (
+        build_effective_recommendation_query_text(
+            message="Anything works",
+            session_state=state,
+        )
+        == "Anything works Santa Barbara 10th May to 20th May 2000 euros"
+    )
+
+
+def test_natural_hotel_phrase_extracts_destination_dates_and_budget() -> None:
+    state = SessionState(session_id="sess-natural-hotel-phrase")
+
+    updated = apply_message_state_updates(
+        message="Hotels in Santa Barbara May 10th to May 20th under 2000 euros",
+        session_state=state,
+        today=date(2026, 3, 23),
+    )
+
+    assert updated.constraints.destination == "Santa Barbara"
+    assert updated.constraints.dates is not None
+    assert updated.constraints.dates.start.isoformat() == "2026-05-10"
+    assert updated.constraints.dates.end.isoformat() == "2026-05-20"
+    assert updated.constraints.budget is not None
+    assert updated.constraints.budget.max == 2000.0
+    assert updated.constraints.budget.currency == "EUR"
+
+
+def test_flight_context_extracts_bare_route_reply() -> None:
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-flight-route",
+            "conversation": {
+                "last_requested_slots": ["origin", "destination"],
+                "last_user_intent": "recommend",
+                "last_recommendation_item_type": "flight",
+            },
+        }
+    )
+
+    updated = apply_message_state_updates(
+        message="Madrid to Lisbon",
+        session_state=state,
+        today=date(2026, 3, 23),
+    )
+
+    assert updated.constraints.origin == "Madrid"
+    assert updated.constraints.destination == "Lisbon"

@@ -5,6 +5,7 @@ import {
   buildChatErrorState,
   getCooldownRemainingSeconds,
 } from "./chatErrorState";
+import { shouldDiscardHydratedSession } from "./sessionHydration";
 import { SessionMessage, useSessionStore } from "../store/session";
 
 interface PendingRequest {
@@ -64,17 +65,20 @@ function createMessage(
 export function ChatView() {
   const {
     sessionId,
+    hasRemoteSession,
     messages,
     isSending,
     chatError,
     latestRecommendations,
     authToken,
     setSessionId,
+    setHasRemoteSession,
     addMessage,
     setLatestRecommendations,
     setIsSending,
     setChatError,
     setAuthToken,
+    hydrateConversation,
     resetConversation,
   } = useSessionStore();
 
@@ -82,11 +86,14 @@ export function ChatView() {
   const [pendingRequest, setPendingRequest] = useState<PendingRequest | null>(
     null,
   );
+  const [isHydrating, setIsHydrating] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [recsJustArrived, setRecsJustArrived] = useState(false);
   const prevRecsLenRef = useRef(latestRecommendations.length);
+  const shouldHydrateInitialSessionRef = useRef(hasRemoteSession);
+  const hydratedSessionIdRef = useRef<string | null>(null);
 
   const hasRecommendations = latestRecommendations.length > 0;
   const topRecommendations = latestRecommendations.slice(0, 5);
@@ -135,12 +142,84 @@ export function ChatView() {
     return () => window.clearInterval(intervalId);
   }, [isTravelTomCooldownActive]);
 
+  useEffect(() => {
+    if (
+      !authToken ||
+      !hasRemoteSession ||
+      !shouldHydrateInitialSessionRef.current ||
+      hydratedSessionIdRef.current === sessionId
+    ) {
+      return;
+    }
+
+    const abortController = new AbortController();
+    let settled = false;
+    hydratedSessionIdRef.current = sessionId;
+    setIsHydrating(true);
+
+    void apiClient
+      .getChatSession({ sessionId, authToken }, abortController.signal)
+      .then((response) => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        settled = true;
+        shouldHydrateInitialSessionRef.current = false;
+        setIsHydrating(false);
+        if (shouldDiscardHydratedSession(response)) {
+          resetConversation();
+          setChatError(null);
+          return;
+        }
+        hydrateConversation({
+          sessionId: response.sessionId,
+          messages: response.messages,
+          latestRecommendations: response.recommendations,
+        });
+        setChatError(null);
+      })
+      .catch((error: unknown) => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        settled = true;
+        shouldHydrateInitialSessionRef.current = false;
+        setIsHydrating(false);
+        if (error instanceof ApiClientError) {
+          if (error.status === 401) {
+            setAuthToken(null);
+          }
+          if (error.status === 401 || error.status === 403 || error.status === 404) {
+            resetConversation();
+            return;
+          }
+        }
+        setChatError(buildChatErrorState(error));
+      });
+
+    return () => {
+      abortController.abort();
+      if (!settled && hydratedSessionIdRef.current === sessionId) {
+        hydratedSessionIdRef.current = null;
+        setIsHydrating(false);
+      }
+    };
+  }, [
+    authToken,
+    hasRemoteSession,
+    hydrateConversation,
+    resetConversation,
+    sessionId,
+    setAuthToken,
+    setChatError,
+  ]);
+
   async function sendMessage(
     rawMessage: string,
     options?: { appendUserMessage?: boolean; messageId?: string },
   ) {
     const message = rawMessage.trim();
-    if (!message || isSending || isTravelTomCooldownActive) {
+    if (!message || isSending || isTravelTomCooldownActive || isHydrating) {
       return;
     }
 
@@ -164,11 +243,12 @@ export function ChatView() {
       });
 
       setSessionId(response.sessionId);
+      setHasRemoteSession(true);
       addMessage(
         createMessage(
           "assistant",
           response.assistantMessage,
-          response.messageId || createMessageId(),
+          createMessageId(),
         ),
       );
       setLatestRecommendations(response.recommendations);
@@ -400,22 +480,31 @@ export function ChatView() {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
                     const message = draft.trim();
-                    if (!message || isSending || isTravelTomCooldownActive) return;
+                    if (
+                      !message ||
+                      isSending ||
+                      isTravelTomCooldownActive ||
+                      isHydrating
+                    ) {
+                      return;
+                    }
                     setDraft("");
                     void sendMessage(message, { appendUserMessage: true });
                   }
                 }}
                 placeholder="Share a destination idea, or give destination, dates, and budget..."
                 rows={2}
-                disabled={isSending || isTravelTomCooldownActive}
+                disabled={isSending || isTravelTomCooldownActive || isHydrating}
                 required
               />
               <button
                 className="button button-primary chat-send-button"
                 type="submit"
-                disabled={isSending || isTravelTomCooldownActive}
+                disabled={isSending || isTravelTomCooldownActive || isHydrating}
               >
-                {isSending
+                {isHydrating
+                  ? "Restoring..."
+                  : isSending
                   ? "Sending..."
                   : isTravelTomCooldownActive
                     ? `Retry in ${cooldownRemainingSeconds}s`

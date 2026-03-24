@@ -12,6 +12,7 @@ from app.core.security import (
     require_authenticated_principal,
 )
 from app.db.models.message import Message
+from app.db.models.recommendation import Recommendation
 from app.db.models.session import Session
 from app.db.models.user import User
 from app.db.session import get_db
@@ -42,10 +43,12 @@ class _FakeAsyncSession:
         existing_session: Session | None = None,
         existing_user: User | None = None,
         existing_messages: list[Message] | None = None,
+        existing_recommendations: list[Recommendation] | None = None,
     ) -> None:
         self.existing_session = existing_session
         self.existing_user = existing_user
         self.existing_messages = existing_messages or []
+        self.existing_recommendations = existing_recommendations or []
         self.added: list[Any] = []
         self.committed = False
         self.rolled_back = False
@@ -58,7 +61,13 @@ class _FakeAsyncSession:
         if entity is User:
             return _FakeResult(self.existing_user)
         if entity is Message:
+            if getattr(statement, "_limit_clause", None) is None:
+                return _FakeResult(list(self.existing_messages))
             return _FakeResult(list(reversed(self.existing_messages)))
+        if entity is Recommendation:
+            if not self.existing_recommendations:
+                return _FakeResult(None)
+            return _FakeResult(self.existing_recommendations[-1])
         return _FakeResult(None)
 
     def add(self, obj: Any) -> None:
@@ -165,6 +174,17 @@ def test_chat_requires_bearer_token_when_auth_enabled(monkeypatch) -> None:
     assert response.json()["error"]["message"] == "Missing bearer token"
 
 
+def test_get_chat_session_requires_bearer_token_when_auth_enabled(monkeypatch) -> None:
+    _enable_auth(monkeypatch)
+
+    client = TestClient(app)
+    response = client.get("/api/v1/chat/session-auth")
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "unauthorized"
+    assert response.json()["error"]["message"] == "Missing bearer token"
+
+
 def test_recommendations_require_bearer_token_when_auth_enabled(monkeypatch) -> None:
     _enable_auth(monkeypatch)
 
@@ -245,6 +265,35 @@ def test_chat_rejects_other_users_session(monkeypatch) -> None:
     try:
         client = TestClient(app)
         response = client.post("/api/v1/chat", json=_chat_payload())
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    assert (
+        response.json()["error"]["message"]
+        == "Session does not belong to the authenticated user"
+    )
+
+
+def test_get_chat_session_rejects_other_users_session(monkeypatch) -> None:
+    _enable_auth(monkeypatch)
+    existing_owner_id = uuid.uuid4()
+    fake_db = _FakeAsyncSession(
+        existing_session=Session(
+            id=session_pk("session-auth"),
+            user_id=existing_owner_id,
+            state_json={"state_version": "v1", "session_id": "session-auth"},
+        )
+    )
+
+    app.dependency_overrides[get_db] = _override_db(fake_db)
+    app.dependency_overrides[require_authenticated_principal] = lambda: _principal(
+        "different-subject"
+    )
+
+    try:
+        client = TestClient(app)
+        response = client.get("/api/v1/chat/session-auth")
     finally:
         app.dependency_overrides.clear()
 

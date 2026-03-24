@@ -26,9 +26,14 @@ from app.services.orchestrator.extraction import extract_query_filters
 from app.services.orchestrator.policies import (
     build_clarification_message,
     build_empty_results_message,
+    build_guardrail_plan,
     build_tool_failure_message,
     build_tool_timeout_message,
     decide_next_action,
+)
+from app.services.orchestrator.providers.ollama import (
+    get_ollama_available_model_names,
+    match_ollama_model_name,
 )
 from app.services.orchestrator.service import (
     extract_direct_query,
@@ -58,8 +63,29 @@ def build_chat_model(
         return DeterministicTravelTomChatModel(max_results=max_results)
 
     if provider == "ollama":
+        resolved_model_name = ollama_chat_model
+        try:
+            available_model_names = get_ollama_available_model_names(
+                base_url=ollama_base_url,
+                timeout_seconds=llm_timeout_seconds,
+            )
+        except Exception:
+            available_model_names = []
+        if available_model_names:
+            matched_model_name = match_ollama_model_name(
+                ollama_chat_model,
+                available_model_names,
+            )
+            if matched_model_name is None:
+                available_models = ", ".join(sorted(available_model_names))
+                raise ValueError(
+                    "Configured Ollama chat model "
+                    f"'{ollama_chat_model}' was not found. Available models: "
+                    f"{available_models}"
+                )
+            resolved_model_name = matched_model_name
         return ChatOllama(
-            model=ollama_chat_model,
+            model=resolved_model_name,
             base_url=ollama_base_url,
             temperature=ollama_temperature,
             num_predict=512,
@@ -258,7 +284,16 @@ class DeterministicTravelTomChatModel(_DeterministicToolCallingModel):
         user_message = self._latest_user_message(messages)
         decision = decide_next_action(user_message, session_state)
         if not decision.should_call_recommendation_tool:
-            response = AIMessage(content=build_clarification_message(session_state))
+            response = AIMessage(
+                content=(
+                    build_guardrail_plan(
+                        message=user_message,
+                        session_state=session_state,
+                        max_results=self.max_results,
+                    ).clarification_message
+                    or build_clarification_message(session_state)
+                )
+            )
             return ChatResult(generations=[ChatGeneration(message=response)])
 
         tool_call = {

@@ -6,10 +6,13 @@
 2. User optionally reviews `Why TravelTom` and `How It Works` route pages.
 3. User opens `/planner` and enters a chat message.
 4. Frontend sends the request to `/api/v1/chat` with `session_id` and `message_id`.
-5. Assistant response is appended to the message list and recommendations are rendered from the latest response payload.
-6. User saves items (destinations, hotels, flights) to shortlist.
-7. User views generated itinerary.
-8. User clicks booking stub to simulate conversion.
+5. If the browser already has a backend-backed planner session, frontend
+   hydrates transcript, recommendations, and server state from
+   `GET /api/v1/chat/{session_id}` before the next turn.
+6. Assistant response is appended to the message list and recommendations are rendered from the latest response payload.
+7. User saves items (destinations, hotels, flights) to shortlist.
+8. User views generated itinerary.
+9. User clicks booking stub to simulate conversion.
 
 ## Screens and states
 
@@ -30,6 +33,11 @@
   - Empty-state chips encourage either:
     - broad destination exploration prompts, or
     - concrete hotel/flight prompts with destination, dates, and budget
+  - Conversation progression supports:
+    - natural greeting
+    - progressive slot capture
+    - search-type clarification when trip details are known but item type is not
+    - grounded results or explicit no-results refinement guidance
   - Loading state (assistant typing)
   - Error state
   - Retry action for last failed message

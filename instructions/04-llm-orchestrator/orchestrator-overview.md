@@ -9,6 +9,8 @@
 - Keep recommendation retrieval tool-first and deterministic.
 - Apply deterministic extraction and carry-forward shaping as planner hints and
   deterministic fallbacks before agent invocation.
+- Use the structured planner as the default extraction and routing layer for
+  normal non-empty `/chat` turns when a planner provider is available.
 - Keep planner prompt replay bounded by flattening and truncating recent
   transcript lines before provider-backed planning.
 - Normalize agent transcripts into grounded assistant responses backed only by validated tool output.
@@ -72,6 +74,7 @@
    - bounded recent transcript replay
    - raw user text
    - deterministic extraction and carry-forward hints
+   - on normal non-empty `/chat` turns whenever planner support is available
 5. On Ollama, structured planning prefers the OpenAI-compatible endpoint with a
    JSON-schema response contract and a larger planner timeout budget than the
    chat-agent path, so multi-turn planner prompts do not silently degrade to
@@ -83,19 +86,26 @@
    - merged validated state
    - bounded recent transcript replay
    - validated recommendation query controls and carry-forward hints
-8. The chat `create_agent` loop either:
+8. If the planner returned a clarification path, runtime can send that
+   clarification directly after validation without requiring a second model hop.
+9. On search-ready turns that still need agent execution, the chat
+   `create_agent` loop either:
    - asks a clarification question, or
    - calls `recommendation_query`
-9. `recommendation_query` validates the request, executes the recommender,
+   - or is bypassed on high-confidence search-ready reply turns when runtime can
+     execute the same grounded recommendation path deterministically
+10. `recommendation_query` validates the request, executes the recommender,
    validates `RecommendationToolResponse`, and returns deterministic runtime data.
-10. `OrchestratorService` normalizes the final agent transcript into
+11. `OrchestratorService` normalizes the final agent transcript into
    `OrchestratorResponse`, updates remembered recommendation intent fields in
    `SessionState.conversation`, preserves pending query/item-type memory across
    clarification turns, tracks surfaced recommendation ids for duplicate
-   suppression, and ignores model-invented recommendation content.
-11. If planner output is missing, invalid, or unsafe, runtime falls back to
+   suppression, tracks whether the assistant is waiting on a core slot, search
+   type, or refinement preference, and ignores model-invented recommendation
+   content.
+12. If planner output is missing, invalid, or unsafe, runtime falls back to
     deterministic extraction plus deterministic guardrail planning.
-12. If the agent path fails or skips a recommendation call after the final
+13. If the agent path fails or skips a recommendation call after the final
    required slot arrives, runtime falls back to deterministic clarification or
    deterministic recommendation execution using the same carry-forward shaping.
 
@@ -117,18 +127,28 @@
   turns, but state mutation still requires schema validation.
 - Deterministic extraction still runs before planner state merging and remains a
   hint generator plus fallback path.
+- Deterministic fallback is defensive rather than authoritative: weak phrases
+  like `be honest`, `lower cost`, or other filler text must not overwrite an
+  already valid destination.
 - Destination slot capture is conservative: assignment-style phrases like
   `destination is Lisbon` and concise bare replies like `Lisbon` still work,
   but greetings and meta turns like `Hello Tommy` or `what do you mean` do not
   persist `constraints.destination`.
 - Planner-authored `query_controls` can shape effective item type and query
   text, but deterministic guardrails still veto unsafe hotel/flight searches
-  that are missing destination, dates, or budget.
-- Destination exploration can start earlier from partial signal, while hotel and
-  flight searches still wait for destination, dates, and budget.
+  that are missing required trip details.
+- Destination exploration can start earlier from partial signal, while hotel
+  searches wait for destination, dates, and budget, and flight searches wait
+  for origin, destination, dates, and budget.
 - Follow-up turns can reuse `conversation.last_recommendation_item_type` and
   `conversation.last_recommendation_query` when the user says things like
-  `show me more`, `another option`, or `cheaper`.
+  `show me more`, `another option`, `cheaper`, or `lower cost`.
+- Generic trip-building flows can collect destination, dates, and budget first,
+  then ask a deterministic search-type question (`hotels`, `flights`, or
+  `destination ideas`) before a search runs.
+- Vague replies to that search-type question are resolved safely from the
+  validated planner-backed state: fixed-destination trips default to hotels,
+  while open-destination trips default to destination exploration.
 - Follow-up turns also remember recently surfaced recommendation ids so
   duplicate-only tool responses can ask for refinement instead of replaying the
   same list as if it were new.
@@ -137,8 +157,15 @@
 - Clarification fallback is progressive and slot-aware, using
   `state.conversation.last_requested_slots` plus current missing constraints,
   and it keeps re-asking the same slot until that slot is actually captured.
+- When planner-backed state cleanly satisfies a pending slot or search-type
+  clarification and the search is already safe, runtime may execute the
+  deterministic recommendation path immediately instead of waiting on the chat
+  agent to restate the same tool call.
 - Tool timeout, invalid payload, and unexpected tool failures return explicit safe fallback messages.
 - Empty tool results are explicit and return a constraints-tightening message path.
+- Repeated vague replies after real empty-result or duplicate-only searches
+  return stronger no-results guidance instead of re-running the same empty
+  search or looping on the same optimization prompt.
 - Router contract and persistence behavior in `/api/v1/chat` are unchanged.
 - `/api/v1/recommendations/query` remains deterministic and does not depend on
   conversational planning state.

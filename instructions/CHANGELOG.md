@@ -1,5 +1,47 @@
 # Instructions Changelog
 
+## 2026-03-24
+
+- Shifted `/api/v1/chat` orchestration back to planner-first extraction and
+  conversation control without changing recommender behavior:
+  - `apps/api/app/services/orchestrator/service.py` now invokes the planner for
+    normal non-empty chat turns instead of skipping greetings, slot-filling
+    replies, search-type replies, and common follow-up refinements, while
+    keeping deterministic recommendation execution as a failure fallback.
+  - `apps/api/app/services/orchestrator/extraction.py` now hardens
+    deterministic fallback so filler phrases like `be honest` and `lower cost`
+    cannot overwrite a valid destination, and lower-cost follow-ups preserve
+    hotel/flight continuity.
+  - `apps/api/app/services/orchestrator/policies.py` and
+    `apps/api/app/services/travel_tom_agent.py` now document and enforce that
+    the planner owns natural-language slot extraction on normal chat turns,
+    while grounded recommendation content still comes only from validated tool
+    output.
+  - `tests/orchestrator/test_service.py`,
+    `tests/orchestrator/test_extraction.py`,
+    `04-llm-orchestrator/orchestrator-overview.md`,
+    `04-llm-orchestrator/prompts-and-guardrails.md`, and
+    `04-llm-orchestrator/session-state-schema.md` now cover and describe the
+    planner-first hybrid flow and fallback destination-safety guardrails.
+
+## 2026-03-23
+
+- Documented the implemented chat coherence fixes:
+  - `04-llm-orchestrator/orchestrator-overview.md` now documents planner bypass
+    for deterministic turns, search-type clarification, item-type-aware slot
+    requirements, and stronger empty-results guidance.
+  - `04-llm-orchestrator/prompts-and-guardrails.md` now documents the
+    `search_type` / `refine_preference` clarification branches, generic
+    trip-to-recommendation promotion, natural flight-route extraction, and
+    mixed one-shot destination/date/budget parsing.
+  - `04-llm-orchestrator/session-state-schema.md` now includes
+    `conversation.last_clarification_kind` and
+    `conversation.last_search_outcome`, plus the item-type-aware required-slot
+    rules.
+  - `05-frontend/ux-flows.md` now documents backend-backed planner hydration
+    and the current chat progression from greeting through search-type
+    clarification and grounded/no-results outcomes.
+
 ## 2026-03-19
 
 - Fixed four high-impact `/api/v1/chat` regressions in the orchestrator layer

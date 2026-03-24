@@ -17,6 +17,10 @@
     "src/api/errorHandling.ts",
     "src/api/errorHandling.test.ts",
     "src/components/chatErrorState.ts",
-    "src/components/chatErrorState.test.ts"
+    "src/components/chatErrorState.test.ts",
+    "src/components/sessionHydration.ts",
+    "src/components/sessionHydration.test.ts",
+    "src/store/session.ts",
+    "src/store/session.test.ts"
   ]
 }

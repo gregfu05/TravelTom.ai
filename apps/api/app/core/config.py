@@ -69,6 +69,11 @@ class Settings(BaseSettings):
         ge=1.0,
         validation_alias=AliasChoices("ORCHESTRATOR_LLM_TIMEOUT_SECONDS"),
     )
+    orchestrator_structured_timeout_seconds: float = Field(
+        10.0,
+        ge=1.0,
+        validation_alias=AliasChoices("ORCHESTRATOR_STRUCTURED_TIMEOUT_SECONDS"),
+    )
     ollama_base_url: str = Field(
         "http://127.0.0.1:11434",
         validation_alias=AliasChoices("OLLAMA_BASE_URL"),

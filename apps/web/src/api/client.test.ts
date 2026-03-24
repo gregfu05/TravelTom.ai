@@ -172,6 +172,71 @@ async function testSignupSerializesExactlyOnce() {
   assert.doesNotMatch(String(capturedInit.body), /^".*"$/);
 }
 
+async function testGetChatSessionMapsPersistedTranscriptAndRecommendations() {
+  let capturedInit: RequestInit | undefined;
+
+  installFetchMock(async (_input, init) => {
+    capturedInit = init;
+
+    return new Response(
+      JSON.stringify({
+        session_id: "session-123",
+        state: { status: "refine" },
+        messages: [
+          {
+            id: "message-1",
+            role: "user",
+            content: "Hello",
+            created_at: "2026-03-23T12:00:00Z",
+          },
+          {
+            id: "message-2",
+            role: "assistant",
+            content: "Hi, I'm Tom.",
+            created_at: "2026-03-23T12:00:01Z",
+          },
+        ],
+        recommendations: [
+          {
+            item_id: "dest-lisbon",
+            item_type: "destination",
+            score: 0.93,
+            rank: 1,
+            explanation: "Excellent match for culture and food.",
+            metadata: { name: "Lisbon" },
+          },
+        ],
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  });
+
+  try {
+    const response = await apiClient.getChatSession({
+      sessionId: "session-123",
+      authToken: "token-123",
+    });
+
+    assert.equal(response.sessionId, "session-123");
+    assert.equal(response.messages[0].createdAt, "2026-03-23T12:00:00Z");
+    assert.equal(response.recommendations[0].itemId, "dest-lisbon");
+    assert.deepEqual(response.recommendations[0].metadata, { name: "Lisbon" });
+  } finally {
+    restoreFetch();
+  }
+
+  assert.ok(capturedInit);
+  assert.equal(capturedInit.method, "GET");
+  assert.deepEqual(capturedInit.headers, {
+    Accept: "application/json",
+    Authorization: "Bearer token-123",
+    "Content-Type": "application/json",
+  });
+}
+
 async function testJsonHelperRejectsPreSerializedStringsInDevelopment() {
   let fetchCalled = false;
 
@@ -210,6 +275,7 @@ async function testJsonHelperRejectsPreSerializedStringsInDevelopment() {
 await testSendChatMessageSerializesExactlyOnce();
 await testLoginSerializesExactlyOnce();
 await testSignupSerializesExactlyOnce();
+await testGetChatSessionMapsPersistedTranscriptAndRecommendations();
 await testJsonHelperRejectsPreSerializedStringsInDevelopment();
 
 restoreFetch();

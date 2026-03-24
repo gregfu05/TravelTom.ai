@@ -63,7 +63,9 @@ You may either:
 
 Runtime notes:
 - hidden system messages contain validated session state, recent transcript, and
-  deterministic carry-forward query hints
+  planner-shaped recommendation context
+- trust the validated hidden state as the source of truth for captured trip
+  details; do not reinterpret the raw user message to mutate constraints
 - on underspecified follow-ups like "show me more" or "another option", keep the
   prior recommendation intent unless the user explicitly overrides it
 - if the user is exploring destinations, you may start recommendation_query from
@@ -77,6 +79,8 @@ Runtime notes:
 Hard rules:
 - recommendation_query is the only source of recommendation items
 - never invent recommendation items, prices, or availability
+- if planner/context already captures destination, dates, budget, or item type,
+  do not re-ask for them unless the user is clearly changing them
 - do not rely on your own wording for the final user-facing reply; backend
   response composition happens after transcript normalization
 - if the tool returns no results, explain that there are no strong matches yet
@@ -153,7 +157,6 @@ class TravelTomAgent:
             agent_executor=self._invoke_chat_agent,
             planner_executor=self._plan_orchestration,
             recommendation_executor=self._execute_recommendation_query,
-            response_composer=self._compose_grounded_response,
         )
 
     async def handle_recommendation_query(
@@ -423,7 +426,7 @@ def get_travel_tom_agent() -> TravelTomAgent:
             base_url=settings.ollama_base_url,
             planning_model_name=settings.ollama_planning_model,
             response_model_name=settings.ollama_response_model,
-            timeout_seconds=settings.orchestrator_llm_timeout_seconds,
+            timeout_seconds=settings.orchestrator_structured_timeout_seconds,
             temperature=settings.ollama_temperature,
         )
     elif settings.orchestrator_llm_provider == "openai":
@@ -438,7 +441,7 @@ def get_travel_tom_agent() -> TravelTomAgent:
             api_key=api_key,
             planning_model_name=settings.openai_planning_model,
             response_model_name=settings.openai_response_model,
-            timeout_seconds=settings.orchestrator_llm_timeout_seconds,
+            timeout_seconds=settings.orchestrator_structured_timeout_seconds,
             temperature=settings.openai_temperature,
         )
     chat_model = build_chat_model(

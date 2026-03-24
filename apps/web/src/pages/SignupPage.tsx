@@ -12,7 +12,7 @@ export function SignupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { setAuthToken } = useSessionStore();
+  const { resetConversation, setAuthToken } = useSessionStore();
 
   async function handleSignup(event: React.FormEvent) {
     event.preventDefault();
@@ -26,6 +26,7 @@ export function SignupPage() {
 
     try {
       const response = await apiClient.signup({ email, password });
+      resetConversation();
       setAuthToken(response.accessToken);
       navigate("/planner", { replace: true });
     } catch {

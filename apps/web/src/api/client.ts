@@ -35,6 +35,20 @@ const chatResponseSchema = z.object({
   state: z.record(z.string(), z.unknown()).optional(),
 });
 
+const chatSessionMessageSchema = z.object({
+  id: z.string(),
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+  created_at: z.string(),
+});
+
+const chatSessionResponseSchema = z.object({
+  session_id: z.string(),
+  state: z.record(z.string(), z.unknown()),
+  messages: z.array(chatSessionMessageSchema).default([]),
+  recommendations: z.array(recommendationSchema).default([]),
+});
+
 const authResponseSchema = z.object({
   access_token: z.string(),
   token_type: z.literal("bearer"),
@@ -79,6 +93,20 @@ export interface ChatResponse {
   recommendations: Recommendation[];
   itinerary?: z.infer<typeof itinerarySchema>;
   state?: Record<string, unknown>;
+}
+
+export interface ChatSessionMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+}
+
+export interface ChatSessionResponse {
+  sessionId: string;
+  state: Record<string, unknown>;
+  messages: ChatSessionMessage[];
+  recommendations: Recommendation[];
 }
 
 export interface AuthSession {
@@ -223,6 +251,29 @@ function mapAuthSession(raw: z.output<typeof authResponseSchema>): AuthSession {
   };
 }
 
+function mapChatSessionResponse(
+  raw: z.output<typeof chatSessionResponseSchema>,
+): ChatSessionResponse {
+  return {
+    sessionId: raw.session_id,
+    state: raw.state,
+    messages: raw.messages.map((message) => ({
+      id: message.id,
+      role: message.role,
+      content: message.content,
+      createdAt: message.created_at,
+    })),
+    recommendations: raw.recommendations.map((item) => ({
+      itemId: item.item_id,
+      itemType: item.item_type,
+      score: item.score,
+      rank: item.rank,
+      explanation: item.explanation,
+      metadata: item.metadata,
+    })),
+  };
+}
+
 export const apiClient = {
   getHealth(signal?: AbortSignal): Promise<HealthResponse> {
     return request("/health", { method: "GET", signal }, healthResponseSchema);
@@ -253,6 +304,25 @@ export const apiClient = {
     );
 
     return mapChatResponse(response);
+  },
+
+  async getChatSession(
+    input: { sessionId: string; authToken?: string },
+    signal?: AbortSignal,
+  ): Promise<ChatSessionResponse> {
+    const response = await request(
+      `/chat/${encodeURIComponent(input.sessionId)}`,
+      {
+        method: "GET",
+        headers: input.authToken
+          ? { Authorization: `Bearer ${input.authToken}` }
+          : undefined,
+        signal,
+      },
+      chatSessionResponseSchema,
+    );
+
+    return mapChatSessionResponse(response);
   },
 
   async login(input: {

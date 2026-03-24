@@ -19,6 +19,7 @@ from app.services.orchestrator.extraction import (
     build_effective_recommendation_query_text,
     extract_query_filters,
     is_follow_up_refinement,
+    is_vague_acceptance_reply,
     resolve_effective_item_type,
 )
 
@@ -61,6 +62,11 @@ _META_PATTERNS = (
     r"\bhow do you have\b",
     r"\bwhat is a\b",
 )
+_GREETING_PATTERNS = (
+    r"^\s*(hello|hi|hey|yo|howdy)\b",
+    r"^\s*good\s+(morning|afternoon|evening)\b",
+    r"^\s*bonjour\b",
+)
 _REPAIR_PATTERNS = (
     r"^\s*not\b",
     r"\bmore like\b",
@@ -78,15 +84,40 @@ _TRAVELTOM_PERSONA = (
 )
 _CORE_SLOT_ORDER = ("destination", "dates", "budget")
 _CORE_SLOT_LABELS = {
+    "origin": "departure city",
     "destination": "destination",
     "dates": "travel dates",
     "budget": "budget range",
 }
 _CORE_SLOT_QUESTIONS = {
+    "origin": "Where are you flying from?",
     "destination": "Which destination should I focus on?",
     "dates": "What travel dates should I plan around?",
     "budget": "What budget range should I use?",
 }
+_ITEM_TYPE_REQUIRED_SLOT_ORDER = {
+    "hotel": ("destination", "dates", "budget"),
+    "flight": ("origin", "destination", "dates", "budget"),
+    "destination": (),
+}
+_ITEM_TYPE_LABELS = {
+    "destination": "destination ideas",
+    "hotel": "hotel recommendations",
+    "flight": "flight recommendations",
+}
+_SEARCH_TYPE_QUESTION = (
+    "Do you want hotel recommendations, flight options, or destination ideas?"
+)
+_SEARCH_TYPE_QUESTION_WITH_DESTINATION = (
+    "I have your destination, dates, and budget. Should I look for hotel "
+    "recommendations or flights?"
+)
+_SEARCH_TYPE_FOLLOW_UP_QUESTION = (
+    "Do you want hotel recommendations, flight options, or destination ideas?"
+)
+_SEARCH_TYPE_FOLLOW_UP_QUESTION_WITH_DESTINATION = (
+    "Should I look for hotel recommendations or flights?"
+)
 _TRANSCRIPT_MESSAGE_MAX_CHARS = 240
 
 
@@ -101,8 +132,36 @@ def classify_intent(message: str) -> Intent:
     return "clarify"
 
 
+def is_greeting(message: str) -> bool:
+    """Return whether the user message is a lightweight greeting."""
+
+    stripped_message = message.strip()
+    if not stripped_message:
+        return False
+    lowered = stripped_message.casefold()
+    if any(keyword in lowered for keyword in _RECOMMEND_KEYWORDS + _REFINE_KEYWORDS):
+        return False
+    return any(re.search(pattern, stripped_message, flags=re.IGNORECASE) for pattern in _GREETING_PATTERNS)
+
+
+def build_greeting_message() -> str:
+    """Build deterministic copy for greeting/opening turns."""
+
+    return (
+        "Hi, I'm Tom. Tell me where you want to go, or share destination, dates, "
+        "and budget and I'll turn that into grounded recommendations."
+    )
+
+
 def decide_next_action(message: str, state: SessionState) -> OrchestrationDecision:
     """Deterministic guardrail for routing when LLM planning is unavailable."""
+
+    if is_greeting(message):
+        return OrchestrationDecision(
+            intent="clarify",
+            should_call_recommendation_tool=False,
+            reason="greeting should stay conversational",
+        )
 
     if is_meta_question(message):
         return OrchestrationDecision(
@@ -118,19 +177,40 @@ def decide_next_action(message: str, state: SessionState) -> OrchestrationDecisi
             reason="repair turn needs clarification before another search",
         )
 
+    if (
+        state.conversation.last_clarification_kind == "refine_preference"
+        and state.conversation.last_search_outcome in {"empty_results", "no_new_results"}
+        and is_vague_acceptance_reply(message)
+    ):
+        return OrchestrationDecision(
+            intent="clarify",
+            should_call_recommendation_tool=False,
+            reason="vague reply after empty results needs stronger guidance",
+        )
+
     active_intent = _active_recommendation_intent(message=message, state=state)
-    has_all_core_constraints = not missing_core_constraint_slots(state)
-    effective_item_type = _effective_recommendation_item_type(
+    resolved_item_type = resolve_effective_item_type(
         message=message,
-        state=state,
+        session_state=state,
     )
+    missing_slots = missing_core_constraint_slots(
+        state,
+        item_type_override=resolved_item_type,
+    )
+    needs_search_type = needs_search_type_clarification(state) and resolved_item_type is None
 
     if active_intent in {"recommend", "refine"}:
-        if effective_item_type in {"hotel", "flight"} and not has_all_core_constraints:
+        if needs_search_type:
             return OrchestrationDecision(
                 intent="clarify",
                 should_call_recommendation_tool=False,
-                reason="core trip details are still missing for hotel or flight search",
+                reason="search type clarification is still needed",
+            )
+        if missing_slots:
+            return OrchestrationDecision(
+                intent="clarify",
+                should_call_recommendation_tool=False,
+                reason="required trip details are still missing",
             )
         return OrchestrationDecision(
             intent=active_intent,
@@ -138,6 +218,10 @@ def decide_next_action(message: str, state: SessionState) -> OrchestrationDecisi
             reason=f"{active_intent} intent detected",
         )
 
+    effective_item_type = _effective_recommendation_item_type(
+        message=message,
+        state=state,
+    )
     if (
         effective_item_type == "destination"
         and _has_destination_exploration_signal(message=message, state=state)
@@ -148,7 +232,7 @@ def decide_next_action(message: str, state: SessionState) -> OrchestrationDecisi
             reason="destination exploration can start from partial signal",
         )
 
-    if state.status in {"refine", "itinerary", "booking"} and has_all_core_constraints:
+    if state.status in {"refine", "itinerary", "booking"} and not missing_slots:
         return OrchestrationDecision(
             intent="refine",
             should_call_recommendation_tool=True,
@@ -162,16 +246,23 @@ def decide_next_action(message: str, state: SessionState) -> OrchestrationDecisi
     )
 
 
-def missing_core_constraint_slots(state: SessionState) -> list[str]:
-    """Return missing core constraint slots in priority order."""
+def missing_core_constraint_slots(
+    state: SessionState,
+    *,
+    item_type_override: str | None = None,
+) -> list[str]:
+    """Return missing required slots for the current recommendation mode."""
 
+    item_type = item_type_override or state.conversation.last_recommendation_item_type
+    if item_type in _ITEM_TYPE_REQUIRED_SLOT_ORDER:
+        required_slots = _ITEM_TYPE_REQUIRED_SLOT_ORDER[item_type]
+    else:
+        required_slots = _CORE_SLOT_ORDER
     missing: list[str] = []
-    if not state.constraints.destination:
-        missing.append("destination")
-    if not state.constraints.dates:
-        missing.append("dates")
-    if not state.constraints.budget:
-        missing.append("budget")
+    for slot in required_slots:
+        value = getattr(state.constraints, slot, None)
+        if value is None:
+            missing.append(slot)
     return missing
 
 
@@ -184,7 +275,7 @@ def missing_core_constraints(state: SessionState) -> list[str]:
 def next_missing_core_constraint_slot(session_state: SessionState) -> str | None:
     """Return the next most useful missing slot for clarification."""
 
-    missing_slots = missing_core_constraint_slots(session_state)
+    missing_slots = requested_slots_for_clarification(session_state)
     if not missing_slots:
         return None
 
@@ -202,33 +293,39 @@ def build_clarification_message(
     session_state: SessionState,
     *,
     acknowledged_slots: list[str] | None = None,
+    message: str | None = None,
 ) -> str:
     """Build progressive clarification copy from the current session state."""
 
-    next_slot = next_missing_core_constraint_slot(session_state)
-    if next_slot is None:
+    clarification_kind = clarification_kind_for_state(session_state)
+    if clarification_kind == "search_type":
+        prefix = _build_acknowledgement_prefix(acknowledged_slots or [])
+        if not prefix:
+            return build_search_type_question(session_state)
+        if session_state.constraints.destination:
+            return prefix + _SEARCH_TYPE_FOLLOW_UP_QUESTION_WITH_DESTINATION
+        return prefix + _SEARCH_TYPE_FOLLOW_UP_QUESTION
+
+    if clarification_kind == "refine_preference":
+        if (
+            message is not None
+            and is_vague_acceptance_reply(message)
+            and session_state.conversation.last_search_outcome in {
+                "empty_results",
+                "no_new_results",
+            }
+        ):
+            return build_no_preference_after_empty_results_message(session_state)
         return (
             "I can help narrow this down. Tell me what you want to optimize for, "
             "like lower cost, fewer layovers, or a different vibe."
         )
 
-    acknowledgements = [
-        _CORE_SLOT_LABELS[slot]
-        for slot in acknowledged_slots or []
-        if slot in _CORE_SLOT_LABELS
-    ]
-    if acknowledgements:
-        if len(acknowledgements) == 1:
-            prefix = f"Got it, I have your {acknowledgements[0]}. "
-        else:
-            prefix = (
-                "Got it, I have your "
-                + ", ".join(acknowledgements[:-1])
-                + f", and {acknowledgements[-1]}. "
-            )
-        return prefix + _CORE_SLOT_QUESTIONS[next_slot]
-
-    return _CORE_SLOT_QUESTIONS[next_slot]
+    prefix = _build_acknowledgement_prefix(acknowledged_slots or [])
+    return prefix + _build_contextual_slot_question(
+        session_state,
+        requested_slots_for_clarification(session_state),
+    )
 
 
 def build_empty_message(session_state: SessionState) -> str:
@@ -243,6 +340,9 @@ def build_empty_message(session_state: SessionState) -> str:
 
 def build_invalid_request_message(session_state: SessionState) -> str:
     """Build deterministic copy for requests that fail query validation."""
+
+    if needs_search_type_clarification(session_state):
+        return build_search_type_question(session_state)
 
     next_slot = next_missing_core_constraint_slot(session_state)
     if next_slot is None:
@@ -318,7 +418,9 @@ def build_guardrail_plan(
     decision = decide_next_action(message=message, state=session_state)
     clarification_message = None
     if not decision.should_call_recommendation_tool:
-        if is_meta_question(message):
+        if is_greeting(message):
+            clarification_message = build_greeting_message()
+        elif is_meta_question(message):
             clarification_message = build_meta_turn_message(
                 session_state=session_state,
                 message=message,
@@ -329,7 +431,14 @@ def build_guardrail_plan(
                 message=message,
             )
         else:
-            clarification_message = build_clarification_message(session_state)
+            clarification_state = _state_with_resolved_search_type(
+                session_state=session_state,
+                message=message,
+            )
+            clarification_message = build_clarification_message(
+                clarification_state,
+                message=message,
+            )
     return LLMOrchestrationPlan(
         intent=decision.intent,
         should_call_recommendation_tool=decision.should_call_recommendation_tool,
@@ -378,16 +487,28 @@ def build_planning_prompt_context(
         "You are the TravelTom orchestration planner.\n"
         "Return JSON only.\n"
         "Use a single-line compact JSON object and omit optional keys you are not setting.\n"
-        "Primary duties: interpret intent, choose whether to call recommendation tool, "
-        "and propose structured state updates.\n"
+        "Primary duties: interpret intent, extract grounded trip details from the "
+        "latest user turn, choose whether to call recommendation tool, and propose "
+        "structured state updates.\n"
         "Use the recent transcript to avoid re-asking for details already captured.\n"
-        "Treat deterministic extraction hints as advisory only: use them when they "
-        "fit the conversation, but do not let greetings, meta questions, or repair "
-        "turns mutate trip constraints without strong conversational support.\n"
+        "For normal chat turns, you are the primary extractor. Use state_patch to "
+        "capture destination, dates, budget, and preferences from natural language.\n"
+        "Treat deterministic extraction hints as advisory only. If they conflict "
+        "with the raw user message or transcript, prefer the conversational meaning "
+        "from the user and transcript.\n"
+        "Do not let greetings, meta questions, or repair turns mutate trip "
+        "constraints without strong conversational support.\n"
         "If clarification is needed, ask for one next-most-useful missing detail.\n"
         "Strict validity rule: do not include conversation, shortlist, itinerary, "
         "last_message_at, last_recommendation_version, or any key not shown in the "
         "valid shape. Any extra key makes the response invalid.\n"
+        "Natural examples you should handle with state_patch:\n"
+        '- "I want to go to Santa Barbara" -> constraints.destination="Santa Barbara"\n'
+        '- "Hotels in Santa Barbara May 10th to May 20th under 2000 euros" -> '
+        'constraints.destination, constraints.dates, constraints.budget, '
+        'query_controls.filters.item_type="hotel"\n'
+        '- "I want hotels to be honest" after destination, dates, and budget are '
+        'known -> query_controls.filters.item_type="hotel" and should_call_recommendation_tool=true\n'
         "Never fabricate recommendation items.\n"
         f"Recommendation max_results hard limit for this turn: {max_results}.\n"
         "Valid JSON shape:\n"
@@ -420,6 +541,60 @@ def build_planning_prompt_context(
         f"Recent transcript:\n{recent_transcript}\n"
         f"Latest user message: {user_message}"
     )
+
+
+def _build_acknowledgement_prefix(acknowledged_slots: list[str]) -> str:
+    if {"origin", "destination"}.issubset(set(acknowledged_slots)):
+        return "Got it, I have your route. "
+
+    acknowledgements = [
+        _CORE_SLOT_LABELS[slot]
+        for slot in acknowledged_slots
+        if slot in _CORE_SLOT_LABELS
+    ]
+    if not acknowledgements:
+        return ""
+    if len(acknowledgements) == 1:
+        return f"Got it, I have your {acknowledgements[0]}. "
+    return (
+        "Got it, I have your "
+        + ", ".join(acknowledgements[:-1])
+        + f", and {acknowledgements[-1]}. "
+    )
+
+
+def _build_contextual_slot_question(
+    session_state: SessionState,
+    requested_slots: list[str],
+) -> str:
+    if not requested_slots:
+        return ""
+
+    if requested_slots == ["origin", "destination"]:
+        return "Where are you flying from and where do you want to go?"
+
+    next_slot = requested_slots[0]
+    question = _CORE_SLOT_QUESTIONS[next_slot]
+    item_type = session_state.conversation.last_recommendation_item_type
+    if (
+        session_state.conversation.last_user_intent not in {"recommend", "refine"}
+        or item_type not in _ITEM_TYPE_LABELS
+        or item_type == "destination"
+    ):
+        return question
+
+    item_label = _ITEM_TYPE_LABELS[item_type]
+    if item_type == "flight" and next_slot == "origin":
+        return "Where are you flying from for these flight recommendations?"
+    if item_type == "flight" and next_slot == "destination":
+        return "Where do you want to fly to?"
+    if next_slot == "destination":
+        return f"Which destination should I use for these {item_label}?"
+    if next_slot == "dates":
+        return f"What travel dates should I use for these {item_label}?"
+    if next_slot == "budget":
+        return f"What budget range should I use for these {item_label}?"
+    return question
 
 
 def build_response_prompt_context(
@@ -525,6 +700,8 @@ def _active_recommendation_intent(
 
     remembered_intent = state.conversation.last_user_intent
     if remembered_intent in {"recommend", "refine"}:
+        if state.conversation.last_clarification_kind == "search_type":
+            return remembered_intent
         if state.conversation.last_requested_slots:
             return remembered_intent
         if not missing_core_constraint_slots(state):
@@ -563,6 +740,114 @@ def _has_destination_exploration_signal(
     if state.conversation.last_user_intent in {"recommend", "refine"}:
         return True
     return classify_intent(message) in {"recommend", "refine"}
+
+
+def needs_search_type_clarification(state: SessionState) -> bool:
+    """Return whether the conversation is waiting for a recommendation type."""
+
+    if state.conversation.last_recommendation_item_type is not None:
+        return False
+    if state.conversation.last_user_intent not in {"recommend", "refine"}:
+        return False
+    if state.conversation.last_clarification_kind == "search_type":
+        return True
+    return not missing_core_constraint_slots(
+        state.model_copy(
+            update={
+                "conversation": state.conversation.model_copy(
+                    update={"last_recommendation_item_type": None}
+                )
+            }
+        )
+    )
+
+
+def requested_slots_for_clarification(session_state: SessionState) -> list[str]:
+    """Return the slot or slot group the assistant should ask for next."""
+
+    if needs_search_type_clarification(session_state):
+        return []
+
+    missing_slots = missing_core_constraint_slots(session_state)
+    if not missing_slots:
+        return []
+
+    item_type = session_state.conversation.last_recommendation_item_type
+    if item_type == "flight":
+        if "origin" in missing_slots and "destination" in missing_slots:
+            return ["origin", "destination"]
+    previously_requested = [
+        slot
+        for slot in session_state.conversation.last_requested_slots
+        if slot in missing_slots
+    ]
+    if previously_requested:
+        return previously_requested
+    return [missing_slots[0]]
+
+
+def clarification_kind_for_state(
+    session_state: SessionState,
+) -> Literal["core_slot", "search_type", "refine_preference"]:
+    """Return the active clarification branch for the current state."""
+
+    if needs_search_type_clarification(session_state):
+        return "search_type"
+    if requested_slots_for_clarification(session_state):
+        return "core_slot"
+    return "refine_preference"
+
+
+def build_search_type_question(session_state: SessionState) -> str:
+    """Build clarification copy asking what kind of recommendation to run."""
+
+    if session_state.constraints.destination:
+        return _SEARCH_TYPE_QUESTION_WITH_DESTINATION
+    return _SEARCH_TYPE_QUESTION
+
+
+def build_no_preference_after_empty_results_message(session_state: SessionState) -> str:
+    """Build deterministic copy when the user has no further refinement preference."""
+
+    item_type = session_state.conversation.last_recommendation_item_type
+    if item_type == "flight":
+        return (
+            "I still do not have grounded flight matches with the current route, "
+            "dates, and budget. Try widening the budget, changing the dates, or "
+            "adjusting the route."
+        )
+    if item_type == "hotel":
+        destination = session_state.constraints.destination or "that destination"
+        return (
+            "I still do not have grounded hotel matches for "
+            f"{destination} with the current dates and budget. Try widening the "
+            "budget, changing the dates, or switching to flights instead."
+        )
+    return (
+        "I still do not have strong grounded matches with the current trip details. "
+        "Try changing the destination, dates, budget, or whether you want hotels "
+        "or flights."
+    )
+
+
+def _state_with_resolved_search_type(
+    *,
+    session_state: SessionState,
+    message: str,
+) -> SessionState:
+    resolved_item_type = resolve_effective_item_type(
+        message=message,
+        session_state=session_state,
+    )
+    if resolved_item_type is None:
+        return session_state
+    return session_state.model_copy(
+        update={
+            "conversation": session_state.conversation.model_copy(
+                update={"last_recommendation_item_type": resolved_item_type}
+            )
+        }
+    )
 
 
 def is_meta_question(message: str) -> bool:

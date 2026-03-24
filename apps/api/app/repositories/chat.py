@@ -49,6 +49,12 @@ class ChatRepository:
         self._session.add(session_row)
         return session_row
 
+    async def get_session(self, *, pk: uuid.UUID) -> Session | None:
+        """Return a persisted session row when it exists."""
+
+        result = await self._session.execute(select(Session).where(Session.id == pk))
+        return result.scalar_one_or_none()
+
     @staticmethod
     def ensure_session_owner(
         *,
@@ -132,6 +138,35 @@ class ChatRepository:
                 )
             )
         return transcript
+
+    async def get_messages(self, *, pk: uuid.UUID) -> list[Message]:
+        """Return the full persisted user/assistant transcript in order."""
+
+        result = await self._session.execute(
+            select(Message)
+            .where(Message.session_id == pk)
+            .order_by(Message.created_at.asc())
+        )
+        return [
+            row
+            for row in result.scalars()
+            if row.role in {"user", "assistant"}
+        ]
+
+    async def get_latest_recommendation_snapshot(
+        self,
+        *,
+        pk: uuid.UUID,
+    ) -> Recommendation | None:
+        """Return the latest persisted recommendation snapshot for a session."""
+
+        result = await self._session.execute(
+            select(Recommendation)
+            .where(Recommendation.session_id == pk)
+            .order_by(Recommendation.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     @staticmethod
     def _query_hash(*, pk: uuid.UUID, message: str) -> str:

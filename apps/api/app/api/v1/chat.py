@@ -15,7 +15,13 @@ from app.core.security import (
     require_authenticated_principal,
 )
 from app.db.session import get_db
-from app.schemas.api.chat import ChatRecommendation, ChatRequest, ChatResponse
+from app.schemas.api.chat import (
+    ChatRecommendation,
+    ChatRequest,
+    ChatResponse,
+    ChatSessionMessage,
+    ChatSessionResponse,
+)
 from app.schemas.auth import AuthenticatedPrincipal
 from app.schemas.orchestrator import OrchestratorResponse
 from app.schemas.state import SessionState
@@ -146,6 +152,66 @@ async def chat(
     raise RuntimeError("Chat handler completed without producing a response")
 
 
+@router.get("/chat/{session_id}", response_model=ChatSessionResponse)
+async def get_chat_session(
+    session_id: str,
+    principal: AuthenticatedPrincipal | None = Depends(require_authenticated_principal),
+    uow: ChatUnitOfWork = Depends(get_chat_uow),
+) -> ChatSessionResponse:
+    """Return the persisted transcript, state, and latest recommendations."""
+
+    pk = session_pk(session_id)
+
+    try:
+        async with uow:
+            owner_user_id = None
+            state_user_id = None
+            if principal is not None:
+                user_row = await uow.user_repository.get_or_create_from_principal(
+                    principal
+                )
+                owner_user_id = user_row.id
+                state_user_id = str(user_row.id)
+
+            session_row = await uow.chat_repository.get_session(pk=pk)
+            if session_row is None:
+                raise ApiError(
+                    status_code=404,
+                    code="session_not_found",
+                    message="Chat session was not found",
+                )
+
+            uow.chat_repository.ensure_session_owner(
+                session_row=session_row,
+                owner_user_id=owner_user_id,
+            )
+            state = load_session_state(
+                raw_state=session_row.state_json,
+                session_id=session_id,
+                user_id=state_user_id,
+            )
+            messages = await uow.chat_repository.get_messages(pk=pk)
+            latest_snapshot = await uow.chat_repository.get_latest_recommendation_snapshot(
+                pk=pk
+            )
+            return _to_chat_session_response(
+                session_id=session_id,
+                state=state,
+                messages=messages,
+                raw_recommendations=(
+                    latest_snapshot.results_json.get("results", [])
+                    if latest_snapshot is not None
+                    else []
+                ),
+            )
+    except ValidationError as exc:
+        raise ApiError(
+            status_code=400,
+            code="invalid_session_state",
+            message="Invalid session state payload",
+        ) from exc
+
+
 def _to_chat_response(
     *,
     request_message_id: str,
@@ -171,4 +237,43 @@ def _to_chat_response(
         recommendations=recommendations,
         itinerary=orchestration.itinerary,
         state=orchestration.state,
+    )
+
+
+def _to_chat_session_response(
+    *,
+    session_id: str,
+    state: SessionState,
+    messages: list[object],
+    raw_recommendations: list[object],
+) -> ChatSessionResponse:
+    """Map persisted session records to the session hydration API response."""
+
+    transcript = [
+        ChatSessionMessage(
+            id=str(getattr(message, "id")),
+            role=getattr(message, "role"),
+            content=getattr(message, "content"),
+            created_at=getattr(message, "created_at"),
+        )
+        for message in messages
+        if getattr(message, "role", None) in {"user", "assistant"}
+    ]
+    recommendations = [
+        ChatRecommendation(
+            item_id=str(item["item_id"]),
+            item_type=item["item_type"],
+            score=float(item["score"]),
+            rank=int(item["rank"]),
+            explanation=str(item["explanation"]),
+            metadata=item.get("features") if isinstance(item.get("features"), dict) else None,
+        )
+        for item in raw_recommendations
+        if isinstance(item, dict)
+    ]
+    return ChatSessionResponse(
+        session_id=session_id,
+        state=state.model_dump(mode="json"),
+        messages=transcript,
+        recommendations=recommendations,
     )

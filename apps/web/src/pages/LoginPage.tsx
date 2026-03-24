@@ -12,7 +12,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { setAuthToken } = useSessionStore();
+  const { resetConversation, setAuthToken } = useSessionStore();
 
   async function handleLogin(event: React.FormEvent) {
     event.preventDefault();
@@ -21,6 +21,7 @@ export function LoginPage() {
 
     try {
       const response = await apiClient.login({ email, password });
+      resetConversation();
       setAuthToken(response.accessToken);
       const redirectTo =
         typeof location.state?.from === "string" ? location.state.from : "/planner";

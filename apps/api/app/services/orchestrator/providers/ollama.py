@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Sequence
 from urllib.parse import urljoin
 
 from app.schemas.orchestrator import LLMComposedResponse, LLMOrchestrationPlan
@@ -14,7 +14,80 @@ from app.services.orchestrator.providers.common import (
     post_json,
 )
 
-_MIN_STRUCTURED_TIMEOUT_SECONDS = 60.0
+
+def match_ollama_model_name(
+    configured_model_name: str,
+    available_model_names: Sequence[str],
+) -> str | None:
+    """Return the best installed model match for a configured Ollama model name."""
+
+    normalized_configured = configured_model_name.strip()
+    if not normalized_configured:
+        return configured_model_name
+
+    available_names = [name.strip() for name in available_model_names if name.strip()]
+    if normalized_configured in available_names:
+        return normalized_configured
+
+    prefix_matches = [
+        candidate
+        for candidate in available_names
+        if candidate.startswith(normalized_configured)
+    ]
+    if prefix_matches:
+        return prefix_matches[0]
+
+    contains_matches = [
+        candidate for candidate in available_names if normalized_configured in candidate
+    ]
+    if contains_matches:
+        return contains_matches[0]
+
+    return None
+
+
+def get_ollama_available_model_names(
+    *,
+    base_url: str,
+    timeout_seconds: float,
+) -> list[str]:
+    """Return installed Ollama model names from the most compatible endpoint."""
+
+    normalized_base_url = base_url.rstrip("/") + "/"
+    models_url = urljoin(normalized_base_url, "v1/models")
+    tags_url = urljoin(normalized_base_url, "api/tags")
+
+    try:
+        models_payload = get_json(
+            url=models_url,
+            timeout_seconds=timeout_seconds,
+        )
+    except StructuredModelTransportError as exc:
+        if exc.status_code != 404:
+            raise
+    else:
+        data = models_payload.get("data")
+        if isinstance(data, list):
+            names = [
+                str(item.get("id"))
+                for item in data
+                if isinstance(item, dict) and isinstance(item.get("id"), str)
+            ]
+            if names:
+                return names
+
+    tags_payload = get_json(
+        url=tags_url,
+        timeout_seconds=timeout_seconds,
+    )
+    models = tags_payload.get("models")
+    if not isinstance(models, list):
+        return []
+    return [
+        str(item.get("name"))
+        for item in models
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    ]
 
 
 class OllamaStructuredClient:
@@ -31,6 +104,7 @@ class OllamaStructuredClient:
         transport: JSONTransport | None = None,
     ) -> None:
         normalized_base_url = base_url.rstrip("/") + "/"
+        self._base_url = normalized_base_url
         self._chat_url = urljoin(normalized_base_url, "api/chat")
         self._openai_chat_url = urljoin(normalized_base_url, "v1/chat/completions")
         self._generate_url = urljoin(normalized_base_url, "api/generate")
@@ -38,14 +112,7 @@ class OllamaStructuredClient:
         self._tags_url = urljoin(normalized_base_url, "api/tags")
         self._planning_model_name = planning_model_name
         self._response_model_name = response_model_name
-        # Local Ollama models can exceed the shared 20s chat timeout on the
-        # full planner prompt even when the request succeeds, so keep a
-        # structured-output timeout floor here to avoid false planner-disable
-        # fallbacks on multi-turn prompts.
-        self._timeout_seconds = max(
-            timeout_seconds,
-            _MIN_STRUCTURED_TIMEOUT_SECONDS,
-        )
+        self._timeout_seconds = timeout_seconds
         self._temperature = temperature
         self._transport = transport or self._default_transport
 
@@ -207,64 +274,28 @@ class OllamaStructuredClient:
         return parse_structured_json_content(content)
 
     def _resolve_model_name(self, configured_model_name: str) -> str:
-        normalized_configured = configured_model_name.strip()
-        if not normalized_configured:
+        available_model_names = self._available_model_names()
+        if not available_model_names:
             return configured_model_name
 
-        available_model_names = self._available_model_names()
-        if normalized_configured in available_model_names:
-            return normalized_configured
-
-        prefix_matches = [
-            candidate
-            for candidate in available_model_names
-            if candidate.startswith(normalized_configured)
-        ]
-        if prefix_matches:
-            return prefix_matches[0]
-
-        contains_matches = [
-            candidate
-            for candidate in available_model_names
-            if normalized_configured in candidate
-        ]
-        if contains_matches:
-            return contains_matches[0]
-
-        return normalized_configured
+        matched_model_name = match_ollama_model_name(
+            configured_model_name,
+            available_model_names,
+        )
+        if matched_model_name is None:
+            available_models = ", ".join(sorted(available_model_names))
+            raise RuntimeError(
+                "Configured Ollama model "
+                f"'{configured_model_name}' was not found. Available models: "
+                f"{available_models}"
+            )
+        return matched_model_name
 
     def _available_model_names(self) -> list[str]:
-        try:
-            models_payload = get_json(
-                url=self._models_url,
-                timeout_seconds=self._timeout_seconds,
-            )
-        except StructuredModelTransportError as exc:
-            if exc.status_code != 404:
-                raise
-        else:
-            data = models_payload.get("data")
-            if isinstance(data, list):
-                names = [
-                    str(item.get("id"))
-                    for item in data
-                    if isinstance(item, dict) and isinstance(item.get("id"), str)
-                ]
-                if names:
-                    return names
-
-        tags_payload = get_json(
-            url=self._tags_url,
+        return get_ollama_available_model_names(
+            base_url=self._base_url,
             timeout_seconds=self._timeout_seconds,
         )
-        models = tags_payload.get("models")
-        if not isinstance(models, list):
-            return []
-        return [
-            str(item.get("name"))
-            for item in models
-            if isinstance(item, dict) and isinstance(item.get("name"), str)
-        ]
 
     def _default_transport(
         self,
