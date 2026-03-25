@@ -1,7 +1,7 @@
 """Application configuration."""
 
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Union
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -111,7 +111,7 @@ class Settings(BaseSettings):
             "OPENAI_BASE_URL",
         ),
     )
-    openai_api_key: str | None = Field(
+    openai_api_key: Union[str, None] = Field(
         default=None,
         validation_alias=AliasChoices(
             "ORCHESTRATOR_OPENAI_API_KEY",
