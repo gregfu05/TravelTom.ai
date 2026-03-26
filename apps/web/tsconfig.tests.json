@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": ".tmp-tests",
+    "rootDir": "src"
+  },
+  "include": [
+    "src/api/client.ts",
+    "src/api/client.test.ts",
+    "src/api/errorHandling.ts",
+    "src/api/errorHandling.test.ts",
+    "src/components/chatErrorState.ts",
+    "src/components/chatErrorState.test.ts",
+    "src/components/sessionHydration.ts",
+    "src/components/sessionHydration.test.ts",
+    "src/store/session.ts",
+    "src/store/session.test.ts"
+  ]
+}

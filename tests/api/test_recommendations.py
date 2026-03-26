@@ -25,7 +25,8 @@ def _base_payload() -> dict[str, Any]:
 
 
 def test_recommendations_query_returns_placeholder_response() -> None:
-    def deterministic_tool(_request):
+    def _fake_recommendation_tool(query):
+        del query
         return {
             "ranking_version": "heuristic-v1",
             "results": [
@@ -40,7 +41,9 @@ def test_recommendations_query_returns_placeholder_response() -> None:
             ],
         }
 
-    app.dependency_overrides[get_recommendation_tool] = lambda: deterministic_tool
+    app.dependency_overrides[get_recommendation_tool] = (
+        lambda: _fake_recommendation_tool
+    )
     try:
         client = TestClient(app)
         response = client.post("/api/v1/recommendations/query", json=_base_payload())
@@ -62,13 +65,17 @@ def test_recommendations_query_rejects_invalid_payload() -> None:
     response = client.post("/api/v1/recommendations/query", json=payload)
 
     assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
 
 
 def test_recommendations_query_handles_invalid_tool_response() -> None:
-    def invalid_tool(_request):
-        return {"results": [{"item_id": "x"}]}
+    def _invalid_recommendation_tool(query):
+        del query
+        return {"ranking_version": "heuristic-v1", "results": [{"item_id": 123}]}
 
-    app.dependency_overrides[get_recommendation_tool] = lambda: invalid_tool
+    app.dependency_overrides[get_recommendation_tool] = (
+        lambda: _invalid_recommendation_tool
+    )
     try:
         client = TestClient(app)
         response = client.post("/api/v1/recommendations/query", json=_base_payload())
@@ -76,4 +83,6 @@ def test_recommendations_query_handles_invalid_tool_response() -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "Invalid recommendation service response"
+    assert (
+        response.json()["error"]["message"] == "Invalid recommendation service response"
+    )

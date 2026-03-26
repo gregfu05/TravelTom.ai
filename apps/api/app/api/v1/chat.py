@@ -1,54 +1,42 @@
-"""Chat endpoint with orchestrator execution and session persistence."""
+"""Chat endpoint with TravelTom agent execution and session persistence."""
 
 from __future__ import annotations
 
-from functools import lru_cache
+import logging
+from collections.abc import Mapping, Sequence
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Request
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
+from app.core.errors import ApiError, get_trace_id
+from app.core.security import (
+    enforce_chat_rate_limit,
+    require_authenticated_principal,
+)
+from app.db.models.message import Message
 from app.db.session import get_db
-from app.schemas.api.chat import ChatRecommendation, ChatRequest, ChatResponse
+from app.schemas.api.chat import (
+    ChatRecommendation,
+    ChatRequest,
+    ChatResponse,
+    ChatSessionMessage,
+    ChatSessionResponse,
+)
+from app.schemas.auth import AuthenticatedPrincipal
+from app.schemas.orchestrator import OrchestratorResponse
 from app.schemas.state import SessionState
 from app.services.chat_persistence import (
     load_session_state,
-    parse_optional_uuid,
     session_pk,
 )
 from app.services.chat_uow import ChatUnitOfWork
-from app.services.orchestrator.llm_provider import build_orchestrator_llm_models
-from app.services.orchestrator.schemas import OrchestratorResponse
-from app.services.orchestrator.service import OrchestratorService
-from traveltom.recommendor.recommendor_v1 import recommendation_tool
+from app.services.travel_tom_agent import TravelTomAgent, get_travel_tom_agent
 
 router = APIRouter()
-
-
-@lru_cache()
-def get_orchestrator_service() -> OrchestratorService:
-    """Return a cached orchestrator service instance."""
-
-    settings = get_settings()
-    llm_models = build_orchestrator_llm_models(
-        provider=settings.orchestrator_llm_provider,
-        ollama_base_url=settings.ollama_base_url,
-        ollama_planning_model=settings.ollama_planning_model,
-        ollama_response_model=settings.ollama_response_model,
-        llm_timeout_seconds=settings.orchestrator_llm_timeout_seconds,
-        ollama_temperature=settings.ollama_temperature,
-        openai_base_url=settings.openai_base_url,
-        openai_api_key=settings.openai_api_key,
-        openai_planning_model=settings.openai_planning_model,
-        openai_response_model=settings.openai_response_model,
-        openai_temperature=settings.openai_temperature,
-    )
-    return OrchestratorService(
-        recommendation_tool=recommendation_tool,
-        planning_model=llm_models.planning_model,
-        response_model=llm_models.response_model,
-    )
+logger = logging.getLogger(__name__)
 
 
 def get_chat_uow(db: AsyncSession = Depends(get_db)) -> ChatUnitOfWork:
@@ -60,36 +48,62 @@ def get_chat_uow(db: AsyncSession = Depends(get_db)) -> ChatUnitOfWork:
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
+    http_request: Request,
+    _: None = Depends(enforce_chat_rate_limit),
+    principal: AuthenticatedPrincipal | None = Depends(require_authenticated_principal),
+    settings: Settings = Depends(get_settings),
     uow: ChatUnitOfWork = Depends(get_chat_uow),
-    orchestrator: OrchestratorService = Depends(get_orchestrator_service),
+    agent: TravelTomAgent = Depends(get_travel_tom_agent),
 ) -> ChatResponse:
     """Handle a chat message and persist session/message/recommendation records."""
 
     pk = session_pk(request.session_id)
-    user_uuid = parse_optional_uuid(request.user_id)
 
     try:
         async with uow:
+            owner_user_id = None
+            state_user_id = None
+
+            if principal is not None:
+                user_row = await uow.user_repository.get_or_create_from_principal(
+                    principal
+                )
+                owner_user_id = user_row.id
+                state_user_id = str(user_row.id)
+
             session_row = await uow.chat_repository.get_or_create_session(
                 pk=pk,
                 session_id=request.session_id,
-                request_user_id=request.user_id,
-                user_uuid=user_uuid,
+                owner_user_id=owner_user_id,
             )
+            uow.chat_repository.ensure_session_owner(
+                session_row=session_row,
+                owner_user_id=owner_user_id,
+            )
+
             state = load_session_state(
                 raw_state=session_row.state_json,
                 session_id=request.session_id,
-                user_id=request.user_id,
+                user_id=state_user_id,
+            )
+            recent_messages = await uow.chat_repository.get_recent_messages(
+                pk=pk,
+                limit=agent.recent_history_limit,
             )
 
-            orchestration = orchestrator.handle_message(
+            orchestration = agent.handle_chat(
                 user_message=request.message,
                 session_state=state,
+                recent_messages=recent_messages,
             )
+
             persisted_state = SessionState.model_validate(orchestration.state)
+            persisted_state.session_id = request.session_id
+            persisted_state.user_id = state_user_id
             session_row.state_json = persisted_state.model_dump(mode="json")
-            if user_uuid is not None:
-                session_row.user_id = user_uuid
+
+            if owner_user_id is not None:
+                session_row.user_id = owner_user_id
 
             await uow.flush()
 
@@ -111,23 +125,108 @@ async def chat(
                 request_message_id=request.message_id,
                 orchestration=orchestration,
             )
-    except ValidationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid session state payload",
-        ) from exc
-    except HTTPException:
+    except ApiError as exc:
+        if exc.code == "provider_rate_limited":
+            logger.warning(
+                "chat_provider_rate_limited",
+                extra={
+                    "trace_id": get_trace_id(http_request),
+                    "context": {
+                        "chat_provider": settings.orchestrator_llm_provider,
+                        "error_code": exc.code,
+                        "path": str(http_request.url.path),
+                        "principal_subject": (
+                            principal.subject if principal is not None else None
+                        ),
+                        "session_id": request.session_id,
+                    },
+                },
+            )
         raise
+    except ValidationError as exc:
+        raise ApiError(
+            status_code=400,
+            code="invalid_session_state",
+            message="Invalid session state payload",
+        ) from exc
     except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to process chat message",
+        raise ApiError(
+            status_code=500,
+            code="chat_processing_failed",
+            message="Failed to process chat message",
         ) from exc
 
-    raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Failed to process chat message",
-    )
+    raise RuntimeError("Chat handler completed without producing a response")
+
+
+@router.get("/chat/{session_id}", response_model=ChatSessionResponse)
+async def get_chat_session(
+    session_id: str,
+    principal: AuthenticatedPrincipal | None = Depends(require_authenticated_principal),
+    uow: ChatUnitOfWork = Depends(get_chat_uow),
+) -> ChatSessionResponse:
+    """Return the persisted transcript, state, and latest recommendations."""
+
+    pk = session_pk(session_id)
+
+    try:
+        async with uow:
+            owner_user_id = None
+            state_user_id = None
+            if principal is not None:
+                user_row = await uow.user_repository.get_or_create_from_principal(
+                    principal
+                )
+                owner_user_id = user_row.id
+                state_user_id = str(user_row.id)
+
+            session_row = await uow.chat_repository.get_session(pk=pk)
+            if session_row is None:
+                raise ApiError(
+                    status_code=404,
+                    code="session_not_found",
+                    message="Chat session was not found",
+                )
+
+            uow.chat_repository.ensure_session_owner(
+                session_row=session_row,
+                owner_user_id=owner_user_id,
+            )
+            state = load_session_state(
+                raw_state=session_row.state_json,
+                session_id=session_id,
+                user_id=state_user_id,
+            )
+            messages = await uow.chat_repository.get_messages(pk=pk)
+            latest_snapshot = (
+                await uow.chat_repository.get_latest_recommendation_snapshot(pk=pk)
+            )
+            return _to_chat_session_response(
+                session_id=session_id,
+                state=state,
+                messages=messages,
+                raw_recommendations=(
+                    latest_snapshot.results_json.get("results", [])
+                    if latest_snapshot is not None
+                    else []
+                ),
+            )
+    except ValidationError as exc:
+        raise ApiError(
+            status_code=400,
+            code="invalid_session_state",
+            message="Invalid session state payload",
+        ) from exc
+    except ApiError:
+        raise
+    except Exception as exc:
+        raise ApiError(
+            status_code=500,
+            code="chat_session_read_failed",
+            message="Failed to load chat session",
+        ) from exc
+
+    raise RuntimeError("Chat session handler completed without producing a response")
 
 
 def _to_chat_response(
@@ -148,6 +247,7 @@ def _to_chat_response(
         )
         for item in orchestration.recommendations
     ]
+
     return ChatResponse(
         session_id=orchestration.session_id,
         message_id=request_message_id,
@@ -155,4 +255,45 @@ def _to_chat_response(
         recommendations=recommendations,
         itinerary=orchestration.itinerary,
         state=orchestration.state,
+    )
+
+
+def _to_chat_session_response(
+    *,
+    session_id: str,
+    state: SessionState,
+    messages: Sequence[Message],
+    raw_recommendations: Sequence[Mapping[str, Any]],
+) -> ChatSessionResponse:
+    """Map persisted session records to the session hydration API response."""
+
+    transcript = [
+        ChatSessionMessage(
+            id=str(message.id),
+            role=message.role,
+            content=message.content,
+            created_at=message.created_at,
+        )
+        for message in messages
+        if message.role in {"user", "assistant"}
+    ]
+    recommendations = [
+        ChatRecommendation(
+            item_id=str(item["item_id"]),
+            item_type=item["item_type"],
+            score=float(item["score"]),
+            rank=int(item["rank"]),
+            explanation=str(item["explanation"]),
+            metadata=(
+                item.get("features") if isinstance(item.get("features"), dict) else None
+            ),
+        )
+        for item in raw_recommendations
+        if isinstance(item, dict)
+    ]
+    return ChatSessionResponse(
+        session_id=session_id,
+        state=state.model_dump(mode="json"),
+        messages=transcript,
+        recommendations=recommendations,
     )

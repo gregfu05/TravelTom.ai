@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -24,7 +25,10 @@ class ChatRequest(BaseModel):
 
     session_id: str = Field(min_length=1)
     message_id: str = Field(min_length=1)
-    user_id: str | None = None
+    user_id: str | None = Field(
+        default=None,
+        json_schema_extra={"deprecated": True},
+    )
     message: str = Field(min_length=1)
     client_context: ClientContext | None = None
 
@@ -49,3 +53,21 @@ class ChatResponse(BaseModel):
     recommendations: list[ChatRecommendation] = Field(default_factory=list)
     itinerary: dict[str, Any] = Field(default_factory=dict)
     state: dict[str, Any]
+
+
+class ChatSessionMessage(BaseModel):
+    """Persisted visible transcript message for a chat session."""
+
+    id: str
+    role: Literal["user", "assistant"]
+    content: str
+    created_at: datetime
+
+
+class ChatSessionResponse(BaseModel):
+    """Persisted chat session payload used for frontend hydration."""
+
+    session_id: str
+    state: dict[str, Any]
+    messages: list[ChatSessionMessage] = Field(default_factory=list)
+    recommendations: list[ChatRecommendation] = Field(default_factory=list)

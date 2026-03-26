@@ -38,13 +38,24 @@ All tool inputs and outputs must pass explicit Pydantic validation.
 
 Note: empty recommendation results are valid and expected in placeholder mode.
 
-## Orchestrator usage notes (LLM-first flow)
+## Orchestrator usage notes (LangChain-native flow)
 
-- Planner output is validated separately and then mapped to `RecommendationQuery`.
+- `TravelTomAgent` registers the recommendation tool once with LangChain's
+  `@tool` decorator and supplies it to two `create_agent` instances:
+  - a bounded chat agent
+  - a deterministic direct recommendation agent
 - `ranking_version` remains pinned to `"heuristic-v1"` in orchestrator runtime.
-- `max_results` defaults to policy value (`5` for chat) unless planner-provided value passes schema validation.
-- `filters.item_type` is normalized to `destination|hotel|flight` with deterministic fallback extraction when absent.
-- Any invalid mapped query payload aborts tool execution and returns a safe clarification response.
+- `max_results` defaults to the chat policy value (`5`) in the bounded chat
+  fallback path and remains request-driven for `/api/v1/recommendations/query`.
+- `filters.item_type` is normalized to `destination|hotel|flight` with
+  deterministic extraction when absent from the agent path.
+- The tool returns a LangChain runtime artifact with:
+  - `status`: `success|timeout|invalid_payload|failure`
+  - `response`: validated `RecommendationToolResponse` on success
+  - `error_code` / `error_message` on failure
+- Direct recommendation mode uses the same `RecommendationQuery` and
+  `RecommendationToolResponse` contracts and returns only validated tool-backed
+  results to the route.
 
 ## Catalog tool
 
@@ -69,6 +80,6 @@ Note: empty recommendation results are valid and expected in placeholder mode.
 ## Failure handling baseline
 
 - Validation failure: block tool execution and return a safe user response.
-- Tool timeout/error: return partial orchestration output and prompt for retry.
+- Tool timeout/error: normalize to a runtime artifact and return a deterministic safe response.
 - Use per-tool timeout policies from orchestration config.
 

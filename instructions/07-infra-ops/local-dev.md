@@ -9,15 +9,27 @@
 ## Docker Compose (MVP)
 
 Services:
-- API service
 - Postgres
-- pgvector extension enabled
+- one-shot Alembic migration job
+- optional one-shot catalog seed overlay
 
 ## Environment variables
 
 - `DATABASE_URL`
 - `APP_ENV=local`
-- `ORCHESTRATOR_LLM_PROVIDER=disabled|ollama|openai`
+- `AUTH_ENABLED=false|true`
+- `AUTH_APP_CLIENT_ID` (reserved for later Azure AD B2C deployment work)
+- `AUTH_TENANT_NAME` (reserved for later Azure AD B2C deployment work)
+- `AUTH_POLICY_NAME` (reserved for later Azure AD B2C deployment work)
+- `AUTH_REQUIRED_SCOPES` (default `user_impersonation`, reserved for later provider integration)
+- `LOCAL_AUTH_TOKEN_SECRET` (required for local signup/login and local bearer validation; use at least 32 random bytes)
+- `LOCAL_AUTH_TOKEN_TTL_SECONDS` (default `604800`)
+- `LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS` (default `43200`)
+- `CHAT_RATE_LIMIT` (default `30/minute`)
+- `CHAT_RATE_LIMIT_ENABLED` (optional; defaults to `false` in local/dev and
+  `true` outside local/dev)
+- `CORS_ALLOWED_ORIGINS` (space- or comma-separated, default `http://localhost:5173 http://127.0.0.1:5173`)
+- `ORCHESTRATOR_LLM_PROVIDER=ollama|openai|disabled`
 - `ORCHESTRATOR_LLM_TIMEOUT_SECONDS` (default `20`)
 - `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`)
 - `OLLAMA_PLANNING_MODEL` (default `llama3.1:8b`)
@@ -31,11 +43,23 @@ Services:
 
 Store these in a local `.env` file (copy from `.env.example`) and do not hard-code them in code.
 
-To enable local Ollama orchestration:
+Local chat runtime default:
+
+- `.env.example`, the checked-in local `.env`, and backend config default to
+  `ORCHESTRATOR_LLM_PROVIDER=ollama` so local chat uses a provider-backed,
+  natural-language runtime by default.
+- Set `ORCHESTRATOR_LLM_PROVIDER=disabled` only when you explicitly want the
+  deterministic fallback/test path.
+
+To use the default local Ollama orchestration:
 
 1. Run Ollama locally and pull a model (for example `ollama pull llama3.1:8b`).
 2. Set `ORCHESTRATOR_LLM_PROVIDER=ollama` in `.env`.
 3. Restart the API process so cached service dependencies reload.
+
+If you are not running Ollama locally, switch `.env`
+`ORCHESTRATOR_LLM_PROVIDER=disabled` so chat stays on the deterministic fallback
+path instead of failing provider calls.
 
 To enable OpenAI orchestration:
 
@@ -44,14 +68,51 @@ To enable OpenAI orchestration:
 3. Optionally override model and endpoint values.
 4. Restart the API process so cached service dependencies reload.
 
+To enable backend auth locally:
+
+1. Set `AUTH_ENABLED=true` in `.env`.
+2. For the current backend scope, use TravelTom local bearer tokens from
+   `POST /api/v1/auth/signup` or `POST /api/v1/auth/login`.
+3. Optionally override `CHAT_RATE_LIMIT`.
+4. Set `CHAT_RATE_LIMIT_ENABLED=true` only when you explicitly want to test
+   TravelTom-owned chat throttling in local dev.
+5. Restart the API process so cached auth dependencies reload.
+
+To enable TravelTom local account auth locally:
+
+1. Set `LOCAL_AUTH_TOKEN_SECRET` in `.env`.
+2. Optionally override `LOCAL_AUTH_TOKEN_TTL_SECONDS`.
+3. Optionally override `LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS`.
+4. Install backend dependencies so `fastapi-users` and its password helpers are available.
+5. Run the latest API migrations so the existing `users.password_hash` and `auth_sessions`
+   tables exist.
+6. Restart the API process so cached auth dependencies reload.
+
+Local auth lifecycle notes:
+
+- The current backend build supports local email/password auth end-to-end.
+- Local credential storage/verification is library-backed, but logout and idle timeout
+  still depend on persisted `auth_sessions`.
+- `POST /api/v1/auth/logout` revokes the current local bearer token.
+- Local bearer tokens expire by absolute TTL and by inactivity timeout.
+- Azure AD B2C deployment/provider wiring is deferred until later deployment work.
+
 ## First run
 
-1. Start services: `docker compose up -d`
-2. Run migrations: `alembic -c apps/api/alembic.ini upgrade head`
+1. Copy `.env.example` to `.env` and keep `DATABASE_URL` aligned with your local
+   Postgres port and credentials.
+2. Start local Postgres and automatically apply Alembic migrations:
+   `docker compose -f infra/docker/docker-compose.yml up --build`
+   - Add `-d` if you want the stack to stay up in the background.
 3. Build cleaned snapshot (optional if already present): `python -m traveltom.cleaning.cleaning`
    - If skipped and `business_SB_Cleaned.parquet` is missing, the seed script
      copies `business_SB.parquet` into the cleaned path before seeding.
-4. Seed catalog: `python scripts/seed_catalog.py --truncate`
+4. Seed catalog with the compose overlay when you want full local bootstrap:
+   `docker compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.seed.yml up --build`
+   - This waits for Postgres health, runs migrations, then runs
+     `python scripts/seed_catalog.py --truncate` once and exits.
+   - You can still run the script manually from repo root if you only need to
+     reseed an already-running database.
 5. Start backend and frontend.
 
 Optional pre-check:
@@ -62,6 +123,15 @@ Optional pre-check:
 - Alembic path error (`Path doesn't exist: migrations`):
   - Run from repo root with config path:
     `alembic -c apps/api/alembic.ini upgrade head`
+- Docker compose migration or seed job cannot connect to Postgres:
+  - Verify the `postgres` container is healthy with
+    `docker compose -f infra/docker/docker-compose.yml ps`.
+  - If you changed local DB credentials or port, keep `.env` `DATABASE_URL` and
+    compose overrides (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`,
+    `POSTGRES_PORT`) aligned.
+  - If `pgvector` was added after an older local volume was created, reset the
+    stack and volume:
+    `docker compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.seed.yml down -v`
 - Mypy duplicate module errors (for example `traveltom` in `build/lib`):
   - Generated build artifacts are excluded by project mypy config.
   - If artifacts were created before pulling latest changes, rerun
@@ -80,12 +150,22 @@ Optional pre-check:
     directly; if that is empty, restart backend and ensure latest recommender code
     is deployed.
   - Restart API after backend code/config changes so cached dependencies refresh.
+- Chat returns `429` immediately:
+  - Inspect `error.code` first.
+  - `rate_limit_exceeded` means TravelTom-owned throttling. Use `Retry-After`,
+    `details.retry_after_seconds`, and `X-Trace-ID` to confirm the limiter decision.
+  - `provider_rate_limited` means the upstream chat provider is quota-limited.
+    Do not lower TravelTom throttling to mask that path.
+  - In local/dev, confirm whether `CHAT_RATE_LIMIT_ENABLED` is intentionally on.
 - Frontend chat shows assistant text but no recommendation cards:
   - Verify `/api/v1/chat` network response contains `recommendations` data.
   - Ensure frontend is running against the intended backend
     (`VITE_API_PROXY_TARGET` or default proxy to `http://localhost:8000`).
   - Configure `apps/web/.env` (from `apps/web/.env.example`) when backend is
     not running on `localhost:8000`.
+- Browser requests fail before reaching the API:
+  - If the frontend is not using the Vite dev proxy, set backend
+    `CORS_ALLOWED_ORIGINS` to include the frontend origin and restart the API.
 
 ## Pre-deploy checks (local)
 

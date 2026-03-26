@@ -1,157 +1,182 @@
-"""Tests for orchestrator LLM provider bindings."""
+"""Tests for LangChain-native chat model construction."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import cast
 
 import pytest
-from app.services.orchestrator.llm_provider import build_orchestrator_llm_models
-from app.services.orchestrator.providers import (
-    OllamaStructuredClient,
-    OpenAIStructuredClient,
+from app.core.errors import ApiError
+from app.services.orchestrator.llm_provider import (
+    DeterministicRecommendationAgentModel,
+    DeterministicTravelTomChatModel,
+    build_chat_model,
+    build_direct_recommendation_model,
+    map_provider_exception_to_api_error,
 )
+from app.services.orchestrator.providers import OllamaStructuredClient
+from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
 
 
-def _base_provider_kwargs() -> dict[str, Any]:
-    return {
-        "ollama_base_url": "http://127.0.0.1:11434",
-        "ollama_planning_model": "llama3.1:8b",
-        "ollama_response_model": "llama3.1:8b",
-        "llm_timeout_seconds": 20.0,
-        "ollama_temperature": 0.0,
-        "openai_base_url": "https://api.openai.com/v1",
-        "openai_api_key": "test-key",
-        "openai_planning_model": "gpt-4.1-mini",
-        "openai_response_model": "gpt-4.1-mini",
-        "openai_temperature": 0.0,
-    }
-
-
-def test_build_orchestrator_llm_models_returns_none_for_disabled() -> None:
-    bindings = build_orchestrator_llm_models(
+def test_build_chat_model_returns_deterministic_model_for_disabled_provider() -> None:
+    model = build_chat_model(
         provider="disabled",
-        **_base_provider_kwargs(),
+        ollama_base_url="http://127.0.0.1:11434",
+        ollama_chat_model="llama3.1:8b",
+        llm_timeout_seconds=20.0,
+        ollama_temperature=0.0,
+        openai_base_url="https://api.openai.com/v1",
+        openai_api_key="test-key",
+        openai_chat_model="gpt-4.1-mini",
+        openai_temperature=0.0,
+        max_results=5,
     )
-    assert bindings.planning_model is None
-    assert bindings.response_model is None
+
+    assert isinstance(model, DeterministicTravelTomChatModel)
 
 
-def test_build_orchestrator_llm_models_requires_key_for_openai() -> None:
-    kwargs = _base_provider_kwargs()
-    kwargs["openai_api_key"] = None
-
+def test_build_chat_model_requires_key_for_openai() -> None:
     with pytest.raises(ValueError, match="OPENAI_API_KEY"):
-        build_orchestrator_llm_models(
+        build_chat_model(
             provider="openai",
-            **kwargs,
+            ollama_base_url="http://127.0.0.1:11434",
+            ollama_chat_model="llama3.1:8b",
+            llm_timeout_seconds=20.0,
+            ollama_temperature=0.0,
+            openai_base_url="https://api.openai.com/v1",
+            openai_api_key=None,
+            openai_chat_model="gpt-4.1-mini",
+            openai_temperature=0.0,
+            max_results=5,
         )
 
 
-def test_ollama_structured_client_parses_json_content() -> None:
-    seen_payloads: list[dict[str, Any]] = []
-
-    def transport(url: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
-        assert url == "http://127.0.0.1:11434/api/chat"
-        assert timeout == 15.0
-        seen_payloads.append(payload)
-        return {
-            "message": {
-                "content": (
-                    '{"intent":"recommend","should_call_recommendation_tool":true,'
-                    '"state_patch":{},"query_controls":{}}'
-                )
-            }
-        }
-
-    client = OllamaStructuredClient(
-        base_url="http://127.0.0.1:11434",
-        planning_model_name="llama3.1:8b",
-        response_model_name="llama3.1:8b",
-        timeout_seconds=15.0,
-        temperature=0.0,
-        transport=transport,
-    )
-    payload = client.plan({"prompt": "test prompt"})
-
-    assert payload["intent"] == "recommend"
-    assert len(seen_payloads) == 1
-    assert seen_payloads[0]["model"] == "llama3.1:8b"
-    assert seen_payloads[0]["stream"] is False
-    assert seen_payloads[0]["format"] == "json"
-
-
-def test_ollama_structured_client_rejects_invalid_content() -> None:
-    def transport(url: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
-        del url
-        del payload
-        del timeout
-        return {"message": {"content": "not valid json"}}
-
-    client = OllamaStructuredClient(
-        base_url="http://127.0.0.1:11434",
-        planning_model_name="llama3.1:8b",
-        response_model_name="llama3.1:8b",
-        timeout_seconds=15.0,
-        temperature=0.0,
-        transport=transport,
+def test_build_chat_model_returns_langchain_openai_model() -> None:
+    model = build_chat_model(
+        provider="openai",
+        ollama_base_url="http://127.0.0.1:11434",
+        ollama_chat_model="llama3.1:8b",
+        llm_timeout_seconds=20.0,
+        ollama_temperature=0.0,
+        openai_base_url="https://api.openai.com/v1",
+        openai_api_key="test-key",
+        openai_chat_model="gpt-4.1-mini",
+        openai_temperature=0.0,
+        max_results=5,
     )
 
-    with pytest.raises(RuntimeError, match="JSON"):
-        client.plan({"prompt": "plan prompt"})
+    assert isinstance(model, ChatOpenAI)
+    assert model.model_name == "gpt-4.1-mini"
 
 
-def test_openai_structured_client_parses_json_content() -> None:
-    seen_payloads: list[dict[str, Any]] = []
+def test_build_chat_model_returns_langchain_ollama_model(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.orchestrator.llm_provider.get_ollama_available_model_names",
+        lambda **_kwargs: ["llama3.1:8b-instruct-q4_0"],
+    )
 
-    def transport(url: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
-        assert url == "https://api.openai.com/v1/chat/completions"
-        assert timeout == 12.0
-        seen_payloads.append(payload)
+    model = build_chat_model(
+        provider="ollama",
+        ollama_base_url="http://127.0.0.1:11434",
+        ollama_chat_model="llama3.1:8b",
+        llm_timeout_seconds=20.0,
+        ollama_temperature=0.0,
+        openai_base_url="https://api.openai.com/v1",
+        openai_api_key="test-key",
+        openai_chat_model="gpt-4.1-mini",
+        openai_temperature=0.0,
+        max_results=5,
+    )
+
+    assert isinstance(model, ChatOllama)
+    assert model.model == "llama3.1:8b-instruct-q4_0"
+
+
+def test_build_direct_recommendation_model_returns_deterministic_model() -> None:
+    model = build_direct_recommendation_model()
+    assert isinstance(model, DeterministicRecommendationAgentModel)
+
+
+def test_ollama_structured_client_uses_configured_timeout_for_planner_requests(
+    monkeypatch,
+) -> None:
+    captured_timeouts: list[float] = []
+    captured_request: dict[str, object] = {}
+
+    def transport(
+        url: str, payload: dict[str, object], timeout: float
+    ) -> dict[str, object]:
+        captured_request["url"] = url
+        captured_request["payload"] = payload
+        captured_timeouts.append(timeout)
         return {
             "choices": [
                 {
                     "message": {
                         "content": (
-                            '{"assistant_message":"Grounded response from model."}'
+                            '{"intent":"clarify",'
+                            '"should_call_recommendation_tool":false}'
                         )
                     }
                 }
             ]
         }
 
-    client = OpenAIStructuredClient(
-        base_url="https://api.openai.com/v1",
-        api_key="test-key",
-        planning_model_name="gpt-4.1-mini",
-        response_model_name="gpt-4.1-mini",
-        timeout_seconds=12.0,
+    client = OllamaStructuredClient(
+        base_url="http://127.0.0.1:11434",
+        planning_model_name="llama3.1:8b",
+        response_model_name="llama3.1:8b",
+        timeout_seconds=20.0,
         temperature=0.0,
         transport=transport,
     )
-    payload = client.compose({"prompt": "compose prompt"})
-
-    assert payload["assistant_message"] == "Grounded response from model."
-    assert len(seen_payloads) == 1
-    assert seen_payloads[0]["model"] == "gpt-4.1-mini"
-    assert seen_payloads[0]["response_format"] == {"type": "json_object"}
-
-
-def test_openai_structured_client_rejects_invalid_content() -> None:
-    def transport(url: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
-        del url
-        del payload
-        del timeout
-        return {"choices": [{"message": {"content": "not valid json"}}]}
-
-    client = OpenAIStructuredClient(
-        base_url="https://api.openai.com/v1",
-        api_key="test-key",
-        planning_model_name="gpt-4.1-mini",
-        response_model_name="gpt-4.1-mini",
-        timeout_seconds=12.0,
-        temperature=0.0,
-        transport=transport,
+    monkeypatch.setattr(
+        client,
+        "_available_model_names",
+        lambda: ["llama3.1:8b"],
+        raising=False,
     )
 
-    with pytest.raises(RuntimeError, match="JSON"):
-        client.plan({"prompt": "plan prompt"})
+    payload = client.plan({"prompt": "hello"})
+
+    assert payload == {
+        "intent": "clarify",
+        "should_call_recommendation_tool": False,
+    }
+    assert captured_timeouts == [20.0]
+    assert str(captured_request["url"]).endswith("/v1/chat/completions")
+    response_payload = cast(dict[str, object], captured_request["payload"])
+    response_format = response_payload.get("response_format")
+    assert isinstance(response_format, dict)
+    assert response_format["type"] == "json_schema"
+    assert isinstance(response_format["json_schema"], dict)
+
+
+class _FakeResponse:
+    status_code = 429
+    headers = {"Retry-After": "13"}
+
+
+class _FakeProviderError(Exception):
+    def __init__(self) -> None:
+        super().__init__("Provider quota exceeded")
+        self.response = _FakeResponse()
+
+
+def test_map_provider_exception_to_api_error_returns_structured_429() -> None:
+    error = map_provider_exception_to_api_error(
+        _FakeProviderError(),
+        provider="openai",
+    )
+
+    assert isinstance(error, ApiError)
+    assert error.status_code == 429
+    assert error.code == "provider_rate_limited"
+    assert error.details == {
+        "provider": "openai",
+        "source": "provider",
+        "upstream_error_type": "_FakeProviderError",
+        "upstream_status_code": 429,
+        "retry_after_seconds": 13,
+    }
+    assert error.headers == {"Retry-After": "13"}

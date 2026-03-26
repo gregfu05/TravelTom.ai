@@ -7,8 +7,14 @@ requires-python = ">=3.10"
 
 dependencies = [
   "fastapi>=0.110",
+  "fastapi-users[sqlalchemy]>=15.0.4",
   "alembic>=1.13",
-  "langchain-core>=0.3",
+  "fastapi-azure-auth>=5.2.0",
+  "langchain>=1.0",
+  "langchain-core>=1.2",
+  "langchain-ollama>=1.0",
+  "langchain-openai>=1.0",
+  "limits>=5.8",
   "numpy>=1.26",
   "pandas>=2.2",
   "pyarrow>=15.0",

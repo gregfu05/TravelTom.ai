@@ -1,5 +1,310 @@
 # Instructions Changelog
 
+## 2026-03-24
+
+- Shifted `/api/v1/chat` orchestration back to planner-first extraction and
+  conversation control without changing recommender behavior:
+  - `apps/api/app/services/orchestrator/service.py` now invokes the planner for
+    normal non-empty chat turns instead of skipping greetings, slot-filling
+    replies, search-type replies, and common follow-up refinements, while
+    keeping deterministic recommendation execution as a failure fallback.
+  - `apps/api/app/services/orchestrator/extraction.py` now hardens
+    deterministic fallback so filler phrases like `be honest` and `lower cost`
+    cannot overwrite a valid destination, and lower-cost follow-ups preserve
+    hotel/flight continuity.
+  - `apps/api/app/services/orchestrator/policies.py` and
+    `apps/api/app/services/travel_tom_agent.py` now document and enforce that
+    the planner owns natural-language slot extraction on normal chat turns,
+    while grounded recommendation content still comes only from validated tool
+    output.
+  - `tests/orchestrator/test_service.py`,
+    `tests/orchestrator/test_extraction.py`,
+    `04-llm-orchestrator/orchestrator-overview.md`,
+    `04-llm-orchestrator/prompts-and-guardrails.md`, and
+    `04-llm-orchestrator/session-state-schema.md` now cover and describe the
+    planner-first hybrid flow and fallback destination-safety guardrails.
+
+## 2026-03-23
+
+- Documented the implemented chat coherence fixes:
+  - `04-llm-orchestrator/orchestrator-overview.md` now documents planner bypass
+    for deterministic turns, search-type clarification, item-type-aware slot
+    requirements, and stronger empty-results guidance.
+  - `04-llm-orchestrator/prompts-and-guardrails.md` now documents the
+    `search_type` / `refine_preference` clarification branches, generic
+    trip-to-recommendation promotion, natural flight-route extraction, and
+    mixed one-shot destination/date/budget parsing.
+  - `04-llm-orchestrator/session-state-schema.md` now includes
+    `conversation.last_clarification_kind` and
+    `conversation.last_search_outcome`, plus the item-type-aware required-slot
+    rules.
+  - `05-frontend/ux-flows.md` now documents backend-backed planner hydration
+    and the current chat progression from greeting through search-type
+    clarification and grounded/no-results outcomes.
+
+## 2026-03-19
+
+- Fixed four high-impact `/api/v1/chat` regressions in the orchestrator layer
+  without changing dataset or recommender behavior:
+  - `apps/api/app/services/orchestrator/providers/ollama.py` now prefers
+    Ollama's OpenAI-compatible structured endpoint with JSON-schema constrained
+    planner output and a higher structured timeout floor, so planner transport
+    failures are no longer caused by the old silent timeout path.
+  - `apps/api/app/services/orchestrator/extraction.py` now uses token-aware and
+    negation-aware interest matching so `Santa Barbara` does not imply `bar`
+    and repair turns like `not restaurants` do not add positive restaurant
+    interest.
+  - `apps/api/app/services/orchestrator/policies.py` and
+    `apps/api/app/services/orchestrator/service.py` now keep meta questions and
+    repair turns conversational, truncate long transcript replay for planning,
+    and suppress duplicate-only `show me more` follow-ups by tracking the last
+    surfaced grounded item ids in `SessionState.conversation`.
+  - `apps/api/app/schemas/state.py`, `tests/orchestrator/test_service.py`,
+    `tests/orchestrator/test_extraction.py`, `tests/orchestrator/test_llm_provider.py`,
+    and `tests/api/test_chat.py` now cover planner transport behavior, Santa
+    Barbara tokenization, repair-turn interest handling, transcript truncation,
+    and duplicate follow-up suppression.
+  - `04-llm-orchestrator/orchestrator-overview.md`,
+    `04-llm-orchestrator/prompts-and-guardrails.md`,
+    `04-llm-orchestrator/session-state-schema.md`, and
+    `02-backend/services-and-modules.md` now document the updated runtime.
+
+- Introduced schema-validated planner-first `/api/v1/chat` orchestration while
+  keeping deterministic recommendation grounding:
+  - `apps/api/app/services/orchestrator/service.py` now runs a structured
+    planner step after deterministic hint extraction, validates
+    `LLMOrchestrationPlan`, merges `state_patch` through
+    `apply_structured_state_patch(...)`, threads validated `query_controls`
+    into hidden recommendation context, and falls back to deterministic
+    behavior when planner output is missing or invalid.
+  - `apps/api/app/services/travel_tom_agent.py` now builds a provider-backed
+    structured planner client for `/chat` while keeping the LangChain
+    `create_agent` loop and deterministic direct recommendation mode intact.
+  - `apps/api/app/services/orchestrator/policies.py` now feeds the planner raw
+    user text, bounded recent transcript, validated current state, and
+    deterministic extraction/carry-forward hints.
+  - `tests/orchestrator/test_service.py` now covers planner prompt context,
+    planner-authored natural slot filling, planner query-control shaping, and
+    deterministic fallback when planner state patches fail validation.
+  - `04-llm-orchestrator/orchestrator-overview.md`,
+    `04-llm-orchestrator/prompts-and-guardrails.md`,
+    `04-llm-orchestrator/session-state-schema.md`, and
+    `02-backend/services-and-modules.md` now describe the hybrid
+    planner-plus-deterministic runtime.
+
+- Tightened destination extraction guardrails so greetings and meta replies no
+  longer seed fake trip state:
+  - `apps/api/app/services/orchestrator/extraction.py` now only accepts
+    assignment-style `destination ...` phrases, rejects conversational bare
+    phrases like `Hello Tommy`, and avoids treating meta uses of the word
+    `destination` as active destination-exploration intent.
+  - `tests/orchestrator/test_extraction.py` and
+    `tests/orchestrator/test_service.py` now cover the exact greeting/meta
+    repro and verify that those turns keep destination state empty while real
+    bare replies like `Lisbon` still work.
+  - `04-llm-orchestrator/orchestrator-overview.md`,
+    `04-llm-orchestrator/prompts-and-guardrails.md`, and
+    `04-llm-orchestrator/session-state-schema.md` now document the stricter
+    destination-capture behavior.
+
+## 2026-03-18
+
+- Fixed chat recommendation deadlocks and restored grounded reply composition:
+  - `apps/api/app/services/orchestrator/service.py` now preserves pending
+    recommendation query/item-type memory during clarification, re-asks the same
+    missing slot until captured, and runs the deterministic recommendation path
+    immediately when the final required detail arrives but the agent still
+    clarifies.
+  - `apps/api/app/services/orchestrator/extraction.py` now rejects vague bare
+    phrases such as `Beach + relax`, `recommend a beach trip`, `show me more`,
+    and `cheaper` as destinations while still carrying recommendation intent
+    through slot-filling turns.
+  - `apps/api/app/services/orchestrator/policies.py` now implements the hybrid
+    recommendation policy: destination exploration can start from partial signal,
+    while hotel and flight searches still require destination, dates, and
+    budget.
+  - `apps/api/app/services/travel_tom_agent.py` now adds provider-backed
+    grounded response composition after validated tool/state normalization so
+    Ollama/OpenAI replies stay natural without allowing model-invented items.
+  - `apps/api/app/core/config.py`, `.env`, and `.env.example` now default local
+    chat to `ORCHESTRATOR_LLM_PROVIDER=ollama`; `disabled` remains the fallback
+    and test mode.
+  - `apps/web/src/components/ChatView.tsx` now uses planner chips and helper
+    copy that match backend recommendation timing.
+- Updated regression coverage and docs for the new behavior:
+  - `tests/orchestrator/test_service.py`
+  - `tests/orchestrator/test_extraction.py`
+  - `tests/api/test_chat.py`
+  - `tests/test_settings.py`
+  - `04-llm-orchestrator/orchestrator-overview.md`
+  - `04-llm-orchestrator/prompts-and-guardrails.md`
+  - `04-llm-orchestrator/session-state-schema.md`
+  - `02-backend/api-design.md`
+  - `02-backend/services-and-modules.md`
+  - `05-frontend/frontend-architecture.md`
+  - `05-frontend/ux-flows.md`
+  - `07-infra-ops/local-dev.md`
+
+- Restored `/api/v1/chat` to a true LangChain `create_agent` loop while keeping
+  deterministic recommendation shaping:
+  - `apps/api/app/services/travel_tom_agent.py` now rebuilds the shared chat
+    agent instead of routing normal chat through planner/composer model calls.
+  - `apps/api/app/services/orchestrator/service.py` now prepares hidden runtime
+    state + carry-forward context for the agent, normalizes agent transcripts,
+    and preserves deterministic fallback recommendation execution.
+  - `apps/api/app/services/orchestrator/extraction.py` now resolves effective
+    carried item type and effective recommender query text for elliptical
+    follow-up turns.
+  - `apps/api/app/schemas/state.py` now remembers the last effective
+    recommendation item type and query text in `conversation`.
+  - `apps/api/app/services/orchestrator/llm_provider.py` deterministic disabled
+    mode now consumes the same hidden carry-forward context as the real agent path.
+- Updated orchestrator/backend docs to reflect the restored chat-agent runtime:
+  - `04-llm-orchestrator/orchestrator-overview.md`
+  - `04-llm-orchestrator/prompts-and-guardrails.md`
+  - `04-llm-orchestrator/session-state-schema.md`
+  - `02-backend/api-design.md`
+  - `02-backend/services-and-modules.md`
+- Updated tests for the restored behavior:
+  - `tests/orchestrator/test_extraction.py`
+  - `tests/orchestrator/test_service.py`
+
+## 2026-03-16
+
+- Redesigned chat orchestration to use bounded recent transcript replay plus
+  conversation-aware state:
+  - `apps/api/app/services/orchestrator/service.py` now runs
+    deterministic extraction, structured planning, optional deterministic
+    recommendation execution, and grounded response composition per turn.
+  - `apps/api/app/services/travel_tom_agent.py` now invokes planner/composer
+    model calls for `/api/v1/chat` while keeping direct recommendation mode
+    LangChain-agent backed.
+  - `apps/api/app/repositories/chat.py` now exposes bounded recent-message reads
+    for orchestration input.
+  - `apps/api/app/schemas/state.py` now includes `conversation.last_requested_slots`
+    and `conversation.last_user_intent`.
+  - Updated orchestrator/chat tests for multi-turn carryover, progressive
+    clarification, refine continuity, and route-level transcript threading.
+- Updated backend/orchestrator docs for the implemented chat runtime:
+  - `04-llm-orchestrator/orchestrator-overview.md`
+  - `04-llm-orchestrator/prompts-and-guardrails.md`
+  - `04-llm-orchestrator/session-state-schema.md`
+  - `02-backend/services-and-modules.md`
+
+- Documented centralized frontend JSON request serialization:
+  - `05-frontend/frontend-architecture.md` now states that JSON request bodies
+    must be serialized in one shared `apiClient` helper and that call sites
+    should pass plain objects.
+
+- Documented chat 429 classification and recovery behavior:
+  - `02-backend/api-design.md` now distinguishes TravelTom-owned throttling
+    from upstream provider rate limits and documents `Retry-After`.
+  - `02-backend/security.md` now documents explicit local/dev rate-limit policy
+    and required limiter diagnostics.
+  - `05-frontend/frontend-architecture.md` now documents cooldown-aware chat UX
+    and provider-specific 429 handling.
+  - `07-infra-ops/local-dev.md`, `07-infra-ops/observability.md`, and
+    `07-infra-ops/runbooks.md` now include chat 429 troubleshooting and
+    classification steps.
+
+## 2026-03-15
+
+- Updated backend auth docs to reflect the local-auth library migration:
+  - `02-backend/api-design.md` now documents the app-owned `fastapi-users` adapter
+    behind the existing `/api/v1/auth/*` contract.
+  - `02-backend/services-and-modules.md` now includes `local_user_manager.py`
+    and clarifies that library-specific local-user logic stays behind app services.
+  - `02-backend/security.md` now distinguishes library-backed local credentials
+    from app-owned `auth_sessions` enforcement and PyJWT-issued bearer tokens.
+  - `02-backend/data-model.md` now notes that `users.password_hash` is managed by
+    the local-auth library integration.
+  - `02-backend/migrations.md` now states that the migration reuses the existing
+    `users.password_hash` and `auth_sessions` schema unless the table shape changes.
+  - `07-infra-ops/local-dev.md` now documents the local-dev dependency/runtime
+    expectations for library-backed local auth.
+
+## 2026-03-12
+
+- Reworked the backend agent runtime around LangChain-native `create_agent` and
+  `@tool`:
+  - `apps/api/app/services/travel_tom_agent.py` now builds two real LangChain
+    agents:
+    - a bounded chat agent for `/api/v1/chat`
+    - a deterministic direct recommendation agent for
+      `/api/v1/recommendations/query`
+  - Replaced the old compatibility-layer runtime path with LangChain-native tool
+    registration and transcript normalization.
+  - `apps/api/app/services/orchestrator/llm_provider.py` now builds
+    `ChatOpenAI` / `ChatOllama` models and deterministic in-process models for
+    disabled/direct modes.
+  - `apps/api/app/services/orchestrator/service.py` now normalizes agent
+    transcripts and keeps deterministic fallback behavior for model failure,
+    invalid tool calls, tool timeout, invalid tool payload, tool failure, and
+    empty results.
+  - Added `RecommendationToolRuntimePayload` to
+    `apps/api/app/schemas/orchestrator.py` for schema-valid tool artifacts.
+  - Updated orchestrator/provider tests for the new LangChain-native contract.
+- Added runtime dependencies for the new backend path:
+  - `langchain`
+  - `langchain-openai`
+  - `langchain-ollama`
+- Refactored backend route wiring to use a shared `TravelTomAgent` entrypoint:
+  - Added `apps/api/app/services/travel_tom_agent.py` and
+    `apps/api/app/schemas/agent.py`.
+  - `/api/v1/chat` now resolves `TravelTomAgent.handle_chat(...)` instead of
+    injecting `OrchestratorService` directly.
+  - `/api/v1/recommendations/query` now resolves
+    `TravelTomAgent.handle_recommendation_query(...)` instead of injecting the raw
+    recommendation tool.
+  - Moved LangChain-compatible recommendation tool registration/invocation to the
+    shared agent layer while keeping recommender behavior deterministic.
+  - Updated backend/orchestrator docs and route tests for the new dependency
+    boundary.
+- Updated orchestrator docs to reflect the broader response-composition path:
+  - `04-llm-orchestrator/orchestrator-overview.md` now documents composed
+    clarification and invalid-request replies alongside results and empty-results.
+  - `04-llm-orchestrator/prompts-and-guardrails.md` now defines the TravelTom
+    warm-expert persona, composed outcome types, and the deterministic failure
+    paths that still bypass the composer.
+
+## 2026-03-09
+
+- Added compose-based local DB bootstrap under `infra/docker/`:
+  - `docker-compose.yml` now defines local `postgres` + one-shot `migrate`.
+  - `docker-compose.seed.yml` adds a one-shot `seed` overlay.
+  - `Dockerfile` provides the shared Python utility image used by both jobs.
+  - Local Postgres bootstrap now enables `pgvector` with an init SQL script.
+- Updated `07-infra-ops/local-dev.md` and `infra/docker/README.md` with exact
+  compose workflows for DB + migrations and DB + migrations + seed.
+
+## 2026-03-07
+
+- Added `08-quality/agent-ticket-template.md` as the canonical ticket/prompt format for handing work to coding agents.
+- Updated `README.md` to direct instruction authors to the new ticket template when creating implementation tickets.
+- Codified schema-placement rules in the quality instructions:
+  - Shared backend Pydantic contracts must live under `apps/api/app/schemas/`.
+  - Added explicit guidance to keep cross-module schema models out of `core/`,
+    `services/`, repositories, and router modules.
+- Updated backend architecture/docs to reflect the implemented local-auth path:
+  - Added auth endpoint documentation to `02-backend/api-design.md`.
+  - Updated `02-backend/security.md` and `07-infra-ops/local-dev.md` with
+    `LOCAL_AUTH_TOKEN_SECRET`, token TTL, and local signup/login behavior.
+  - Updated `02-backend/services-and-modules.md` and
+    `01-architecture/system-overview.md` to document shared schema placement and
+    local auth service/runtime boundaries.
+- Documented the implemented backend auth path with `AUTH_ENABLED`, Azure AD B2C bearer auth, and chat session ownership enforcement.
+- Updated backend API and module docs for structured error responses, `repositories/users.py`, and deprecated request-body `user_id`.
+- Extended the data model docs with external OIDC identity fields on `users`.
+- Updated the architecture overview to include backend auth and rate limiting in the request path.
+- Added local auth-session persistence and lifecycle controls:
+  - Added `auth_sessions` persistence model and Alembic migration.
+  - Local bearer tokens now carry a persisted `jti` and are checked against
+    absolute expiry, idle timeout, and logout revocation state.
+  - Added `POST /api/v1/auth/logout`.
+  - Added `LOCAL_AUTH_TOKEN_IDLE_TIMEOUT_SECONDS` configuration and `.env.example` entry.
+- Updated backend docs to state that the current end-to-end auth/session lifecycle
+  is local-only and Azure AD B2C deployment/provider work is deferred.
+
 ## 2026-02-26
 
 - Added local Ollama provider wiring for orchestrator structured LLM calls:
