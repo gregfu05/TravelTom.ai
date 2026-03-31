@@ -72,5 +72,25 @@ services:
       - apps/api
     restart: unless-stopped
 
+  web:
+    image: ${TRAVELTOM_NODE_IMAGE:-node:20-alpine}
+    working_dir: /workspace/apps/web
+    environment:
+      VITE_API_PROXY_TARGET: ${VITE_API_PROXY_TARGET:-http://api:8000}
+    volumes:
+      - ../..:/workspace
+      - web_node_modules:/workspace/apps/web/node_modules
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    depends_on:
+      api:
+        condition: service_started
+    command:
+      - /bin/sh
+      - -c
+      - npm ci && npm run dev -- --host 0.0.0.0 --port 5173
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  web_node_modules:
