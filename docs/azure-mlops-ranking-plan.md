@@ -23,11 +23,53 @@ provisioning or implementing Azure resources yet.
 
 ### Training flow
 
-TBD
+Planned sequence:
+
+1. Data extraction
+   - Pull interaction and recommendation outcomes from the event pipeline.
+   - Build a training snapshot keyed by `dataset_snapshot_id`.
+2. Feature build
+   - Recreate ranking features with a pinned `feature_schema_version`.
+   - Validate feature completeness and null-rate thresholds before training.
+3. Split and train
+   - Split by `session_id` to prevent leakage.
+   - Train candidate ranking models on Azure ML compute (future).
+4. Offline evaluation
+   - Run the shared evaluation harness and generate metrics report artifacts.
+5. Registration decision
+   - Register only models that pass acceptance gates and reproducibility checks.
+
+Training run artifacts (required):
+
+- Trained model artifact.
+- Evaluation report.
+- Training manifest:
+  - `model_version`
+  - `dataset_snapshot_id`
+  - `feature_schema_version`
+  - `git_sha`
+  - `run_timestamp_utc`
+  - `training_code_version`
 
 ### Model and data versioning
 
-TBD
+Versioning policy (planned):
+
+- Model versions
+  - Use immutable semantic model identifiers (for example
+    `ranker_ml_v1.2.0+build.<short_sha>`).
+  - Store model lineage and metadata in Azure ML Registry (future).
+- Dataset snapshots
+  - Create immutable, timestamped dataset snapshots in blob-backed storage
+    (future), referenced by `dataset_snapshot_id`.
+- Feature schema
+  - Track feature definitions independently as `feature_schema_version`.
+  - Any schema-breaking feature change must require a new model major version.
+- Promotion metadata
+  - Every promoted model must point to:
+    - one exact dataset snapshot
+    - one exact feature schema version
+    - one exact training code revision
 
 ### Evaluation and promotion gates
 
