@@ -29,6 +29,7 @@ services:
     env_file:
       - ../../.env
     environment:
+      # Keep host-side DATABASE_URL unchanged in .env; compose jobs use the service DNS name.
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-traveltom}:${POSTGRES_PASSWORD:-traveltom}@postgres:5432/${POSTGRES_DB:-traveltom}"
     volumes:
       - ../..:/workspace
@@ -52,6 +53,7 @@ services:
     env_file:
       - ../../.env
     environment:
+      # Match migration DB routing and avoid localhost inside the container network.
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-traveltom}:${POSTGRES_PASSWORD:-traveltom}@postgres:5432/${POSTGRES_DB:-traveltom}"
     volumes:
       - ../..:/workspace
@@ -70,12 +72,23 @@ services:
       - --reload
       - --app-dir
       - apps/api
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/api/v1/health").read()
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     restart: unless-stopped
 
   web:
     image: ${TRAVELTOM_NODE_IMAGE:-node:20-alpine}
     working_dir: /workspace/apps/web
     environment:
+      # Vite runs inside compose, so proxy should target the compose API hostname.
       VITE_API_PROXY_TARGET: ${VITE_API_PROXY_TARGET:-http://api:8000}
     volumes:
       - ../..:/workspace
@@ -84,7 +97,7 @@ services:
       - "${WEB_PORT:-5173}:5173"
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
     command:
       - /bin/sh
       - -c
@@ -93,4 +106,5 @@ services:
 
 volumes:
   postgres_data:
+  # Keep dependencies inside a named volume so bind mounts do not reinstall each boot.
   web_node_modules:
