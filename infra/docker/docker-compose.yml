@@ -43,5 +43,34 @@ services:
       - head
     restart: "no"
 
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+    image: ${TRAVELTOM_PYTHON_IMAGE:-traveltom-local-python:latest}
+    working_dir: /workspace
+    env_file:
+      - ../../.env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-traveltom}:${POSTGRES_PASSWORD:-traveltom}@postgres:5432/${POSTGRES_DB:-traveltom}"
+    volumes:
+      - ../..:/workspace
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
+      - --app-dir
+      - apps/api
+    restart: unless-stopped
+
 volumes:
   postgres_data:
