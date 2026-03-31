@@ -73,16 +73,67 @@ Versioning policy (planned):
 
 ### Evaluation and promotion gates
 
-TBD
+Use existing ranking metrics and guardrails as promotion criteria:
+
+- Offline metrics
+  - NDCG@10
+  - MAP@10
+  - CTR proxy on holdout sessions
+  - Coverage pass rate (top-k availability constraints)
+- Candidate acceptance
+  - Candidate must satisfy the baseline-preservation thresholds defined in
+    recommender evaluation docs.
+  - Candidate must pass coverage gate before any online rollout.
+- Reproducibility checks
+  - Re-running the same training manifest should produce equivalent metrics.
+  - Input ordering must not alter rank output ordering for identical records.
+- Release decision output
+  - `promote` or `reject` with a signed evaluation summary and gate outcomes.
 
 ### Deployment path
 
-TBD
+Planned deployment progression (future):
+
+1. Local + CI validation
+   - Unit/integration tests and offline ranking harness pass.
+2. Development environment deployment
+   - Deploy model-serving revision in non-production environment.
+   - Validate API compatibility with existing recommender interfaces.
+3. Staging shadow/canary
+   - Run shadow scoring on staging traffic (no user-visible impact).
+   - Compare shadow metrics against active baseline.
+4. Production canary
+   - Route a small traffic slice to new ranker revision.
+   - Monitor quality and latency guardrails with automatic rollback triggers.
+5. Full promotion
+   - Shift traffic fully when canary is stable and guardrails hold.
+
+Rollback path:
+
+- Roll back to previous model version and previous service revision together.
+- Keep at least one known-good model version immediately deployable.
 
 ### Post-stability work only
 
-TBD
+The following should happen only after the ranker is stable in production
+(quality and reliability consistently meeting gates):
+
+- Automate scheduled retraining with approval workflow.
+- Add drift detection alerts (feature drift and relevance drift).
+- Introduce auto-candidate generation from retraining triggers.
+- Expand A/B experimentation and personalization layers.
+- Add cost optimization for Azure compute and endpoint autoscaling.
+- Tighten SLO-backed on-call runbooks for model-serving incidents.
+
+Stability criteria to unlock the above:
+
+- No gate breaches for at least two consecutive release cycles.
+- No severity-1 ranking regressions in production during that window.
+- Online quality proxy does not breach rollback thresholds.
 
 ## Open decisions
 
-- TBD
+- Final threshold values for online canary rollback.
+- Preferred Azure serving target for ranker inference
+  (managed online endpoint vs containerized app endpoint).
+- Model explanation payload format for frontend-facing transparency.
