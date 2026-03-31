@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Sequence
-from urllib.parse import urljoin
+from typing import Any, Literal, Sequence
+from urllib.parse import urljoin, urlparse
 
 from app.schemas.orchestrator import LLMComposedResponse, LLMOrchestrationPlan
 from app.services.orchestrator.providers.common import (
@@ -13,6 +13,25 @@ from app.services.orchestrator.providers.common import (
     parse_structured_json_content,
     post_json,
 )
+
+
+def normalize_ollama_base_url(base_url: str) -> str:
+    """Return a normalized Ollama base URL with a trailing slash."""
+
+    normalized_base_url = base_url.strip().rstrip("/")
+    if not normalized_base_url:
+        raise ValueError("OLLAMA_BASE_URL cannot be empty")
+    return normalized_base_url + "/"
+
+
+def get_ollama_endpoint_mode(base_url: str) -> Literal["local", "remote"]:
+    """Classify an Ollama endpoint as local loopback or remote."""
+
+    parsed = urlparse(normalize_ollama_base_url(base_url))
+    host = (parsed.hostname or "").strip().casefold()
+    if host in {"localhost", "127.0.0.1", "::1"}:
+        return "local"
+    return "remote"
 
 
 def match_ollama_model_name(
@@ -53,7 +72,7 @@ def get_ollama_available_model_names(
 ) -> list[str]:
     """Return installed Ollama model names from the most compatible endpoint."""
 
-    normalized_base_url = base_url.rstrip("/") + "/"
+    normalized_base_url = normalize_ollama_base_url(base_url)
     models_url = urljoin(normalized_base_url, "v1/models")
     tags_url = urljoin(normalized_base_url, "api/tags")
 
@@ -103,7 +122,7 @@ class OllamaStructuredClient:
         temperature: float,
         transport: JSONTransport | None = None,
     ) -> None:
-        normalized_base_url = base_url.rstrip("/") + "/"
+        normalized_base_url = normalize_ollama_base_url(base_url)
         self._base_url = normalized_base_url
         self._chat_url = urljoin(normalized_base_url, "api/chat")
         self._openai_chat_url = urljoin(normalized_base_url, "v1/chat/completions")
