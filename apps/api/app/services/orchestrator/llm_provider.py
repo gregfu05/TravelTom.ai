@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Literal, Sequence
@@ -33,7 +34,9 @@ from app.services.orchestrator.policies import (
 )
 from app.services.orchestrator.providers.ollama import (
     get_ollama_available_model_names,
+    get_ollama_endpoint_mode,
     match_ollama_model_name,
+    normalize_ollama_base_url,
 )
 from app.services.orchestrator.service import (
     extract_direct_query,
@@ -42,6 +45,7 @@ from app.services.orchestrator.service import (
 )
 
 ProviderName = Literal["disabled", "ollama", "openai"]
+logger = logging.getLogger(__name__)
 
 
 def build_chat_model(
@@ -63,14 +67,52 @@ def build_chat_model(
         return DeterministicTravelTomChatModel(max_results=max_results)
 
     if provider == "ollama":
+        normalized_ollama_base_url = normalize_ollama_base_url(ollama_base_url)
+        ollama_endpoint_mode = get_ollama_endpoint_mode(normalized_ollama_base_url)
+        model_discovery_timeout_seconds = _resolve_ollama_health_timeout_seconds(
+            llm_timeout_seconds
+        )
+
         resolved_model_name = ollama_chat_model
+        logger.info(
+            "ollama_model_healthcheck_started",
+            extra={
+                "context": {
+                    "ollama_base_url": normalized_ollama_base_url,
+                    "endpoint_mode": ollama_endpoint_mode,
+                    "timeout_seconds": model_discovery_timeout_seconds,
+                }
+            },
+        )
         try:
             available_model_names = get_ollama_available_model_names(
-                base_url=ollama_base_url,
-                timeout_seconds=llm_timeout_seconds,
+                base_url=normalized_ollama_base_url,
+                timeout_seconds=model_discovery_timeout_seconds,
             )
-        except Exception:
+        except Exception as exc:
             available_model_names = []
+            logger.warning(
+                "ollama_model_healthcheck_failed",
+                extra={
+                    "context": {
+                        "ollama_base_url": normalized_ollama_base_url,
+                        "endpoint_mode": ollama_endpoint_mode,
+                        "timeout_seconds": model_discovery_timeout_seconds,
+                        "error": str(exc),
+                    }
+                },
+            )
+        else:
+            logger.info(
+                "ollama_model_healthcheck_succeeded",
+                extra={
+                    "context": {
+                        "ollama_base_url": normalized_ollama_base_url,
+                        "endpoint_mode": ollama_endpoint_mode,
+                        "available_model_count": len(available_model_names),
+                    }
+                },
+            )
         if available_model_names:
             matched_model_name = match_ollama_model_name(
                 ollama_chat_model,
@@ -86,10 +128,11 @@ def build_chat_model(
             resolved_model_name = matched_model_name
         return ChatOllama(
             model=resolved_model_name,
-            base_url=ollama_base_url,
+            base_url=normalized_ollama_base_url,
             temperature=ollama_temperature,
             num_predict=512,
             validate_model_on_init=False,
+            client_kwargs={"timeout": llm_timeout_seconds},
         )
 
     if provider == "openai":
@@ -217,6 +260,12 @@ def _extract_retry_after_seconds(candidate: BaseException) -> int | None:
     if reset_at.tzinfo is None:
         reset_at = reset_at.replace(tzinfo=timezone.utc)
     return max(0, int((reset_at - datetime.now(timezone.utc)).total_seconds()))
+
+
+def _resolve_ollama_health_timeout_seconds(llm_timeout_seconds: float) -> float:
+    """Cap startup model discovery timeout to avoid long Ollama health probes."""
+
+    return min(max(llm_timeout_seconds, 1.0), 5.0)
 
 
 class _BoundDeterministicToolModel(Runnable):
