@@ -61,6 +61,40 @@ export const recommendationPreview = [
   },
 ] as const;
 
+export const authPageContent = {
+  login: {
+    eyebrow: "Welcome Back",
+    title: "Pick up your next trip where you left it.",
+    description:
+      "Sign in to reopen your planner, review ranked options, and continue refining the trip without losing momentum.",
+    alternateLabel: "Need a TravelTom account?",
+    alternateCta: "Create one",
+    panelTitle: "What waits inside",
+    panelBody:
+      "The planner keeps the workflow focused: conversation in one pane, ranked picks in the other, and every recommendation tied to your travel constraints.",
+    reassurance:
+      "Use the same email and password you created for TravelTom local auth.",
+  },
+  signup: {
+    eyebrow: "Create Your Account",
+    title: "Start planning with a calmer, faster travel flow.",
+    description:
+      "Create an account to move from open-ended trip ideas into a workspace built for destination discovery, hotel comparison, and flight decisions.",
+    alternateLabel: "Already have an account?",
+    alternateCta: "Sign in",
+    panelTitle: "Why sign up now",
+    panelBody:
+      "TravelTom turns scattered travel research into a single planning rhythm, with clear recommendations and a direct path into the planner.",
+    reassurance:
+      "Accounts use TravelTom email and password auth today. No extra verification step is required in this flow.",
+  },
+  highlights: [
+    "Deterministic recommendations you can compare quickly",
+    "Constraint-aware ranking across destinations, hotels, and flights",
+    "A clear route back to the landing page whenever you want to reset your path",
+  ],
+} as const;
+
 export const systemFlowSteps = [
   {
     title: "Capture intent",

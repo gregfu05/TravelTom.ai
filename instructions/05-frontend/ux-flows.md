@@ -3,16 +3,18 @@
 ## Primary flow
 
 1. User lands on the homepage and selects the planner entry CTA.
-2. User optionally reviews `Why TravelTom` and `How It Works` route pages.
-3. User opens `/planner` and enters a chat message.
-4. Frontend sends the request to `/api/v1/chat` with `session_id` and `message_id`.
-5. If the browser already has a backend-backed planner session, frontend
+2. User can move to `/login` or `/signup` from shared site navigation and can
+   always return to `/` from those auth routes.
+3. User optionally reviews `Why TravelTom` and `How It Works` route pages.
+4. User opens `/planner` and enters a chat message.
+5. Frontend sends the request to `/api/v1/chat` with `session_id` and `message_id`.
+6. If the browser already has a backend-backed planner session, frontend
    hydrates transcript, recommendations, and server state from
    `GET /api/v1/chat/{session_id}` before the next turn.
-6. Assistant response is appended to the message list and recommendations are rendered from the latest response payload.
-7. User saves items (destinations, hotels, flights) to shortlist.
-8. User views generated itinerary.
-9. User clicks booking stub to simulate conversion.
+7. Assistant response is appended to the message list and recommendations are rendered from the latest response payload.
+8. User saves items (destinations, hotels, flights) to shortlist.
+9. User views generated itinerary.
+10. User clicks booking stub to simulate conversion.
 
 ## Screens and states
 
@@ -20,6 +22,14 @@
   - Default marketing state with planner CTA
   - API status state (`checking`, `online`, `unreachable`) from health probe
   - Responsive layout on mobile and desktop breakpoints
+- Auth screens
+  - Routes: `/login`, `/signup`
+  - Shared TravelTom navigation and a visible body-level return action to `/`
+  - Branded entry composition with supporting context panel plus primary form
+  - Success returns user to a preserved protected-route target when present,
+    otherwise `/planner`
+  - Switching between login and signup preserves the same return target
+  - Authenticated users visiting auth routes are redirected to `/planner`
 - Why TravelTom page
   - Product value and trust rationale
   - CTA path to the `How It Works` page

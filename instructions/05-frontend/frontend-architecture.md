@@ -12,6 +12,8 @@
 - Initial UI foundation is `AppShell` + `HomePage` with responsive, tokenized global styles.
 - Homepage includes a health check indicator backed by `GET /api/v1/health`.
 - Added dedicated marketing routes for `/why-traveltom` and `/how-it-works`.
+- Added branded auth entry routes `/login` and `/signup` with shared site chrome
+  and an explicit return path back to the landing page.
 - Added planner route `/planner` with `ChatView` and message flow.
 - Added client session store in `src/store/session.ts` for chat state.
 - Added recommendations rendering in planner from `/api/v1/chat` responses
@@ -40,6 +42,8 @@
 
 - Current MVP baseline uses route-level separation for marketing and orientation pages:
   - `/`
+  - `/login`
+  - `/signup`
   - `/planner`
   - `/why-traveltom`
   - `/how-it-works`
@@ -93,6 +97,10 @@
 - Retry button on chat failures.
 - Distinguish TravelTom cooldowns from provider quota failures in planner chat UX.
 - Homepage API status states: checking, online, unreachable.
+- Auth routes reuse the main TravelTom theme, typography, and navigation
+  instead of standalone form-only styling.
+- Auth success redirects honor a preserved protected-route target across the
+  login/signup switch; direct auth entry defaults to `/planner`.
 - Chat screen states include:
   - Empty state before first message
   - Loading state while awaiting `/api/v1/chat`

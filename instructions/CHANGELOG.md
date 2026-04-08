@@ -1,5 +1,11 @@
 # Instructions Changelog
 
+## 2026-04-08
+
+- Updated frontend docs to document branded `/login` and `/signup` routes,
+  shared navigation back to the landing page, and preserved redirect behavior
+  across auth entry screens.
+
 ## 2026-03-24
 
 - Shifted `/api/v1/chat` orchestration back to planner-first extraction and
