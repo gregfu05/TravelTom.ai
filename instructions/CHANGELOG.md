@@ -2,6 +2,10 @@
 
 ## 2026-04-08
 
+- Documented the frontend test-suite overhaul:
+  - `05-frontend/frontend-architecture.md` now records the `Vitest` + React Testing Library + Playwright stack.
+  - `08-quality/testing-strategy.md` now includes the concrete frontend test commands for unit/DOM, E2E smoke, combined CI, and build verification.
+
 - Updated frontend docs to document branded `/login` and `/signup` routes,
   shared navigation back to the landing page, and preserved redirect behavior
   across auth entry screens.

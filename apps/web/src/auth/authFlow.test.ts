@@ -1,32 +1,33 @@
-import assert from "node:assert/strict";
+import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_AUTH_REDIRECT,
   getAuthLinkState,
   getAuthRedirectTarget,
-} from "./authFlow.js";
+} from "./authFlow";
 
-function testGetAuthRedirectTargetReturnsInternalRoute() {
-  assert.equal(
-    getAuthRedirectTarget({ from: "/planner?draft=summer" }),
-    "/planner?draft=summer",
-  );
-}
-
-function testGetAuthRedirectTargetFallsBackForUnsafeRoutes() {
-  assert.equal(getAuthRedirectTarget({ from: "https://example.com" }), DEFAULT_AUTH_REDIRECT);
-  assert.equal(getAuthRedirectTarget({ from: "//malicious.test" }), DEFAULT_AUTH_REDIRECT);
-  assert.equal(getAuthRedirectTarget({ from: 123 }), DEFAULT_AUTH_REDIRECT);
-}
-
-function testGetAuthLinkStateCarriesOnlyNonDefaultTargets() {
-  assert.deepEqual(getAuthLinkState({ from: "/planner?tab=saved" }), {
-    from: "/planner?tab=saved",
+describe("authFlow", () => {
+  it("returns internal redirect targets", () => {
+    expect(getAuthRedirectTarget({ from: "/planner?draft=summer" })).toBe(
+      "/planner?draft=summer",
+    );
   });
-  assert.equal(getAuthLinkState(undefined), undefined);
-  assert.equal(getAuthLinkState({ from: "/planner" }), undefined);
-}
 
-testGetAuthRedirectTargetReturnsInternalRoute();
-testGetAuthRedirectTargetFallsBackForUnsafeRoutes();
-testGetAuthLinkStateCarriesOnlyNonDefaultTargets();
+  it("falls back for unsafe redirect targets", () => {
+    expect(getAuthRedirectTarget({ from: "https://example.com" })).toBe(
+      DEFAULT_AUTH_REDIRECT,
+    );
+    expect(getAuthRedirectTarget({ from: "//malicious.test" })).toBe(
+      DEFAULT_AUTH_REDIRECT,
+    );
+    expect(getAuthRedirectTarget({ from: 123 })).toBe(DEFAULT_AUTH_REDIRECT);
+  });
+
+  it("only preserves non-default redirect state for auth links", () => {
+    expect(getAuthLinkState({ from: "/planner?tab=saved" })).toEqual({
+      from: "/planner?tab=saved",
+    });
+    expect(getAuthLinkState(undefined)).toBeUndefined();
+    expect(getAuthLinkState({ from: "/planner" })).toBeUndefined();
+  });
+});

@@ -192,10 +192,6 @@ function shouldGuardJsonBody(): boolean {
     return viteDevFlag;
   }
 
-  if (typeof process !== "undefined") {
-    return process.env.NODE_ENV !== "production";
-  }
-
   return true;
 }
 

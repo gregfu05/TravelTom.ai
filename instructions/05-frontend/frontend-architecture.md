@@ -63,6 +63,15 @@
 
 - Optional acceleration: MUI or Chakra UI (per design doc).
 
+## Frontend test stack
+
+- Use `Vitest` with `jsdom` for frontend unit and DOM/component tests.
+- Use React Testing Library for route, page, and interaction coverage.
+- Use Playwright for frontend browser smoke coverage of the protected planner flow.
+- Prefer deterministic API mocking in frontend tests instead of live backend coupling.
+- Frontend coverage should include shipped routes, auth entry flows, planner chat states,
+  navigation health/logout behavior, and persisted session hydration.
+
 ## API client
 
 - Centralized `apiClient` with base URL `/api/v1`.
