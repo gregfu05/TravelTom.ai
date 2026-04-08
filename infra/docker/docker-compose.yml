@@ -29,6 +29,7 @@ services:
     env_file:
       - ../../.env
     environment:
+      # Keep host-side DATABASE_URL unchanged in .env; compose jobs use the service DNS name.
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-traveltom}:${POSTGRES_PASSWORD:-traveltom}@postgres:5432/${POSTGRES_DB:-traveltom}"
     volumes:
       - ../..:/workspace
@@ -43,5 +44,67 @@ services:
       - head
     restart: "no"
 
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+    image: ${TRAVELTOM_PYTHON_IMAGE:-traveltom-local-python:latest}
+    working_dir: /workspace
+    env_file:
+      - ../../.env
+    environment:
+      # Match migration DB routing and avoid localhost inside the container network.
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-traveltom}:${POSTGRES_PASSWORD:-traveltom}@postgres:5432/${POSTGRES_DB:-traveltom}"
+    volumes:
+      - ../..:/workspace
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
+      - --app-dir
+      - apps/api
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/api/v1/health").read()
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  web:
+    image: ${TRAVELTOM_NODE_IMAGE:-node:20-alpine}
+    working_dir: /workspace/apps/web
+    environment:
+      # Vite runs inside compose, so proxy should target the compose API hostname.
+      VITE_API_PROXY_TARGET: ${VITE_API_PROXY_TARGET:-http://api:8000}
+    volumes:
+      - ../..:/workspace
+      - web_node_modules:/workspace/apps/web/node_modules
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    depends_on:
+      api:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -c
+      - if [ ! -d node_modules ] || [ -z "$(ls -A node_modules 2>/dev/null)" ]; then npm ci; fi && npm run dev -- --host 0.0.0.0 --port 5173
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  # Keep dependencies inside a named volume so bind mounts do not reinstall each boot.
+  web_node_modules:

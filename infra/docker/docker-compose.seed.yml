@@ -1,10 +1,17 @@
 services:
+  api:
+    depends_on:
+      # When this overlay is enabled, start the API after the one-shot seed job.
+      seed:
+        condition: service_completed_successfully
+
   seed:
     image: ${TRAVELTOM_PYTHON_IMAGE:-traveltom-local-python:latest}
     working_dir: /workspace
     env_file:
       - ../../.env
     environment:
+      # Keep host-side DATABASE_URL unchanged in .env; compose jobs use service DNS.
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-traveltom}:${POSTGRES_PASSWORD:-traveltom}@postgres:5432/${POSTGRES_DB:-traveltom}"
     volumes:
       - ../..:/workspace
