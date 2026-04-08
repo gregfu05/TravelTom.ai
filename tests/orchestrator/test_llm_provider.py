@@ -9,6 +9,7 @@ from app.core.errors import ApiError
 from app.services.orchestrator.llm_provider import (
     DeterministicRecommendationAgentModel,
     DeterministicTravelTomChatModel,
+    _resolve_ollama_health_timeout_seconds,
     build_chat_model,
     build_direct_recommendation_model,
     map_provider_exception_to_api_error,
@@ -70,14 +71,21 @@ def test_build_chat_model_returns_langchain_openai_model() -> None:
 
 
 def test_build_chat_model_returns_langchain_ollama_model(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_get_ollama_models(*, base_url: str, timeout_seconds: float) -> list[str]:
+        captured["base_url"] = base_url
+        captured["timeout_seconds"] = timeout_seconds
+        return ["llama3.1:8b-instruct-q4_0"]
+
     monkeypatch.setattr(
         "app.services.orchestrator.llm_provider.get_ollama_available_model_names",
-        lambda **_kwargs: ["llama3.1:8b-instruct-q4_0"],
+        fake_get_ollama_models,
     )
 
     model = build_chat_model(
         provider="ollama",
-        ollama_base_url="http://127.0.0.1:11434",
+        ollama_base_url=" http://127.0.0.1:11434 ",
         ollama_chat_model="llama3.1:8b",
         llm_timeout_seconds=20.0,
         ollama_temperature=0.0,
@@ -90,6 +98,14 @@ def test_build_chat_model_returns_langchain_ollama_model(monkeypatch) -> None:
 
     assert isinstance(model, ChatOllama)
     assert model.model == "llama3.1:8b-instruct-q4_0"
+    assert captured["base_url"] == "http://127.0.0.1:11434/"
+    assert captured["timeout_seconds"] == 5.0
+
+
+def test_resolve_ollama_health_timeout_seconds_bounds() -> None:
+    assert _resolve_ollama_health_timeout_seconds(0.2) == 1.0
+    assert _resolve_ollama_health_timeout_seconds(3.0) == 3.0
+    assert _resolve_ollama_health_timeout_seconds(20.0) == 5.0
 
 
 def test_build_direct_recommendation_model_returns_deterministic_model() -> None:

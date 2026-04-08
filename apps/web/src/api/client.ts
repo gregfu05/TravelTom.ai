@@ -184,16 +184,12 @@ async function request<TSchema extends z.ZodTypeAny>(
 }
 
 function shouldGuardJsonBody(): boolean {
-  const viteDevFlag = (
-    import.meta as ImportMeta & { env?: { DEV?: boolean } }
-  ).env?.DEV;
-
-  if (typeof viteDevFlag === "boolean") {
-    return viteDevFlag;
+  if (typeof import.meta.env.DEV === "boolean") {
+    return import.meta.env.DEV;
   }
 
-  if (typeof process !== "undefined") {
-    return process.env.NODE_ENV !== "production";
+  if (typeof import.meta.env.MODE === "string") {
+    return import.meta.env.MODE !== "production";
   }
 
   return true;
