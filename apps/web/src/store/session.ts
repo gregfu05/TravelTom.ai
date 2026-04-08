@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import { ChatErrorState } from "../components/chatErrorState.js";
+import { ChatErrorState } from "../features/planner/model/chatErrorState/chatErrorState.js";
 
 export type SessionMessageRole = "user" | "assistant";
 

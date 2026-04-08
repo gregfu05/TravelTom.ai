@@ -2,6 +2,22 @@
 
 ## 2026-04-08
 
+- Refactored the frontend into folderized page/component units and a planner
+  feature slice:
+  - `apps/web/src/pages/*` and `apps/web/src/components/*` now use per-unit
+    folders with colocated tests.
+  - Planner-specific chat UI and non-UI helpers now live under
+    `apps/web/src/features/planner/` instead of the shared `components/`
+    folder.
+  - `apps/web/src/app/routes.tsx` now owns route registration so `App.tsx`
+    stays focused on shell + router composition.
+  - Frontend styles now load from `apps/web/src/styles/index.css` and are split
+    across `tokens.css`, `base.css`, `marketing.css`, `auth.css`,
+    `planner.css`, and `responsive.css`, removing duplicated planner/drawer CSS.
+  - Updated `05-frontend/frontend-architecture.md` and
+    `05-frontend/ux-flows.md` to document the new structure and planner mobile
+    recommendations path.
+
 - Documented the frontend test-suite overhaul:
   - `05-frontend/frontend-architecture.md` now records the `Vitest` + React Testing Library + Playwright stack.
   - `08-quality/testing-strategy.md` now includes the concrete frontend test commands for unit/DOM, E2E smoke, combined CI, and build verification.

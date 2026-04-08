@@ -1,0 +1,435 @@
+.hero-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.08fr 0.92fr;
+  gap: clamp(1.2rem, 3vw, 2.5rem);
+  align-items: stretch;
+}
+
+.hero-grid::before {
+  content: "";
+  position: absolute;
+  inset: -60px -40px;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse 55% 65% at 10% 40%, rgba(20, 184, 166, 0.12), transparent 70%),
+    radial-gradient(ellipse 50% 60% at 90% 50%, rgba(232, 126, 69, 0.09), transparent 70%);
+  filter: blur(40px);
+  opacity: 0.8;
+  animation: hero-glow 12s ease-in-out infinite alternate;
+}
+
+@keyframes hero-glow {
+  0% {
+    opacity: 0.6;
+    transform: scale(1) translate(0, 0);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.03) translate(6px, -4px);
+  }
+  100% {
+    opacity: 0.65;
+    transform: scale(0.98) translate(-4px, 3px);
+  }
+}
+
+.hero-copy {
+  padding-right: min(2vw, 1.2rem);
+}
+
+.hero-copy h1 {
+  margin: 0.6rem 0 0;
+  font-family: "Syne", "Trebuchet MS", sans-serif;
+  font-size: clamp(2.1rem, 5.3vw, 4.15rem);
+  line-height: 0.98;
+  letter-spacing: -0.02em;
+  max-width: 16ch;
+  color: var(--text);
+}
+
+.hero-description {
+  margin: 1.15rem 0 0;
+  font-size: clamp(1rem, 2vw, 1.14rem);
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 52ch;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
+}
+
+.hero-trust {
+  list-style: none;
+  margin: var(--space-lg) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.hero-trust li {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0.45rem 0.78rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.hero-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  padding: clamp(1rem, 2.1vw, 1.45rem);
+}
+
+.hero-panel-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: var(--space-sm);
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.status-dot {
+  width: 0.64rem;
+  height: 0.64rem;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 0 5px rgba(20, 184, 166, 0.15);
+}
+
+.chat-bubble {
+  margin: 0;
+  border-radius: var(--radius-md);
+  padding: 0.72rem 0.88rem;
+  line-height: 1.5;
+  font-size: 0.91rem;
+}
+
+.chat-bubble + .chat-bubble {
+  margin-top: 0.62rem;
+}
+
+.chat-bubble-user {
+  background: var(--primary-dim);
+  border: 1px solid var(--primary-border);
+  color: var(--text);
+}
+
+.chat-bubble-assistant {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.preview-grid {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: var(--space-md);
+}
+
+.preview-card {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  padding: 0.74rem 0.8rem;
+}
+
+.preview-card h3 {
+  margin: 0.35rem 0 0;
+  font-size: 0.98rem;
+  line-height: 1.26;
+  color: var(--text);
+}
+
+.preview-card p {
+  margin: 0.38rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.44;
+}
+
+.preview-rank {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.preview-card[data-type="destination"] {
+  border-left: 3px solid var(--primary);
+}
+
+.preview-card[data-type="hotel"] {
+  border-left: 3px solid #3b82f6;
+}
+
+.preview-card[data-type="flight"] {
+  border-left: 3px solid var(--accent);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.subtle-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+}
+
+.section-heading h2 {
+  margin: 0.58rem 0 0;
+  font-family: "Syne", "Trebuchet MS", sans-serif;
+  font-size: clamp(1.72rem, 4vw, 2.45rem);
+  line-height: 1.08;
+  max-width: 21ch;
+  color: var(--text);
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.feature-card {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  padding: 1.1rem 1.05rem;
+}
+
+.feature-kicker {
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: var(--primary);
+}
+
+.feature-card h3 {
+  margin: 0.55rem 0 0;
+  font-size: 1.1rem;
+  line-height: 1.32;
+  color: var(--text);
+}
+
+.feature-card p {
+  margin: 0.6rem 0 0;
+  color: var(--muted);
+  line-height: 1.56;
+}
+
+.flow-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.flow-card {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 1.15rem 1.05rem;
+}
+
+.flow-step {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  color: var(--accent);
+}
+
+.flow-card h3 {
+  margin: 0.5rem 0 0;
+  font-size: 1.1rem;
+  color: var(--text);
+}
+
+.flow-card p {
+  margin: 0.58rem 0 0;
+  color: var(--muted);
+  line-height: 1.52;
+}
+
+.inline-action {
+  margin-top: 1rem;
+}
+
+.page {
+  gap: var(--space-xl);
+}
+
+.page-hero {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  padding: clamp(1.15rem, 2.4vw, 2rem);
+}
+
+.page-hero h1 {
+  margin: 0.6rem 0 0;
+  font-family: "Syne", "Trebuchet MS", sans-serif;
+  font-size: clamp(1.95rem, 4.9vw, 3.7rem);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  max-width: 18ch;
+  color: var(--text);
+}
+
+.page-lead {
+  margin: 1rem 0 0;
+  max-width: 62ch;
+  color: var(--muted);
+  line-height: 1.62;
+}
+
+.trust-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.trust-card {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 1rem 1rem 1.1rem;
+}
+
+.trust-card h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.trust-card p {
+  margin: 0.58rem 0 0;
+  color: var(--muted);
+  line-height: 1.54;
+}
+
+.system-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.system-card {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 1rem 1rem 1.05rem;
+}
+
+.system-card h3 {
+  margin: 0;
+  font-size: 1.08rem;
+  color: var(--text);
+}
+
+.system-card p {
+  margin: 0.58rem 0 0;
+  color: var(--muted);
+  line-height: 1.56;
+}
+
+.cta-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--primary-border);
+  background: linear-gradient(
+    145deg,
+    rgba(20, 184, 166, 0.12) 0%,
+    var(--surface) 60%,
+    var(--surface-2) 100%
+  );
+  color: var(--text);
+  padding: clamp(1.15rem, 2.6vw, 2rem);
+  box-shadow: var(--shadow-soft), var(--shadow-glow);
+}
+
+.cta-panel h2 {
+  margin: 0.55rem 0 0;
+  font-family: "Syne", "Trebuchet MS", sans-serif;
+  font-size: clamp(1.6rem, 3.4vw, 2.5rem);
+  line-height: 1.08;
+  max-width: 22ch;
+  color: var(--text);
+}
+
+.cta-panel p {
+  margin: 0.65rem 0 0;
+  max-width: 58ch;
+  color: var(--muted);
+  line-height: 1.56;
+}
+
+.cta-panel .eyebrow {
+  color: var(--accent-sand);
+}
+
+.cta-panel .button-primary {
+  background: linear-gradient(145deg, var(--accent), #d66831);
+  color: #ffffff;
+  box-shadow: 0 8px 24px rgba(232, 126, 69, 0.3);
+}
+
+.hero-copy,
+.hero-panel,
+.feature-card,
+.flow-card,
+.cta-panel {
+  animation: reveal-up 560ms ease both;
+}
+
+.hero-panel {
+  animation-delay: 120ms;
+}
+
+.feature-card:nth-child(2),
+.flow-card:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.feature-card:nth-child(3),
+.flow-card:nth-child(3) {
+  animation-delay: 220ms;
+}
+
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

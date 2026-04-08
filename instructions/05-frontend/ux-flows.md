@@ -56,8 +56,9 @@
   - Split-pane planner layout: chat in primary pane, recommendations in a
     secondary rail so the conversation stays visible
   - Compact top-5 list from latest `/api/v1/chat` response
-  - Constrained-height recommendation rail with internal scroll and
-    `Show/Hide picks` control to reduce visual noise
+  - Constrained-height recommendation rail with internal scroll
+  - Mobile path uses a header-level picks button that opens a drawer version of
+    the same recommendations list
   - Header-level metadata and collapsible per-item rationale
   - Card metadata for item name, score, and available attributes (e.g., city, stars)
   - Empty state handled by chat assistant clarification/error copy

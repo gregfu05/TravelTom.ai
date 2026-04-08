@@ -24,19 +24,28 @@
   broad destination exploration prompts are valid, while hotel and flight
   prompts should include destination, dates, and budget.
 
-## Component structure
+## Frontend structure
 
-- `AppShell`
-- `TopNav`
-- `HomePage`
-- `WhyTravelTomPage`
-- `HowItWorksPage`
-- `PlannerPage`
-- `ChatView`
-- `RecommendationsPanel` (currently embedded inside `ChatView`)
-- `ShortlistView`
-- `ItineraryView`
-- `BookingStub`
+- Route pages and reusable components are folderized under `src/pages/<Name>/`
+  and `src/components/<Name>/`, with their colocated `*.test.*` files kept
+  beside the implementation.
+- Planner-specific UI and non-UI logic live under `src/features/planner/`
+  instead of the shared `components/` folder.
+- Shared route registration lives in `src/app/routes.tsx`; `src/App.tsx`
+  remains shell + router composition only.
+- Styles are split under `src/styles/` by concern (`tokens`, `base`,
+  `marketing`, `auth`, `planner`, `responsive`) and loaded through
+  `src/styles/index.css`.
+
+## Component boundaries
+
+- `AppShell` and `TopNav` remain shared app-level chrome.
+- Marketing and auth routes each own their page modules under `src/pages/`.
+- Planner route uses `features/planner/components/ChatView` as the route-level
+  composition point.
+- Planner conversation rendering, recommendation surfaces, hydration helpers,
+  and chat error state helpers are separate planner modules rather than one
+  oversized shared component file.
 
 ## Routing stance
 
@@ -58,6 +67,8 @@
 - Current chat implementation stores `sessionId`, `messages`,
   `latestRecommendations`, send status, and error state in Zustand
   (`src/store/session.ts`).
+- Store and domain helpers must not depend on shared UI component folders.
+  Planner error-state logic now lives under `src/features/planner/model/`.
 
 ## UI library
 
@@ -101,8 +112,9 @@
 - Recommendation panel empty state when `recommendations` is empty in latest
   response.
 - Recommendation rail presents only top 5 items with collapsed per-item
-  rationale, constrained panel height, internal scrolling, and a
-  `Show/Hide picks` control to reduce clutter.
+  rationale, constrained panel height, and internal scrolling.
+- Mobile recommendation access is provided through a header-level picks button
+  that opens the planner drawer.
 - Retry button on chat failures.
 - Distinguish TravelTom cooldowns from provider quota failures in planner chat UX.
 - Homepage API status states: checking, online, unreachable.

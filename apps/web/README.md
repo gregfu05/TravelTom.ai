@@ -18,7 +18,7 @@ Ownership: Frontend.
 - Planner workspace redesign with split panes so chat remains visible while
   recommendations are present
 - Recommendations rail that renders a top-5 ranked list from the latest chat
-  response with a fixed-height, scrollable panel and `Show/Hide picks` control
+  response with a fixed-height, scrollable panel and a mobile picks drawer path
 - Standalone informational routes:
   - `/planner`
   - `/why-traveltom`
