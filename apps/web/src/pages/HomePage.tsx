@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
 import { TopNav } from "../components/TopNav";
-import { recommendationPreview } from "../content/siteContent";
+import { homepageContent, recommendationPreview } from "../content/siteContent";
 
 export function HomePage() {
   return (
@@ -10,19 +10,17 @@ export function HomePage() {
 
       <section className="hero-grid">
         <div className="hero-copy">
-          <p className="eyebrow">AI-Powered Travel Concierge</p>
-          <h1>Plan an incredible trip with one conversation.</h1>
+          <p className="eyebrow">{homepageContent.heroEyebrow}</p>
+          <h1>{homepageContent.heroTitle}</h1>
           <p className="hero-description">
-            TravelTom captures your intent, applies deterministic ranking, and
-            presents clear recommendations across destinations, hotels, and
-            flights.
+            {homepageContent.heroDescription}
           </p>
           <div className="hero-actions">
             <Link className="button button-primary" to="/planner">
-              Start Planning
+              {homepageContent.primaryCta}
             </Link>
-            <Link className="button button-ghost" to="/why-traveltom">
-              See the Flow
+            <Link className="button button-ghost" to="/how-it-works">
+              {homepageContent.secondaryCta}
             </Link>
           </div>
           <ul className="hero-trust" aria-label="TravelTom guarantees">
@@ -65,7 +63,7 @@ export function HomePage() {
       <section className="section">
         <div className="section-heading">
           <p className="eyebrow">Explore Next</p>
-          <h2>Start with the pages that explain the product clearly</h2>
+          <h2>{homepageContent.sectionTitle}</h2>
         </div>
 
         <div className="subtle-grid">
@@ -97,14 +95,11 @@ export function HomePage() {
       <section className="cta-panel">
         <div>
           <p className="eyebrow">Ready to build your next trip?</p>
-          <h2>Homepage complete. Chat planner is the next build target.</h2>
-          <p>
-            This foundation is ready for the next step: integrating the chat
-            view, recommendation panels, and shortlist interactions.
-          </p>
+          <h2>{homepageContent.finalCtaTitle}</h2>
+          <p>{homepageContent.finalCtaBody}</p>
         </div>
         <Link className="button button-primary" to="/planner">
-          Continue to Planner Build
+          {homepageContent.finalCtaAction}
         </Link>
       </section>
     </main>

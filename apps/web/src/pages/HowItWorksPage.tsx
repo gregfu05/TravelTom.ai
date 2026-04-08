@@ -1,7 +1,11 @@
 import { Link } from "react-router-dom";
 
 import { TopNav } from "../components/TopNav";
-import { planningSteps, systemFlowSteps } from "../content/siteContent";
+import {
+  howItWorksContent,
+  planningSteps,
+  systemFlowSteps,
+} from "../content/siteContent";
 
 export function HowItWorksPage() {
   return (
@@ -10,11 +14,8 @@ export function HowItWorksPage() {
 
       <section className="page-hero">
         <p className="eyebrow">How It Works</p>
-        <h1>A practical flow from intent capture to trip-ready shortlist.</h1>
-        <p className="page-lead">
-          TravelTom combines conversational input with deterministic ranking so
-          recommendations remain structured, testable, and easy to act on.
-        </p>
+        <h1>{howItWorksContent.title}</h1>
+        <p className="page-lead">{howItWorksContent.lead}</p>
       </section>
 
       <section className="section">
@@ -51,11 +52,8 @@ export function HowItWorksPage() {
       <section className="cta-panel">
         <div>
           <p className="eyebrow">Ready</p>
-          <h2>Continue into the planner and start your chat</h2>
-          <p>
-            The next implementation step is the interactive chat UI, followed by
-            recommendations and shortlist pages.
-          </p>
+          <h2>{howItWorksContent.ctaTitle}</h2>
+          <p>{howItWorksContent.ctaBody}</p>
         </div>
         <Link className="button button-primary" to="/planner">
           Open Planner

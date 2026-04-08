@@ -153,6 +153,21 @@ export function ChatView() {
   }, [isDrawerOpen]);
 
   useEffect(() => {
+    if (!isDrawerOpen) {
+      return;
+    }
+
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsDrawerOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isDrawerOpen]);
+
+  useEffect(() => {
     if (!isTravelTomCooldownActive) {
       return;
     }
@@ -387,7 +402,7 @@ export function ChatView() {
               aria-expanded={isDrawerOpen}
               aria-controls="recommendations-drawer"
             >
-              <span className="picks-glow-pill-sparkle" aria-hidden="true">✦</span>
+              <span className="picks-glow-pill-sparkle" aria-hidden="true">*</span>
               {topRecommendations.length} Picks
             </button>
           ) : null}
@@ -424,10 +439,10 @@ export function ChatView() {
                     <path d="M2 8h2M20 8h2M9 18v2M15 18v2" />
                   </svg>
                 </div>
-                <h2 className="chat-welcome-heading">Where to?</h2>
+                <h2 className="chat-welcome-heading">Start with a trip idea</h2>
                 <p className="chat-welcome-sub">
-                  Start with a destination idea, or give Tom destination, dates,
-                  and budget for hotels or flights.
+                  Start broad with a destination idea, or share destination,
+                  dates, and budget if you want hotel or flight recommendations.
                 </p>
                 <div className="suggestion-chips">
                   {SUGGESTION_CHIPS.map((chip) => (
@@ -606,8 +621,8 @@ export function ChatView() {
           >
             <div className="recommendations-panel-header">
               <div>
-                <p className="eyebrow">✦ Top Picks</p>
-                <p>Top {topRecommendations.length} from latest response</p>
+                <p className="eyebrow">Current Picks</p>
+                <p>{topRecommendations.length} current candidates from this turn</p>
               </div>
             </div>
             {renderRecommendationCards()}
@@ -628,13 +643,16 @@ export function ChatView() {
       <aside
         id="recommendations-drawer"
         className={`drawer ${isDrawerOpen ? "drawer-open" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Recommendations"
         aria-live="polite"
       >
         <div className="drawer-header">
           <div>
-            <p className="eyebrow">✦ Recommendations</p>
+            <p className="eyebrow">Recommendations</p>
             <p className="drawer-subtitle">
-              Top {topRecommendations.length} picks from latest response
+              {topRecommendations.length} current candidates from this turn
             </p>
           </div>
           <button

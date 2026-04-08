@@ -1,5 +1,6 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { useSessionStore } from "../store/session";
 
 import { apiClient } from "../api/client";
@@ -10,6 +11,8 @@ function getNavLinkClass({ isActive }: { isActive: boolean }): string {
 }
 
 export function TopNav() {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const location = useLocation();
   const healthQuery = useQuery({
     queryKey: ["health"],
     queryFn: ({ signal }) => apiClient.getHealth(signal),
@@ -18,6 +21,10 @@ export function TopNav() {
 
   const apiStatus = getApiStatusText(healthQuery.isSuccess, healthQuery.isError);
   const { authToken, resetConversation, setAuthToken } = useSessionStore();
+
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [location.pathname]);
 
   async function handleLogout() {
     if (!authToken) {
@@ -44,6 +51,9 @@ export function TopNav() {
       </NavLink>
 
       <nav className="home-nav-links" aria-label="Primary">
+        <NavLink to="/planner" className={getNavLinkClass}>
+          Planner
+        </NavLink>
         <NavLink to="/why-traveltom" className={getNavLinkClass}>
           Why TravelTom
         </NavLink>
@@ -51,6 +61,16 @@ export function TopNav() {
           How It Works
         </NavLink>
       </nav>
+
+      <button
+        type="button"
+        className="button button-sm nav-menu-toggle"
+        aria-expanded={isMenuOpen}
+        aria-controls="mobile-primary-nav"
+        onClick={() => setIsMenuOpen((open) => !open)}
+      >
+        {isMenuOpen ? "Close" : "Menu"}
+      </button>
 
       <div className="status-and-cta">
         <span className="api-status" data-status={apiStatus}>
@@ -71,6 +91,43 @@ export function TopNav() {
           </>
         )}
       </div>
+
+      <div
+        className={`mobile-nav-panel ${isMenuOpen ? "mobile-nav-panel-open" : ""}`}
+        id="mobile-primary-nav"
+        aria-hidden={!isMenuOpen}
+      >
+          <nav className="mobile-nav-links" aria-label="Mobile primary">
+            <NavLink to="/planner" className={getNavLinkClass}>
+              Planner
+            </NavLink>
+            <NavLink to="/why-traveltom" className={getNavLinkClass}>
+              Why TravelTom
+            </NavLink>
+            <NavLink to="/how-it-works" className={getNavLinkClass}>
+              How It Works
+            </NavLink>
+          </nav>
+          <div className="mobile-nav-footer">
+            <span className="api-status" data-status={apiStatus}>
+              {apiStatus}
+            </span>
+            {authToken ? (
+              <button className="button button-sm" onClick={() => void handleLogout()}>
+                Logout
+              </button>
+            ) : (
+              <div className="mobile-nav-actions">
+                <NavLink className="button button-sm" to="/login">
+                  Login
+                </NavLink>
+                <NavLink className="button button-sm" to="/signup">
+                  Signup
+                </NavLink>
+              </div>
+            )}
+          </div>
+        </div>
     </header>
   );
 }

@@ -82,8 +82,8 @@
 
 - Header with primary navigation and API status.
 - Hero section with CTA links to dedicated `why` and `how` pages.
-- Supporting sections: planner preview and handoff panel for next implementation steps.
-- Designed to hand off directly into upcoming chat/planner implementation work.
+- Supporting sections: planner preview and current-state CTA into the live planner.
+- Designed to orient users quickly and move them into the active product flow.
 
 ## Error and loading states
 
@@ -101,6 +101,8 @@
   instead of standalone form-only styling.
 - Auth success redirects honor a preserved protected-route target across the
   login/signup switch; direct auth entry defaults to `/planner`.
+- Shared navigation must remain usable on mobile; if desktop nav links are
+  hidden at smaller breakpoints, a replacement mobile path is required.
 - Chat screen states include:
   - Empty state before first message
   - Loading state while awaiting `/api/v1/chat`

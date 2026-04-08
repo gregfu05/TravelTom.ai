@@ -5,6 +5,10 @@
 - Updated frontend docs to document branded `/login` and `/signup` routes,
   shared navigation back to the landing page, and preserved redirect behavior
   across auth entry screens.
+- Documented the frontend UI/UX cleanup pass:
+  - shared navigation now requires a mobile-accessible fallback path
+  - homepage/product copy now reflects the current shipped planner state
+  - frontend guidance no longer describes active UI surfaces as future work
 
 ## 2026-03-24
 

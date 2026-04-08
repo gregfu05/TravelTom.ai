@@ -21,6 +21,7 @@
 - Homepage
   - Default marketing state with planner CTA
   - API status state (`checking`, `online`, `unreachable`) from health probe
+  - Primary navigation remains accessible on mobile through a dedicated menu path
   - Responsive layout on mobile and desktop breakpoints
 - Auth screens
   - Routes: `/login`, `/signup`

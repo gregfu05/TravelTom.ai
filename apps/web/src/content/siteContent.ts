@@ -61,6 +61,38 @@ export const recommendationPreview = [
   },
 ] as const;
 
+export const homepageContent = {
+  heroEyebrow: "AI-Powered Travel Concierge",
+  heroTitle: "Plan an incredible trip with one conversation.",
+  heroDescription:
+    "TravelTom turns a rough travel idea into ranked destinations, hotels, and flights with an interface built to keep decisions clear.",
+  primaryCta: "Open Planner",
+  secondaryCta: "How It Works",
+  sectionTitle: "Explore the product from the angle you need first",
+  finalCtaTitle: "Start planning instead of bouncing between tabs.",
+  finalCtaBody:
+    "TravelTom is live: enter the planner, shape your trip in chat, and review recommendations without losing context.",
+  finalCtaAction: "Start a Planning Session",
+} as const;
+
+export const whyPageContent = {
+  title: "Built to make travel choices clearer, faster, and more confident.",
+  lead:
+    "TravelTom is designed for travelers who want guidance that stays explainable from the first prompt to the current shortlist.",
+  ctaTitle: "Move into the planner when you are ready to compare real options",
+  ctaBody:
+    "If you want system context first, open the process page. Otherwise, jump straight into the planner and start shaping the trip.",
+} as const;
+
+export const howItWorksContent = {
+  title: "A practical flow from intent capture to trip-ready shortlist.",
+  lead:
+    "TravelTom combines conversational input with deterministic ranking so recommendations stay structured, testable, and easy to act on.",
+  ctaTitle: "Use the planner to put the flow into practice",
+  ctaBody:
+    "The conversation, recommendation rail, and next-step prompts are already live in the planner route.",
+} as const;
+
 export const authPageContent = {
   login: {
     eyebrow: "Welcome Back",

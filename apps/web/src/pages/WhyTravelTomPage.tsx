@@ -1,7 +1,11 @@
 import { Link } from "react-router-dom";
 
 import { TopNav } from "../components/TopNav";
-import { featurePillars, whyTrustSignals } from "../content/siteContent";
+import {
+  featurePillars,
+  whyPageContent,
+  whyTrustSignals,
+} from "../content/siteContent";
 
 export function WhyTravelTomPage() {
   return (
@@ -10,12 +14,8 @@ export function WhyTravelTomPage() {
 
       <section className="page-hero">
         <p className="eyebrow">Why TravelTom</p>
-        <h1>Built to make travel choices clearer, faster, and more confident.</h1>
-        <p className="page-lead">
-          TravelTom is designed for users who want helpful AI guidance without
-          opaque recommendations. The system is structured to stay explainable
-          from the first prompt to the shortlist.
-        </p>
+        <h1>{whyPageContent.title}</h1>
+        <p className="page-lead">{whyPageContent.lead}</p>
       </section>
 
       <section className="section">
@@ -52,11 +52,8 @@ export function WhyTravelTomPage() {
       <section className="cta-panel">
         <div>
           <p className="eyebrow">Continue</p>
-          <h2>Move into the planner and start chatting with TravelTom</h2>
-          <p>
-            If you want more architecture detail first, open the process page.
-            Otherwise, jump straight into the planner route.
-          </p>
+          <h2>{whyPageContent.ctaTitle}</h2>
+          <p>{whyPageContent.ctaBody}</p>
         </div>
         <div className="cta-button-group">
           <Link className="button button-primary" to="/planner">
