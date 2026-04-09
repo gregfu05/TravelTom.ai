@@ -188,10 +188,6 @@ function shouldGuardJsonBody(): boolean {
     return import.meta.env.DEV;
   }
 
-  if (typeof import.meta.env.MODE === "string") {
-    return import.meta.env.MODE !== "production";
-  }
-
   return true;
 }
 

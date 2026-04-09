@@ -30,3 +30,10 @@
 - Unit + integration tests required for merge.
 - Frontend static quality checks (`npm run typecheck`, `npm run build`) required for merge when frontend code changes.
 - E2E tests required for release.
+
+## Frontend commands
+
+- `cd apps/web && npm test`: Vitest unit + DOM/component suite
+- `cd apps/web && npm run test:e2e`: Playwright planner smoke flow with mocked API responses
+- `cd apps/web && npm run test:ci`: combined frontend automated test run
+- `cd apps/web && npm run build`: required static verification for frontend changes

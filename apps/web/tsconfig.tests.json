@@ -12,6 +12,8 @@
     "rootDir": "src"
   },
   "include": [
+    "src/auth/authFlow.ts",
+    "src/auth/authFlow.test.ts",
     "src/api/client.ts",
     "src/api/client.test.ts",
     "src/api/errorHandling.ts",

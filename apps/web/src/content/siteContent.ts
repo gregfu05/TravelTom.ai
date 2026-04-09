@@ -61,6 +61,72 @@ export const recommendationPreview = [
   },
 ] as const;
 
+export const homepageContent = {
+  heroEyebrow: "AI-Powered Travel Concierge",
+  heroTitle: "Plan an incredible trip with one conversation.",
+  heroDescription:
+    "TravelTom turns a rough travel idea into ranked destinations, hotels, and flights with an interface built to keep decisions clear.",
+  primaryCta: "Open Planner",
+  secondaryCta: "How It Works",
+  sectionTitle: "Explore the product from the angle you need first",
+  finalCtaTitle: "Start planning instead of bouncing between tabs.",
+  finalCtaBody:
+    "TravelTom is live: enter the planner, shape your trip in chat, and review recommendations without losing context.",
+  finalCtaAction: "Start a Planning Session",
+} as const;
+
+export const whyPageContent = {
+  title: "Built to make travel choices clearer, faster, and more confident.",
+  lead:
+    "TravelTom is designed for travelers who want guidance that stays explainable from the first prompt to the current shortlist.",
+  ctaTitle: "Move into the planner when you are ready to compare real options",
+  ctaBody:
+    "If you want system context first, open the process page. Otherwise, jump straight into the planner and start shaping the trip.",
+} as const;
+
+export const howItWorksContent = {
+  title: "A practical flow from intent capture to trip-ready shortlist.",
+  lead:
+    "TravelTom combines conversational input with deterministic ranking so recommendations stay structured, testable, and easy to act on.",
+  ctaTitle: "Use the planner to put the flow into practice",
+  ctaBody:
+    "The conversation, recommendation rail, and next-step prompts are already live in the planner route.",
+} as const;
+
+export const authPageContent = {
+  login: {
+    eyebrow: "Welcome Back",
+    title: "Pick up your next trip where you left it.",
+    description:
+      "Sign in to reopen your planner, review ranked options, and continue refining the trip without losing momentum.",
+    alternateLabel: "Need a TravelTom account?",
+    alternateCta: "Create one",
+    panelTitle: "What waits inside",
+    panelBody:
+      "The planner keeps the workflow focused: conversation in one pane, ranked picks in the other, and every recommendation tied to your travel constraints.",
+    reassurance:
+      "Use the same email and password you created for TravelTom local auth.",
+  },
+  signup: {
+    eyebrow: "Create Your Account",
+    title: "Start planning with a calmer, faster travel flow.",
+    description:
+      "Create an account to move from open-ended trip ideas into a workspace built for destination discovery, hotel comparison, and flight decisions.",
+    alternateLabel: "Already have an account?",
+    alternateCta: "Sign in",
+    panelTitle: "Why sign up now",
+    panelBody:
+      "TravelTom turns scattered travel research into a single planning rhythm, with clear recommendations and a direct path into the planner.",
+    reassurance:
+      "Accounts use TravelTom email and password auth today. No extra verification step is required in this flow.",
+  },
+  highlights: [
+    "Deterministic recommendations you can compare quickly",
+    "Constraint-aware ranking across destinations, hotels, and flights",
+    "A clear route back to the landing page whenever you want to reset your path",
+  ],
+} as const;
+
 export const systemFlowSteps = [
   {
     title: "Capture intent",

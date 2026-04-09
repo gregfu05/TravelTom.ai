@@ -1,0 +1,57 @@
+:root {
+  --bg: #0b1120;
+  --bg-gradient: linear-gradient(165deg, #0b1120 0%, #0f1a2e 50%, #0b1120 100%);
+  --surface: #131d32;
+  --surface-2: #182540;
+  --text: #e8ecf4;
+  --muted: #7a8ba8;
+  --primary: #14b8a6;
+  --primary-hover: #2dd4bf;
+  --primary-dim: rgba(20, 184, 166, 0.15);
+  --primary-border: rgba(20, 184, 166, 0.25);
+  --accent: #e87e45;
+  --accent-dim: rgba(232, 126, 69, 0.15);
+  --accent-sand: #ffca7d;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-light: rgba(255, 255, 255, 0.05);
+  --ring: rgba(20, 184, 166, 0.4);
+  --shadow-soft: 0 24px 60px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 8px 28px rgba(0, 0, 0, 0.3);
+  --shadow-glow: 0 0 30px rgba(20, 184, 166, 0.08);
+  --radius-xl: 1.25rem;
+  --radius-lg: 1rem;
+  --radius-md: 0.75rem;
+  --radius-sm: 0.5rem;
+  --space-xs: 0.5rem;
+  --space-sm: 0.75rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Manrope", "Segoe UI", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  background-image: var(--bg-gradient);
+  background-attachment: fixed;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}

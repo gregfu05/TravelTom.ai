@@ -28,6 +28,8 @@ wheels/
 # Keep frontend source utilities tracked
 !apps/web/src/lib/
 !apps/web/src/lib/**
+!apps/web/src/features/**/lib/
+!apps/web/src/features/**/lib/**
 
 # PyInstaller
 *.manifest
