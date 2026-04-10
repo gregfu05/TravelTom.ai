@@ -1,0 +1,75 @@
+name: Deploy Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Image tag to promote to production
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-prod:
+    runs-on: ubuntu-latest
+    environment: azure-prod
+    env:
+      IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+      REGISTRY_NAME: ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_PROD }}
+      API_APP_NAME: ${{ vars.AZURE_CONTAINER_APP_API_PROD }}
+      WEB_APP_NAME: ${{ vars.AZURE_CONTAINER_APP_WEB_PROD }}
+      API_IMAGE_NAME: traveltom-api
+      WEB_IMAGE_NAME: traveltom-web
+      DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run production migrations
+        run: |
+          docker build -f apps/api/Dockerfile -t traveltom-api-migrate .
+          docker run --rm \
+            -e DATABASE_URL="$DATABASE_URL" \
+            traveltom-api-migrate \
+            alembic -c apps/api/alembic.ini upgrade head
+
+      - name: Deploy API revision
+        run: |
+          az containerapp update \
+            --name "$API_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$REGISTRY_NAME.azurecr.io/$API_IMAGE_NAME:$IMAGE_TAG"
+
+      - name: Deploy web revision
+        run: |
+          az containerapp update \
+            --name "$WEB_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$REGISTRY_NAME.azurecr.io/$WEB_IMAGE_NAME:$IMAGE_TAG"
+
+      - name: Resolve prod URLs
+        id: urls
+        shell: bash
+        run: |
+          api_fqdn=$(az containerapp show -n "$API_APP_NAME" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)
+          web_fqdn=$(az containerapp show -n "$WEB_APP_NAME" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)
+          echo "api_url=https://${api_fqdn}" >> "$GITHUB_OUTPUT"
+          echo "web_url=https://${web_fqdn}" >> "$GITHUB_OUTPUT"
+
+      - name: Run API smoke
+        shell: pwsh
+        run: ./scripts/smoke-api.ps1 -BaseUrl '${{ steps.urls.outputs.api_url }}'
+
+      - name: Run web smoke
+        shell: pwsh
+        run: ./scripts/smoke-web.ps1 -BaseUrl '${{ steps.urls.outputs.web_url }}'

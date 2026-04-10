@@ -1,0 +1,52 @@
+name: Rollback Container Apps
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+      api_revision:
+        description: API revision name to reactivate
+        required: true
+      web_revision:
+        description: Web revision name to reactivate
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment == 'prod' && 'azure-prod' || 'azure-dev' }}
+    env:
+      RESOURCE_GROUP: ${{ github.event.inputs.environment == 'prod' && vars.AZURE_RESOURCE_GROUP_PROD || vars.AZURE_RESOURCE_GROUP_DEV }}
+      API_APP_NAME: ${{ github.event.inputs.environment == 'prod' && vars.AZURE_CONTAINER_APP_API_PROD || vars.AZURE_CONTAINER_APP_API_DEV }}
+      WEB_APP_NAME: ${{ github.event.inputs.environment == 'prod' && vars.AZURE_CONTAINER_APP_WEB_PROD || vars.AZURE_CONTAINER_APP_WEB_DEV }}
+    steps:
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Restore API revision traffic
+        run: |
+          az containerapp revision activate \
+            --name "$API_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --revision "${{ github.event.inputs.api_revision }}"
+
+      - name: Restore web revision traffic
+        run: |
+          az containerapp revision activate \
+            --name "$WEB_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --revision "${{ github.event.inputs.web_revision }}"

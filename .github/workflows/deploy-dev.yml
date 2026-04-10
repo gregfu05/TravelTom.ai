@@ -1,0 +1,72 @@
+name: Deploy Dev
+
+on:
+  workflow_run:
+    workflows: ["Publish Images"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Image tag to deploy
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-dev:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: azure-dev
+    env:
+      IMAGE_TAG: ${{ github.event.inputs.image_tag || github.event.workflow_run.head_sha }}
+      REGISTRY_NAME: ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_DEV }}
+      API_APP_NAME: ${{ vars.AZURE_CONTAINER_APP_API_DEV }}
+      WEB_APP_NAME: ${{ vars.AZURE_CONTAINER_APP_WEB_DEV }}
+      API_IMAGE_NAME: traveltom-api
+      WEB_IMAGE_NAME: traveltom-web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy API revision
+        run: |
+          az containerapp update \
+            --name "$API_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$REGISTRY_NAME.azurecr.io/$API_IMAGE_NAME:$IMAGE_TAG"
+
+      - name: Deploy web revision
+        run: |
+          az containerapp update \
+            --name "$WEB_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$REGISTRY_NAME.azurecr.io/$WEB_IMAGE_NAME:$IMAGE_TAG"
+
+      - name: Resolve dev URLs
+        id: urls
+        shell: bash
+        run: |
+          api_fqdn=$(az containerapp show -n "$API_APP_NAME" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)
+          web_fqdn=$(az containerapp show -n "$WEB_APP_NAME" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)
+          echo "api_url=https://${api_fqdn}" >> "$GITHUB_OUTPUT"
+          echo "web_url=https://${web_fqdn}" >> "$GITHUB_OUTPUT"
+
+      - name: Run API smoke
+        shell: pwsh
+        run: ./scripts/smoke-api.ps1 -BaseUrl '${{ steps.urls.outputs.api_url }}'
+
+      - name: Run web smoke
+        shell: pwsh
+        run: ./scripts/smoke-web.ps1 -BaseUrl '${{ steps.urls.outputs.web_url }}'
