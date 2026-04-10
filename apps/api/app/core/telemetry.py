@@ -3,27 +3,35 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import TYPE_CHECKING, Any, Iterator
 
 from fastapi import FastAPI
 
 from app.core.config import Settings
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from opentelemetry.trace import Span
+
 try:
     from opentelemetry import trace
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
     from opentelemetry.instrumentation.logging import LoggingInstrumentor
-    from opentelemetry.trace import Span
 except ImportError:  # pragma: no cover - optional until dependency install
     trace = None
     FastAPIInstrumentor = None
     LoggingInstrumentor = None
-    Span = Any
 
 try:
     from azure.monitor.opentelemetry import configure_azure_monitor
 except ImportError:  # pragma: no cover - optional until dependency install
     configure_azure_monitor = None
+
+_trace_api: Any | None = trace
+_fastapi_instrumentor: type[Any] | None = FastAPIInstrumentor
+_logging_instrumentor: type[Any] | None = LoggingInstrumentor
+_configure_azure_monitor: Callable[..., None] | None = configure_azure_monitor
 
 
 def configure_telemetry(application: FastAPI, settings: Settings) -> None:
@@ -32,30 +40,30 @@ def configure_telemetry(application: FastAPI, settings: Settings) -> None:
     connection_string = (settings.applicationinsights_connection_string or "").strip()
     if (
         not connection_string
-        or configure_azure_monitor is None
-        or FastAPIInstrumentor is None
-        or LoggingInstrumentor is None
+        or _configure_azure_monitor is None
+        or _fastapi_instrumentor is None
+        or _logging_instrumentor is None
     ):
         return
 
-    configure_azure_monitor(
+    _configure_azure_monitor(
         connection_string=connection_string,
         logger_name=settings.telemetry_service_name,
     )
-    LoggingInstrumentor().instrument(set_logging_format=False)
-    FastAPIInstrumentor.instrument_app(application)
+    _logging_instrumentor().instrument(set_logging_format=False)
+    _fastapi_instrumentor.instrument_app(application)
 
 
 def get_tracer(name: str | None = None):
     """Return the shared tracer."""
 
-    if trace is None:
+    if _trace_api is None:
         return None
-    return trace.get_tracer(name or "traveltom")
+    return _trace_api.get_tracer(name or "traveltom")
 
 
 @contextmanager
-def start_span(name: str, **attributes: object) -> Iterator[Span]:
+def start_span(name: str, **attributes: object) -> Iterator[Span | None]:
     """Create a span around an application-level operation."""
 
     tracer = get_tracer()
