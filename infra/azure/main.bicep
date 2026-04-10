@@ -19,6 +19,15 @@ param apiImage string
 @description('Container image for the web app.')
 param webImage string
 
+@description('Container image for Ollama (e.g. ollama/ollama:latest).')
+param ollamaImage string
+
+@description('Ollama planning model name.')
+param ollamaPlanningModel string = 'llama3.1:8b'
+
+@description('Ollama response model name.')
+param ollamaResponseModel string = 'llama3.1:8b'
+
 @description('PostgreSQL admin username.')
 param postgresAdminLogin string
 
@@ -57,6 +66,8 @@ var postgresDatabaseName = 'traveltom'
 var containerEnvName = '${resourcePrefix}-cae'
 var apiAppName = '${resourcePrefix}-api'
 var webAppName = '${resourcePrefix}-web'
+var ollamaAppName = '${resourcePrefix}-ollama'
+var gpuWorkloadProfileName = 'gpu-t4'
 
 module monitoring './modules/monitoring.bicep' = {
   name: 'monitoring'
@@ -111,6 +122,29 @@ resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
         sharedKey: monitoring.outputs.logAnalyticsSharedKey
       }
     }
+    workloadProfiles: [
+      {
+        name: 'Consumption'
+        workloadProfileType: 'Consumption'
+      }
+      {
+        name: gpuWorkloadProfileName
+        workloadProfileType: 'Consumption-GPU-T4'
+      }
+    ]
+  }
+}
+
+module ollamaApp './modules/ollama-app.bicep' = {
+  name: 'ollama-app'
+  params: {
+    appName: ollamaAppName
+    location: location
+    containerAppEnvironmentId: containerEnv.id
+    image: ollamaImage
+    registryServer: acr.outputs.loginServer
+    workloadProfileName: gpuWorkloadProfileName
+    modelName: ollamaPlanningModel
   }
 }
 
@@ -149,6 +183,22 @@ module apiApp './modules/container-app.bicep' = {
       {
         name: 'JSON_LOGS_ENABLED'
         value: 'true'
+      }
+      {
+        name: 'ORCHESTRATOR_LLM_PROVIDER'
+        value: 'ollama'
+      }
+      {
+        name: 'OLLAMA_BASE_URL'
+        value: 'http://${ollamaApp.outputs.fqdn}'
+      }
+      {
+        name: 'OLLAMA_PLANNING_MODEL'
+        value: ollamaPlanningModel
+      }
+      {
+        name: 'OLLAMA_RESPONSE_MODEL'
+        value: ollamaResponseModel
       }
       {
         name: 'OPENAI_BASE_URL'
@@ -210,6 +260,8 @@ output apiAppName string = apiApp.name
 output apiUrl string = apiApp.outputs.latestRevisionFqdn
 output webAppName string = webApp.name
 output webUrl string = webApp.outputs.latestRevisionFqdn
+output ollamaAppName string = ollamaApp.name
+output ollamaInternalFqdn string = ollamaApp.outputs.fqdn
 output applicationInsightsConnectionString string = monitoring.outputs.appInsightsConnectionString
 output keyVaultName string = keyVault.name
 output postgresServerFqdn string = postgres.outputs.fqdn
