@@ -58,6 +58,7 @@ describe("apiClient", () => {
       Accept: "application/json",
       Authorization: "Bearer token-123",
       "Content-Type": "application/json",
+      "X-Trace-ID": expect.any(String),
     });
     expect(capturedInit?.body).toBe(
       JSON.stringify({
@@ -105,6 +106,7 @@ describe("apiClient", () => {
     expect(capturedInit?.headers).toEqual({
       Accept: "application/json",
       "Content-Type": "application/json",
+      "X-Trace-ID": expect.any(String),
     });
     expect(capturedInit?.body).toBe(
       JSON.stringify({
@@ -166,6 +168,26 @@ describe("apiClient", () => {
     expect(response.recommendations[0]?.itemId).toBe("dest-lisbon");
     expect(response.recommendations[0]?.metadata).toEqual({ name: "Lisbon" });
     expect(capturedInit?.method).toBe("GET");
+  });
+
+  it("adds a trace header to every request", async () => {
+    let capturedHeaders: HeadersInit | undefined;
+
+    installFetchMock(async (_input, init) => {
+      capturedHeaders = init?.headers;
+      return new Response(JSON.stringify({ status: "ok" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    await apiClient.getHealth();
+
+    expect(capturedHeaders).toMatchObject({
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "X-Trace-ID": expect.any(String),
+    });
   });
 
   it("rejects pre-serialized string bodies in development", async () => {

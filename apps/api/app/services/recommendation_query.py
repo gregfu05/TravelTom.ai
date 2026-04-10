@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from pydantic import ValidationError
 
+from app.core.telemetry import start_span
 from app.schemas.api.recommendations import RecommendationQuery, RecommendationResponse
 from app.schemas.tools.recommendations import (
     RecommendationQuery as RecommendationToolQuery,
@@ -40,8 +41,14 @@ async def execute_recommendation_query(
         request.model_dump(mode="json")
     )
     try:
-        tool_output = await asyncio.to_thread(recommendation_tool, tool_request)
-        validated_output = RecommendationToolOutput.model_validate(tool_output)
+        with start_span(
+            "recommendation.retrieval",
+            session_id=request.session_id,
+            item_type=request.filters.get("item_type"),
+            max_results=request.max_results,
+        ):
+            tool_output = await asyncio.to_thread(recommendation_tool, tool_request)
+            validated_output = RecommendationToolOutput.model_validate(tool_output)
     except ValidationError as exc:
         raise InvalidRecommendationResponseError(
             "Invalid recommendation service response"

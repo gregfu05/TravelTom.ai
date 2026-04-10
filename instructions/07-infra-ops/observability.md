@@ -12,11 +12,18 @@
 
 - Use OpenTelemetry SDK in backend.
 - Propagate trace IDs from frontend to backend via headers.
+- Export backend telemetry to Azure Monitor via `APPLICATIONINSIGHTS_CONNECTION_STRING`.
+- Frontend uses Application Insights when `VITE_APPINSIGHTS_CONNECTION_STRING` is set.
 - Create spans for:
   - Chat request
   - Recommendation retrieval
   - Ranking
   - LLM call
+
+Current implementation boundary:
+- Backend bootstrap installs JSON logging and Azure Monitor/OpenTelemetry export in `apps/api/app/main.py`.
+- Request correlation uses `X-Trace-ID`.
+- Frontend sends `X-Trace-ID` on each API request and records API failures in App Insights.
 
 ## Service metrics and SLOs
 
@@ -53,3 +60,4 @@
 
 - Latency and error dashboard.
 - Recommender coverage, CTR proxy, and drift dashboard.
+- Azure dashboard seed file: `infra/azure/dashboards.json`.

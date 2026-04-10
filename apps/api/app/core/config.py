@@ -10,6 +10,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "TravelTom API"
     api_prefix: str = "/api/v1"
+    telemetry_service_name: str = Field(
+        "traveltom-api",
+        validation_alias=AliasChoices("TELEMETRY_SERVICE_NAME"),
+    )
+    json_logs_enabled: bool = Field(
+        True,
+        validation_alias=AliasChoices("JSON_LOGS_ENABLED"),
+    )
+    applicationinsights_connection_string: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("APPLICATIONINSIGHTS_CONNECTION_STRING"),
+    )
     environment: str = Field(
         "local", validation_alias=AliasChoices("APP_ENV", "ENVIRONMENT")
     )

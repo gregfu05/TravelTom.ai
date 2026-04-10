@@ -17,6 +17,7 @@ from langchain_openai import ChatOpenAI
 from openai import RateLimitError as OpenAIRateLimitError
 
 from app.core.errors import ApiError
+from app.core.telemetry import start_span
 from app.schemas.state import SessionState
 from app.schemas.tools.recommendations import (
     RecommendationQuery,
@@ -84,35 +85,40 @@ def build_chat_model(
                 }
             },
         )
-        try:
-            available_model_names = get_ollama_available_model_names(
-                base_url=normalized_ollama_base_url,
-                timeout_seconds=model_discovery_timeout_seconds,
-            )
-        except Exception as exc:
-            available_model_names = []
-            logger.warning(
-                "ollama_model_healthcheck_failed",
-                extra={
-                    "context": {
-                        "ollama_base_url": normalized_ollama_base_url,
-                        "endpoint_mode": ollama_endpoint_mode,
-                        "timeout_seconds": model_discovery_timeout_seconds,
-                        "error": str(exc),
-                    }
-                },
-            )
-        else:
-            logger.info(
-                "ollama_model_healthcheck_succeeded",
-                extra={
-                    "context": {
-                        "ollama_base_url": normalized_ollama_base_url,
-                        "endpoint_mode": ollama_endpoint_mode,
-                        "available_model_count": len(available_model_names),
-                    }
-                },
-            )
+        with start_span(
+            "llm.healthcheck",
+            provider=provider,
+            model=ollama_chat_model,
+        ):
+            try:
+                available_model_names = get_ollama_available_model_names(
+                    base_url=normalized_ollama_base_url,
+                    timeout_seconds=model_discovery_timeout_seconds,
+                )
+            except Exception as exc:
+                available_model_names = []
+                logger.warning(
+                    "ollama_model_healthcheck_failed",
+                    extra={
+                        "context": {
+                            "ollama_base_url": normalized_ollama_base_url,
+                            "endpoint_mode": ollama_endpoint_mode,
+                            "timeout_seconds": model_discovery_timeout_seconds,
+                            "error": str(exc),
+                        }
+                    },
+                )
+            else:
+                logger.info(
+                    "ollama_model_healthcheck_succeeded",
+                    extra={
+                        "context": {
+                            "ollama_base_url": normalized_ollama_base_url,
+                            "endpoint_mode": ollama_endpoint_mode,
+                            "available_model_count": len(available_model_names),
+                        }
+                    },
+                )
         if available_model_names:
             matched_model_name = match_ollama_model_name(
                 ollama_chat_model,

@@ -11,6 +11,7 @@ TravelTom is a full-stack project that delivers a travel-planning chat experienc
 - Clean separation between orchestration and recommendation logic.
 - First-class documentation in `instructions/` with an executable plan.
 - Local-first development with Docker, Alembic, and seed data.
+- Azure deployment scaffolding for Container Apps, PostgreSQL, Key Vault, and App Insights.
 
 **Architecture (MVP)**
 - API service in `apps/api` using FastAPI.
@@ -88,6 +89,15 @@ uvicorn app.main:app --reload --app-dir apps/api
 - Recommender design: `instructions/03-recommender/`.
 - Orchestrator design: `instructions/04-llm-orchestrator/`.
 - Frontend UX: `instructions/05-frontend/`.
+- Azure runtime infra: `infra/azure/README.md`.
+
+**Deployment**
+- Production API container: `apps/api/Dockerfile`
+- Production web container: `apps/web/Dockerfile`
+- Azure infra modules: `infra/azure/`
+- Smoke checks:
+  - `pwsh ./scripts/smoke-api.ps1 -BaseUrl https://<api-url>`
+  - `pwsh ./scripts/smoke-web.ps1 -BaseUrl https://<web-url>`
 
 **Configuration Rules**
 - Never hard-code environment-specific values in code.

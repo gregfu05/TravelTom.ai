@@ -1,5 +1,20 @@
 # Instructions Changelog
 
+## 2026-04-10
+
+- Documented the Azure runtime deployment implementation surface:
+  - `07-infra-ops/deployment-final.md` now references the repo-managed
+    Bicep modules under `infra/azure/`, the runtime env var contract, the
+    smoke scripts, and the GitHub Actions deployment workflow names.
+  - `07-infra-ops/observability.md` now documents Azure Monitor/App Insights
+    export, frontend request trace propagation, and the dashboard seed file.
+  - `07-infra-ops/runbooks.md` now references the deploy/rollback workflows
+    and the exact smoke-check commands used during rollout and recovery.
+  - `08-quality/ci-cd.md` now documents the image-publish, dev deploy, prod
+    deploy, and rollback workflow split plus OIDC-based Azure auth.
+  - `02-backend/security.md` now states that production telemetry uses
+    `APPLICATIONINSIGHTS_CONNECTION_STRING`.
+
 ## 2026-04-08
 
 - Refactored the frontend into folderized page/component units and a planner

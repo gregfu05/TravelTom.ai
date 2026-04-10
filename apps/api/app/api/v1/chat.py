@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError, get_trace_id
+from app.core.telemetry import start_span
 from app.core.security import (
     enforce_chat_rate_limit,
     require_authenticated_principal,
@@ -60,71 +61,77 @@ async def chat(
     pk = session_pk(request.session_id)
 
     try:
-        async with uow:
-            owner_user_id = None
-            state_user_id = None
+        with start_span(
+            "chat.request",
+            session_id=request.session_id,
+            principal_subject=(principal.subject if principal is not None else None),
+            provider=settings.orchestrator_llm_provider,
+        ):
+            async with uow:
+                owner_user_id = None
+                state_user_id = None
 
-            if principal is not None:
-                user_row = await uow.user_repository.get_or_create_from_principal(
-                    principal
+                if principal is not None:
+                    user_row = await uow.user_repository.get_or_create_from_principal(
+                        principal
+                    )
+                    owner_user_id = user_row.id
+                    state_user_id = str(user_row.id)
+
+                session_row = await uow.chat_repository.get_or_create_session(
+                    pk=pk,
+                    session_id=request.session_id,
+                    owner_user_id=owner_user_id,
                 )
-                owner_user_id = user_row.id
-                state_user_id = str(user_row.id)
+                uow.chat_repository.ensure_session_owner(
+                    session_row=session_row,
+                    owner_user_id=owner_user_id,
+                )
 
-            session_row = await uow.chat_repository.get_or_create_session(
-                pk=pk,
-                session_id=request.session_id,
-                owner_user_id=owner_user_id,
-            )
-            uow.chat_repository.ensure_session_owner(
-                session_row=session_row,
-                owner_user_id=owner_user_id,
-            )
+                state = load_session_state(
+                    raw_state=session_row.state_json,
+                    session_id=request.session_id,
+                    user_id=state_user_id,
+                )
+                recent_messages = await uow.chat_repository.get_recent_messages(
+                    pk=pk,
+                    limit=agent.recent_history_limit,
+                )
 
-            state = load_session_state(
-                raw_state=session_row.state_json,
-                session_id=request.session_id,
-                user_id=state_user_id,
-            )
-            recent_messages = await uow.chat_repository.get_recent_messages(
-                pk=pk,
-                limit=agent.recent_history_limit,
-            )
+                orchestration = agent.handle_chat(
+                    user_message=request.message,
+                    session_state=state,
+                    recent_messages=recent_messages,
+                )
 
-            orchestration = agent.handle_chat(
-                user_message=request.message,
-                session_state=state,
-                recent_messages=recent_messages,
-            )
+                persisted_state = SessionState.model_validate(orchestration.state)
+                persisted_state.session_id = request.session_id
+                persisted_state.user_id = state_user_id
+                session_row.state_json = persisted_state.model_dump(mode="json")
 
-            persisted_state = SessionState.model_validate(orchestration.state)
-            persisted_state.session_id = request.session_id
-            persisted_state.user_id = state_user_id
-            session_row.state_json = persisted_state.model_dump(mode="json")
+                if owner_user_id is not None:
+                    session_row.user_id = owner_user_id
 
-            if owner_user_id is not None:
-                session_row.user_id = owner_user_id
+                await uow.flush()
 
-            await uow.flush()
+                uow.chat_repository.add_messages(
+                    pk=pk,
+                    user_message=request.message,
+                    assistant_message=orchestration.assistant_message,
+                )
+                uow.chat_repository.add_recommendation_snapshot(
+                    pk=pk,
+                    message=request.message,
+                    recommendations=orchestration.recommendations,
+                    ranking_version=persisted_state.last_recommendation_version
+                    or "heuristic-v1",
+                )
 
-            uow.chat_repository.add_messages(
-                pk=pk,
-                user_message=request.message,
-                assistant_message=orchestration.assistant_message,
-            )
-            uow.chat_repository.add_recommendation_snapshot(
-                pk=pk,
-                message=request.message,
-                recommendations=orchestration.recommendations,
-                ranking_version=persisted_state.last_recommendation_version
-                or "heuristic-v1",
-            )
-
-            await uow.commit()
-            return _to_chat_response(
-                request_message_id=request.message_id,
-                orchestration=orchestration,
-            )
+                await uow.commit()
+                return _to_chat_response(
+                    request_message_id=request.message_id,
+                    orchestration=orchestration,
+                )
     except ApiError as exc:
         if exc.code == "provider_rate_limited":
             logger.warning(

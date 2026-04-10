@@ -61,6 +61,18 @@ Recommended commands:
 - Run migrations as a deployment step.
 - Shift traffic only after green revision checks pass.
 
+Implemented workflow split:
+- `Publish Images`: builds and pushes immutable API and web images to ACR after `Quality Checks`
+- `Deploy Dev`: updates Container Apps in the dev environment and runs smoke checks
+- `Deploy Prod`: approval-gated deployment with migrations and smoke checks
+- `Rollback Container Apps`: manually reactivate a known-good revision
+
+Authentication and secret handling:
+- GitHub Actions authenticates to Azure via OIDC (`azure/login`)
+- Azure credentials are not stored as long-lived passwords in repo
+- Environment-specific Azure resource names are supplied through GitHub environment vars
+- Runtime secrets remain in Azure Key Vault / GitHub environment secrets
+
 ## Pre-deploy local checklist (backend + frontend)
 
 Run these before triggering deployment:
