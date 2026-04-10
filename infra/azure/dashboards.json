@@ -1,0 +1,17 @@
+{
+  "name": "traveltom-observability",
+  "widgets": [
+    {
+      "title": "Chat P95 Latency",
+      "query": "requests | where name endswith '/api/v1/chat' | summarize p95=percentile(duration, 95)"
+    },
+    {
+      "title": "Recommendation P95 Latency",
+      "query": "requests | where name endswith '/api/v1/recommendations/query' | summarize p95=percentile(duration, 95)"
+    },
+    {
+      "title": "Failed Requests",
+      "query": "requests | where success == false | summarize failures=count() by name"
+    }
+  ]
+}
