@@ -15,23 +15,30 @@ if TYPE_CHECKING:
     from opentelemetry.trace import Span
 
 try:
-    from opentelemetry import trace
-    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-    from opentelemetry.instrumentation.logging import LoggingInstrumentor
+    from opentelemetry import trace as _imported_trace
+    from opentelemetry.instrumentation.fastapi import (
+        FastAPIInstrumentor as _imported_fastapi_instrumentor,
+    )
+    from opentelemetry.instrumentation.logging import (
+        LoggingInstrumentor as _imported_logging_instrumentor,
+    )
 except ImportError:  # pragma: no cover - optional until dependency install
-    trace = None
-    FastAPIInstrumentor = None
-    LoggingInstrumentor = None
+    _trace_api: Any | None = None
+    _fastapi_instrumentor: type[Any] | None = None
+    _logging_instrumentor: type[Any] | None = None
+else:
+    _trace_api = _imported_trace
+    _fastapi_instrumentor = _imported_fastapi_instrumentor
+    _logging_instrumentor = _imported_logging_instrumentor
 
 try:
-    from azure.monitor.opentelemetry import configure_azure_monitor
+    from azure.monitor.opentelemetry import (
+        configure_azure_monitor as _imported_configure_azure_monitor,
+    )
 except ImportError:  # pragma: no cover - optional until dependency install
-    configure_azure_monitor = None
-
-_trace_api: Any | None = trace
-_fastapi_instrumentor: type[Any] | None = FastAPIInstrumentor
-_logging_instrumentor: type[Any] | None = LoggingInstrumentor
-_configure_azure_monitor: Callable[..., None] | None = configure_azure_monitor
+    _configure_azure_monitor: Callable[..., None] | None = None
+else:
+    _configure_azure_monitor = _imported_configure_azure_monitor
 
 
 def configure_telemetry(application: FastAPI, settings: Settings) -> None:
