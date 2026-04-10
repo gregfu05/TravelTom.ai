@@ -50,14 +50,12 @@ def configure_logging(*, service_name: str, json_logs: bool) -> None:
     if json_logs:
         formatter = JsonFormatter()
     else:
-        formatter = logging.Formatter(
-            "%(asctime)s %(levelname)s %(name)s %(message)s"
-        )
+        formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
 
     if not root_logger.handlers:
-        handler = logging.StreamHandler()
-        handler.setFormatter(formatter)
-        root_logger.addHandler(handler)
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(formatter)
+        root_logger.addHandler(stream_handler)
         return
 
     for handler in root_logger.handlers:

@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from typing import Any, Iterator
 
 from fastapi import FastAPI
+
 from app.core.config import Settings
 
 try:
@@ -28,9 +29,7 @@ except ImportError:  # pragma: no cover - optional until dependency install
 def configure_telemetry(application: FastAPI, settings: Settings) -> None:
     """Install OpenTelemetry exporters and framework instrumentation."""
 
-    connection_string = (
-        settings.applicationinsights_connection_string or ""
-    ).strip()
+    connection_string = (settings.applicationinsights_connection_string or "").strip()
     if (
         not connection_string
         or configure_azure_monitor is None

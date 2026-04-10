@@ -12,11 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError, get_trace_id
-from app.core.telemetry import start_span
 from app.core.security import (
     enforce_chat_rate_limit,
     require_authenticated_principal,
 )
+from app.core.telemetry import start_span
 from app.db.models.message import Message
 from app.db.session import get_db
 from app.schemas.api.chat import (
