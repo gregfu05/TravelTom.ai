@@ -60,9 +60,10 @@
 
 - Store secrets in `.env` only for local dev.
 - Use Azure Key Vault in production.
-- Only the API service managed identity may read production secrets.
+- Only the API service managed identity should read production secrets.
 - Rotate production secrets at least every 90 days.
 - Never log secrets or raw user messages.
+- Production telemetry uses `APPLICATIONINSIGHTS_CONNECTION_STRING`.
 
 ## PII considerations
 

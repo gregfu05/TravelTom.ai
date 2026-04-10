@@ -14,11 +14,17 @@ if str(REPO_ROOT) not in sys.path:
 from app.api.v1 import api_router  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
 from app.core.errors import register_error_handlers  # noqa: E402
+from app.core.logging import configure_logging  # noqa: E402
+from app.core.telemetry import configure_telemetry  # noqa: E402
 
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     settings = get_settings()
+    configure_logging(
+        service_name=settings.telemetry_service_name,
+        json_logs=settings.json_logs_enabled,
+    )
     application = FastAPI(title=settings.app_name)
     if settings.cors_allowed_origins_list:
         application.add_middleware(
@@ -29,6 +35,7 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
         )
     register_error_handlers(application)
+    configure_telemetry(application, settings)
     application.include_router(api_router, prefix=settings.api_prefix)
     return application
 

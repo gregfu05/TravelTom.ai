@@ -1,0 +1,63 @@
+name: Publish Images
+
+on:
+  workflow_run:
+    workflows: ["Quality Checks"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: Git ref to build
+        required: false
+        default: main
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGISTRY_NAME: ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
+  API_IMAGE_NAME: traveltom-api
+  WEB_IMAGE_NAME: traveltom-web
+
+jobs:
+  publish:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+    steps:
+      - name: Checkout selected ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git_ref || github.event.workflow_run.head_sha }}
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: ACR login
+        run: az acr login --name "$REGISTRY_NAME"
+
+      - name: Resolve image tag
+        id: meta
+        run: echo "image_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push API image
+        run: |
+          docker build -f apps/api/Dockerfile -t "$REGISTRY_NAME.azurecr.io/$API_IMAGE_NAME:${GITHUB_SHA}" .
+          docker push "$REGISTRY_NAME.azurecr.io/$API_IMAGE_NAME:${GITHUB_SHA}"
+
+      - name: Build and push web image
+        run: |
+          docker build \
+            -f apps/web/Dockerfile \
+            --build-arg VITE_API_BASE_URL="${{ vars.DEV_API_BASE_URL }}" \
+            --build-arg VITE_APPINSIGHTS_CONNECTION_STRING="${{ secrets.DEV_FRONTEND_APPINSIGHTS_CONNECTION_STRING }}" \
+            -t "$REGISTRY_NAME.azurecr.io/$WEB_IMAGE_NAME:${GITHUB_SHA}" .
+          docker push "$REGISTRY_NAME.azurecr.io/$WEB_IMAGE_NAME:${GITHUB_SHA}"

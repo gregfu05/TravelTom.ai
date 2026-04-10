@@ -26,6 +26,7 @@
 
 - Always run `alembic upgrade head` before deploy.
 - Use `alembic downgrade -1` for rollback.
+- `Deploy Prod` runs migrations before revision smoke tests.
 
 ## Incident checklist
 
@@ -35,6 +36,25 @@
 - Mitigate (disable feature flags, reduce traffic, or switch to previous blue revision).
 - If model-related, roll back to previous model version and re-run smoke checks.
 - Document root cause and follow-up tasks.
+
+## Deployment workflow references
+
+- Publish artifacts: `.github/workflows/publish-images.yml`
+- Dev deployment: `.github/workflows/deploy-dev.yml`
+- Prod deployment: `.github/workflows/deploy-prod.yml`
+- Revision rollback: `.github/workflows/rollback-container-app.yml`
+
+## Smoke checks
+
+- API: `pwsh ./scripts/smoke-api.ps1 -BaseUrl https://<api-url>`
+- Web: `pwsh ./scripts/smoke-web.ps1 -BaseUrl https://<web-url>`
+
+## Revision rollback procedure
+
+1. Find the previous known-good revision names for `api` and `web`.
+2. Run `Rollback Container Apps`.
+3. Re-run the smoke scripts against the restored URLs.
+4. If the rollback is migration-sensitive, assess whether the DB schema must be downgraded before re-enabling the failed revision.
 
 ## Blue-green rollback triggers
 

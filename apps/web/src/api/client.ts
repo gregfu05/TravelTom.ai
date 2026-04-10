@@ -6,8 +6,9 @@ import {
   apiErrorSchema,
   parseApiErrorMetadata,
 } from "./errorHandling.js";
+import { getRequestTraceId, trackApiError } from "../lib/telemetry.js";
 
-const API_BASE_URL = "/api/v1";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() || "/api/v1";
 
 const healthResponseSchema = z.object({
   status: z.literal("ok"),
@@ -153,12 +154,14 @@ async function request<TSchema extends z.ZodTypeAny>(
   schema: TSchema,
 ): Promise<z.output<TSchema>> {
   const { headers, ...rest } = init;
+  const traceId = getRequestTraceId();
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...rest,
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      "X-Trace-ID": traceId,
       ...headers,
     },
   });
@@ -171,6 +174,11 @@ async function request<TSchema extends z.ZodTypeAny>(
       status: response.status,
       payload,
       retryAfterHeader: response.headers.get("Retry-After"),
+    });
+    trackApiError(metadata.message, {
+      path,
+      status: String(response.status),
+      traceId: response.headers.get("X-Trace-ID") ?? traceId,
     });
 
     throw new ApiClientError(

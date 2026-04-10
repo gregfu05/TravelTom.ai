@@ -1,0 +1,10 @@
+using './main.bicep'
+
+param environment = 'prod'
+param location = 'westeurope'
+param apiImage = 'example.azurecr.io/traveltom-api:prod'
+param webImage = 'example.azurecr.io/traveltom-web:prod'
+param postgresAdminLogin = 'traveltomadmin'
+param postgresAdminPassword = 'replace-me'
+param corsAllowedOrigins = 'https://traveltom.example.com'
+param frontendApiBaseUrl = 'https://traveltom-api.example.com/api/v1'
