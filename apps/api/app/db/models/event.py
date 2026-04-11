@@ -36,6 +36,8 @@ class Event(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    user_id: Mapped[Union[uuid.UUID, None]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    user_id: Mapped[Union[uuid.UUID, None]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     idempotency_key: Mapped[str] = mapped_column(Text)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB)

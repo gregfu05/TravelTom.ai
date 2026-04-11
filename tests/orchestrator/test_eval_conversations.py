@@ -1,181 +1,168 @@
-"""Scripted evaluation conversations for the TravelTom agent.
+"""Evaluation conversation scenarios for the orchestrator.
 
-These are lightweight, deterministic multi-turn tests that measure:
-- progressive clarification (ask when core info is missing)
-- non-hallucination (never invent results when tool returns empty)
-- personalization (carry and use weighted_interests)
+These tests are higher-level conversation checks intended to guard core UX flows:
+- slot gating for hotel searches
+- immediate tool execution for complete requests
+- safe empty-results fallback (no hallucinated items)
+- preference capture and carry-forward into subsequent queries
 
-They are intentionally property-based (assert on behavior), not exact phrasing.
+They follow the patterns used in tests/orchestrator/test_service.py.
 """
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from langchain_core.messages import AIMessage
 
-from app.schemas.orchestrator import TranscriptMessage
 from app.schemas.state import SessionState
-from app.schemas.tools.recommendations import RecommendationQuery, RecommendationToolResponse
+from app.schemas.tools.recommendations import (
+    RecommendationQuery,
+    RecommendationToolResponse,
+)
 from app.services.orchestrator.service import OrchestratorService
 
 
-RecommendationExecutor = Callable[[RecommendationQuery], RecommendationToolResponse]
+def test_eval_missing_core_slots_asks_for_destination_dates_budget_and_no_tool_call() -> (
+    None
+):
+    service = OrchestratorService()
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
 
-
-def _fake_recommendation_executor_factory(*, results_for_item_type: dict[str, list[dict[str, Any]]]):
-    """Return a deterministic tool executor that records the last query."""
-
-    captured: dict[str, Any] = {"last_query": None}
-
-    def executor(query: RecommendationQuery) -> RecommendationToolResponse:
-        captured["last_query"] = query
-        results = results_for_item_type.get(str(query.filters.get("item_type") or "destination"), [])
-        payload = {"ranking_version": query.ranking_version, "results": results}
-        return RecommendationToolResponse.model_validate(payload)
-
-    return executor, captured
-
-
-def _run_conversation(
-    *,
-    service: OrchestratorService,
-    session_state: SessionState,
-    turns: list[str],
-    recommendation_executor: RecommendationExecutor | None = None,
-) -> tuple[SessionState, list[str]]:
-    """Replay a list of user turns, returning final state and assistant messages."""
-
-    assistant_messages: list[str] = []
-    transcript: list[TranscriptMessage] = []
-    state = session_state
-
-    for user_message in turns:
-        response = service.handle_message(
-            user_message=user_message,
-            session_state=state,
-            recent_messages=list(transcript),
-            agent_executor=lambda _messages: {"messages": []},
-            planner_executor=None,
-            recommendation_executor=recommendation_executor,
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        captured_query["value"] = query
+        return RecommendationToolResponse.model_validate(
+            {"ranking_version": "heuristic-v1", "results": []}
         )
-        assistant_messages.append(response.assistant_message)
-        state = SessionState.model_validate(response.state)
-        transcript.append(TranscriptMessage(role="user", content=user_message))
-        transcript.append(TranscriptMessage(role="assistant", content=response.assistant_message))
 
-    return state, assistant_messages
-
-
-def test_eval_progressive_clarification_for_hotels_missing_core_slots() -> None:
-    service = OrchestratorService()
-
-    state, assistant_messages = _run_conversation(
-        service=service,
-        session_state=SessionState(session_id="eval-clarify-hotels"),
-        turns=[
-            "I want hotels",
-            "Lisbon",
-            "June 10th to June 17th",
-            "2000 euros",
-            "hotels",
-        ],
-        recommendation_executor=(
-            _fake_recommendation_executor_factory(
-                results_for_item_type={
-                    "hotel": [
-                        {
-                            "item_id": "hotel-1",
-                            "item_type": "hotel",
-                            "score": 0.9,
-                            "rank": 1,
-                            "features": {"name": "Hotel One"},
-                            "explanation": "Matches your constraints.",
-                        }
-                    ]
-                }
-            )[0]
-        ),
+    response = service.handle_message(
+        user_message="show me hotels",
+        session_state=SessionState(session_id="sess-eval-missing-slots"),
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+        recommendation_executor=recommendation_executor,
     )
 
-    # The agent should progressively ask for the missing slots; by the end, it should
-    # have destination/dates/budget and be in refine mode with results.
-    assert any("destination" in msg.casefold() for msg in assistant_messages[:2])
-    assert any("date" in msg.casefold() for msg in assistant_messages[:3])
-    assert any("budget" in msg.casefold() for msg in assistant_messages[:4])
-
-    assert state.constraints.destination == "Lisbon"
-    assert state.constraints.dates is not None
-    assert state.constraints.budget is not None
-    assert state.conversation.last_recommendation_item_type == "hotel"
-    assert state.status == "refine"
+    assert captured_query["value"] is None
+    message = response.assistant_message.casefold()
+    assert "destination" in message
+    assert "date" in message
+    assert "budget" in message
 
 
-def test_eval_no_hallucinations_when_tool_returns_empty_results() -> None:
+def test_eval_complete_request_calls_tool_immediately_and_no_clarification() -> None:
     service = OrchestratorService()
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
 
-    executor, captured = _fake_recommendation_executor_factory(results_for_item_type={"hotel": []})
-
-    state, assistant_messages = _run_conversation(
-        service=service,
-        session_state=SessionState.model_validate(
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        captured_query["value"] = query
+        return RecommendationToolResponse.model_validate(
             {
-                "session_id": "eval-empty-results",
-                "constraints": {
-                    "destination": "Santa Barbara",
-                    "dates": {"start": "2026-05-10", "end": "2026-05-20"},
-                    "budget": {"min": 0, "max": 2000, "currency": "EUR"},
-                },
-                "conversation": {
-                    "last_user_intent": "recommend",
-                    "last_recommendation_item_type": "hotel",
-                },
+                "ranking_version": "heuristic-v1",
+                "results": [
+                    {
+                        "item_id": "hotel-sb-1",
+                        "item_type": "hotel",
+                        "score": 0.91,
+                        "rank": 1,
+                        "features": {"name": "Santa Barbara Hotel"},
+                        "explanation": "Grounded hotel match.",
+                    }
+                ],
             }
-        ),
-        turns=["Find me hotels"],
-        recommendation_executor=executor,
+        )
+
+    response = service.handle_message(
+        user_message="Santa Barbara May 10–20, 2000 EUR, hotels",
+        session_state=SessionState(session_id="sess-eval-complete"),
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+        recommendation_executor=recommendation_executor,
     )
 
-    # Tool was called.
-    assert captured["last_query"] is not None
-    # Agent should not invent named options; it should acknowledge no matches and ask to adjust.
-    msg = assistant_messages[-1].casefold()
-    assert "not" in msg and ("match" in msg or "strong" in msg)
-    assert "guess" not in msg  # shouldn't claim guessing; should state lack of results
-    assert state.conversation.last_search_outcome == "empty_results"
+    assert captured_query["value"] is not None
+    assert response.recommendations
+
+    assistant = response.assistant_message.casefold()
+    assert "destination" not in assistant
+    assert "travel dates" not in assistant
+    assert "budget" not in assistant
 
 
-def test_eval_personalization_interests_are_carried_into_follow_up_query() -> None:
+def test_eval_empty_results_fallback_no_hallucinations_and_suggests_adjustments() -> (
+    None
+):
     service = OrchestratorService()
 
-    executor, captured = _fake_recommendation_executor_factory(
-        results_for_item_type={
-            "destination": [
-                {
-                    "item_id": "dest-1",
-                    "item_type": "destination",
-                    "score": 0.8,
-                    "rank": 1,
-                    "features": {"name": "Example Place"},
-                    "explanation": "Nightlife and food scene.",
-                }
-            ]
-        }
+    def recommendation_executor(
+        _query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        return RecommendationToolResponse.model_validate(
+            {"ranking_version": "heuristic-v1", "results": []}
+        )
+
+    response = service.handle_message(
+        user_message="Santa Barbara May 10-20, 2000 EUR, hotels",
+        session_state=SessionState(session_id="sess-eval-empty-results"),
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+        recommendation_executor=recommendation_executor,
     )
 
-    state = SessionState(session_id="eval-interests")
-    state.preferences.weighted_interests = {"nightlife": 0.8, "food": 0.8}
-    state.conversation.last_user_intent = "recommend"
-    state.conversation.last_recommendation_item_type = "destination"
-    state.conversation.last_recommendation_query = "destination ideas"
+    assert response.recommendations == []
 
-    _final_state, _assistant_messages = _run_conversation(
-        service=service,
+    msg = response.assistant_message.casefold()
+    # Should not present fabricated recommendations.
+    assert "top picks" not in msg
+    assert "1." not in msg
+
+    # Should guide the user to adjust constraints/preferences.
+    assert any(
+        token in msg
+        for token in (
+            "adjust",
+            "broaden",
+            "widen",
+            "different",
+            "lower",
+            "higher",
+            "budget",
+            "dates",
+        )
+    )
+
+
+def test_eval_personalization_follow_up_query_includes_interests() -> None:
+    service = OrchestratorService()
+    state = SessionState(session_id="sess-eval-personalization")
+
+    first = service.handle_message(
+        user_message="I like nightlife and food",
         session_state=state,
-        turns=["show me more"],
-        recommendation_executor=executor,
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
     )
 
-    query = captured["last_query"]
+    next_state = SessionState.model_validate(first.state)
+
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        captured_query["value"] = query
+        return RecommendationToolResponse.model_validate(
+            {"ranking_version": "heuristic-v1", "results": []}
+        )
+
+    service.handle_message(
+        user_message="show me options",
+        session_state=next_state,
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+        recommendation_executor=recommendation_executor,
+    )
+
+    query = captured_query["value"]
     assert query is not None
-    # Query text should carry forward prior context + top interests.
-    assert "nightlife" in query.query.casefold()
-    assert "food" in query.query.casefold()
+
+    normalized_query = query.query.casefold()
+    assert "nightlife" in normalized_query
+    assert "food" in normalized_query

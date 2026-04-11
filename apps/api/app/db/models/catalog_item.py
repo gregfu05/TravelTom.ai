@@ -30,11 +30,15 @@ class CatalogItem(Base):
     location_city: Mapped[Union[str, None]] = mapped_column(Text, nullable=True)
     location_country: Mapped[Union[str, None]] = mapped_column(Text, nullable=True)
     latitude: Mapped[Union[Decimal, None]] = mapped_column(Numeric(9, 6), nullable=True)
-    longitude: Mapped[Union[Decimal, None]] = mapped_column(Numeric(9, 6), nullable=True)
+    longitude: Mapped[Union[Decimal, None]] = mapped_column(
+        Numeric(9, 6), nullable=True
+    )
     price: Mapped[Union[Decimal, None]] = mapped_column(Numeric(10, 2), nullable=True)
     rating: Mapped[Union[Decimal, None]] = mapped_column(Numeric(4, 2), nullable=True)
     tags: Mapped[Union[list[str], None]] = mapped_column(ARRAY(Text), nullable=True)
-    metadata_json: Mapped[Union[dict[str, Any], None]] = mapped_column(JSONB, nullable=True)
+    metadata_json: Mapped[Union[dict[str, Any], None]] = mapped_column(
+        JSONB, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
