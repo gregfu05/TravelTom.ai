@@ -411,7 +411,10 @@ class TravelTomAgent:
         if not response.results:
             return build_empty_results_message(SessionState(session_id="tool-result"))
 
-        return self._orchestrator.build_results_message(response.results)
+        return self._orchestrator.build_results_message(
+            response.results,
+            session_state=SessionState(session_id="tool-result"),
+        )
 
 
 @lru_cache()

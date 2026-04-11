@@ -655,15 +655,29 @@ def build_effective_recommendation_query_text(
             prior_query
             and session_state.conversation.last_clarification_kind == "search_type"
         ):
-            return _merge_query_fragments(normalized_message, prior_query)
-        if (
+            base = _merge_query_fragments(normalized_message, prior_query)
+        elif (
             prior_query
             and explicit_item_type is None
             and session_state.conversation.last_requested_slots
             and session_state.conversation.last_user_intent in {"recommend", "refine"}
         ):
-            return _merge_query_fragments(normalized_message, prior_query)
-        return normalized_message
+            base = _merge_query_fragments(normalized_message, prior_query)
+        else:
+            base = normalized_message
+
+        fragments: list[str] = [base]
+        if session_state.constraints.destination:
+            fragments.append(session_state.constraints.destination)
+
+        weighted_interests = sorted(
+            session_state.preferences.weighted_interests.items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+        for interest, _weight in weighted_interests[:3]:
+            fragments.append(interest)
+
+        return _merge_query_fragments(*fragments)
 
     if prior_query:
         return _merge_query_fragments(normalized_message, prior_query)
@@ -690,8 +704,6 @@ def build_effective_recommendation_query_text(
         fragment.strip() for fragment in fragments if fragment and fragment.strip()
     ]
     return " ".join(dict.fromkeys(normalized_fragments))
-
-
 def apply_structured_state_patch(
     *,
     session_state: SessionState,

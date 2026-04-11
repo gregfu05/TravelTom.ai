@@ -147,6 +147,75 @@ def is_greeting(message: str) -> bool:
     )
 
 
+# Lightweight social turns that should not enter slot-filling or tool flows.
+_THANKS_PATTERNS = (
+    r"^\s*(thanks|thank\s+you|thx|ty)\b",
+    r"\bappreciate\s+it\b",
+)
+_GOODBYE_PATTERNS = (
+    r"^\s*(bye|goodbye|see\s+you|see\s+ya|cya|take\s+care)\b",
+    r"^\s*(talk\s+to\s+you\s+later|ttyl)\b",
+)
+_SMALLTALK_PATTERNS = (
+    r"^\s*(how\s+are\s+you|how\s+are\s+you\s+doing|how's\s+it\s+going)\b",
+    r"^\s*(what's\s+up|whats\s+up)\b",
+)
+
+
+def is_social_turn(message: str) -> bool:
+    """Return whether the message is a pure social turn (no trip planning)."""
+
+    stripped_message = message.strip()
+    if not stripped_message:
+        return False
+
+    lowered = stripped_message.casefold()
+    if any(keyword in lowered for keyword in _RECOMMEND_KEYWORDS + _REFINE_KEYWORDS):
+        return False
+    if extract_query_filters(stripped_message):
+        return False
+
+    return any(
+        re.search(pattern, stripped_message, flags=re.IGNORECASE)
+        for pattern in _THANKS_PATTERNS + _GOODBYE_PATTERNS + _SMALLTALK_PATTERNS
+    )
+
+
+def build_social_turn_message(message: str) -> str:
+    """Build deterministic copy for social turns before orchestration."""
+
+    stripped = message.strip()
+
+    if any(
+        re.search(pattern, stripped, flags=re.IGNORECASE)
+        for pattern in _THANKS_PATTERNS
+    ):
+        return (
+            "You're welcome. If you'd like, tell me destination, dates, "
+            "and budget and I'll help plan it."
+        )
+
+    if any(
+        re.search(pattern, stripped, flags=re.IGNORECASE)
+        for pattern in _GOODBYE_PATTERNS
+    ):
+        return (
+            "Bye for now. If you come back with destination, dates, and "
+            "budget, I'll pick up right where we left off."
+        )
+
+    if any(
+        re.search(pattern, stripped, flags=re.IGNORECASE)
+        for pattern in _SMALLTALK_PATTERNS
+    ):
+        return (
+            "Doing well—happy to help. What trip are you planning "
+            "(destination, dates, and budget)?"
+        )
+
+    return "Got it. Tell me what trip you're planning and I'll help."
+
+
 def build_greeting_message() -> str:
     """Build deterministic copy for greeting/opening turns."""
 
@@ -158,6 +227,13 @@ def build_greeting_message() -> str:
 
 def decide_next_action(message: str, state: SessionState) -> OrchestrationDecision:
     """Deterministic guardrail for routing when LLM planning is unavailable."""
+
+    if is_social_turn(message):
+        return OrchestrationDecision(
+            intent="clarify",
+            should_call_recommendation_tool=False,
+            reason="social turn should stay conversational",
+        )
 
     if is_greeting(message):
         return OrchestrationDecision(
@@ -378,7 +454,8 @@ def build_empty_results_message(session_state: SessionState) -> str:
     return (
         "I did not find grounded matches with those constraints"
         + destination_clause
-        + ". Try adjusting your budget, changing the travel dates, or switching the location."
+        + ". Try adjusting your budget, changing the travel dates, or "
+        + "switching the location."
     )
 
 
@@ -435,7 +512,9 @@ def build_guardrail_plan(
     decision = decide_next_action(message=message, state=session_state)
     clarification_message = None
     if not decision.should_call_recommendation_tool:
-        if is_greeting(message):
+        if is_social_turn(message):
+            clarification_message = build_social_turn_message(message)
+        elif is_greeting(message):
             clarification_message = build_greeting_message()
         elif is_meta_question(message):
             clarification_message = build_meta_turn_message(

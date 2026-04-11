@@ -537,8 +537,21 @@ class OrchestratorService:
     def build_results_message(
         self,
         results: list[RecommendationResult],
+        *,
+        session_state: SessionState,
     ) -> str:
         """Build deterministic grounded copy from recommendation results."""
+
+        weighted_interests = sorted(
+            session_state.preferences.weighted_interests.items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+        interest_list = [interest for interest, _weight in weighted_interests[:3]]
+        preference_preface = (
+            f"Based on your interests in {', '.join(interest_list)}, "
+            if interest_list
+            else ""
+        )
 
         preview_limit = max(1, self._policy.max_recommendation_results)
         limit_notice = next(
@@ -554,8 +567,9 @@ class OrchestratorService:
             for i, item in enumerate(results[:preview_limit], start=1)
         )
         base = (
-            f"I found {len(results)} places that fit your request. "
-            f"Top picks:\n{preview_items}"
+            preference_preface
+            + f"I found {len(results)} places that fit your request. "
+            + f"Top picks:\n{preview_items}"
         )
         if limit_notice:
             return f"{limit_notice} {base}"
@@ -778,7 +792,10 @@ class OrchestratorService:
         next_state.status = "refine"
         next_state.conversation.last_clarification_kind = None
         next_state.conversation.last_search_outcome = "results"
-        fallback = self.build_results_message(displayed_results)
+        fallback = self.build_results_message(
+            displayed_results,
+            session_state=next_state,
+        )
         assistant_message = self._compose_assistant_message(
             session_state=next_state,
             recent_messages=recent_messages,

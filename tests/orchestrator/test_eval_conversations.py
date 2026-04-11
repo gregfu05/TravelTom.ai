@@ -20,8 +20,9 @@ from app.services.orchestrator.service import OrchestratorService
 from langchain_core.messages import AIMessage
 
 
-def test_eval_missing_core_slots_asks_for_destination_dates_budget_and_no_tool_call(
-) -> None:
+def test_eval_missing_core_slots_asks_for_destination_dates_budget_and_no_tool_call() -> (
+    None
+):
     service = OrchestratorService()
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
 
@@ -87,8 +88,9 @@ def test_eval_complete_request_calls_tool_immediately_and_no_clarification() -> 
     assert "budget" not in assistant
 
 
-def test_eval_empty_results_fallback_no_hallucinations_and_suggests_adjustments(
-) -> None:
+def test_eval_empty_results_fallback_no_hallucinations_and_suggests_adjustments() -> (
+    None
+):
     service = OrchestratorService()
 
     def recommendation_executor(
