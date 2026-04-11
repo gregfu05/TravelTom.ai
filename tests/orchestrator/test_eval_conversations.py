@@ -20,9 +20,7 @@ from app.services.orchestrator.service import OrchestratorService
 from langchain_core.messages import AIMessage
 
 
-def test_eval_missing_core_slots_asks_for_destination_dates_budget_and_no_tool_call() -> (
-    None
-):
+def test_eval_missing_core_slots() -> None:
     service = OrchestratorService()
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
 
