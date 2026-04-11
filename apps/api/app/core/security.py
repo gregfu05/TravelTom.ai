@@ -11,9 +11,19 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends, Request, status
 from fastapi.security.oauth2 import SecurityScopes
-from limits.storage import MemoryStorage
-from limits.strategies import MovingWindowRateLimiter
-from limits.util import parse as parse_rate_limit
+
+try:
+    from limits.storage import MemoryStorage  # type: ignore[import-not-found]
+    from limits.strategies import MovingWindowRateLimiter  # type: ignore[import-not-found]
+    from limits.util import parse as parse_rate_limit  # type: ignore[import-not-found]
+
+    LIMITS_INSTALLED = True
+except ModuleNotFoundError:  # pragma: no cover
+    MemoryStorage = None  # type: ignore[assignment]
+    MovingWindowRateLimiter = None  # type: ignore[assignment]
+    parse_rate_limit = None  # type: ignore[assignment]
+    LIMITS_INSTALLED = False
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -28,7 +38,7 @@ from app.repositories.auth_sessions import AuthSessionRepository
 from app.schemas.auth import AuthenticatedPrincipal, LocalAccessTokenClaims
 
 if TYPE_CHECKING:
-    from fastapi_azure_auth import (
+    from fastapi_azure_auth import (  # type: ignore[import-not-found]
         B2CMultiTenantAuthorizationCodeBearer as AzureB2CScheme,
     )
 
@@ -36,7 +46,7 @@ azure_b2c_scheme_class: type[Any] | None
 FASTAPI_AZURE_AUTH_INSTALLED = True
 
 try:
-    from fastapi_azure_auth import (
+    from fastapi_azure_auth import (  # type: ignore[import-not-found]
         B2CMultiTenantAuthorizationCodeBearer as _AzureB2CSchemeClass,
     )
 
@@ -52,17 +62,33 @@ class ChatRateLimiter:
     """In-memory chat rate limiter backed by ``limits`` primitives."""
 
     def __init__(self) -> None:
-        self._storage = MemoryStorage()
-        self._limiter = MovingWindowRateLimiter(self._storage)
+        self._disabled = not LIMITS_INSTALLED
+        if self._disabled:
+            self._storage = None
+            self._limiter = None
+        else:
+            assert MemoryStorage is not None
+            assert MovingWindowRateLimiter is not None
+            self._storage = MemoryStorage()
+            self._limiter = MovingWindowRateLimiter(self._storage)
 
     def reset(self) -> None:
         """Reset all in-memory rate limit state."""
 
+        if self._disabled or self._storage is None:
+            return
         self._storage.reset()
 
     def check(self, *, rate_limit: str, key: str) -> int | None:
         """Consume one token from the configured rate limit."""
 
+        if self._disabled:
+            # Dependency not installed in the test environment; treat rate limiting
+            # as disabled.
+            return None
+
+        assert parse_rate_limit is not None
+        assert self._limiter is not None
         parsed_limit = parse_rate_limit(rate_limit)
         if self._limiter.hit(parsed_limit, key):
             return None

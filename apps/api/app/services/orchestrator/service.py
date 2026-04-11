@@ -538,20 +538,21 @@ class OrchestratorService:
         self,
         results: list[RecommendationResult],
         *,
-        session_state: SessionState,
+        session_state: SessionState | None = None,
     ) -> str:
         """Build deterministic grounded copy from recommendation results."""
 
-        weighted_interests = sorted(
-            session_state.preferences.weighted_interests.items(),
-            key=lambda item: (-item[1], item[0]),
-        )
-        interest_list = [interest for interest, _weight in weighted_interests[:3]]
-        preference_preface = (
-            f"Based on your interests in {', '.join(interest_list)}, "
-            if interest_list
-            else ""
-        )
+        preference_preface = ""
+        if session_state is not None:
+            weighted_interests = sorted(
+                session_state.preferences.weighted_interests.items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+            interest_list = [interest for interest, _weight in weighted_interests[:3]]
+            if interest_list:
+                preference_preface = (
+                    f"Based on your interests in {', '.join(interest_list)}, "
+                )
 
         preview_limit = max(1, self._policy.max_recommendation_results)
         limit_notice = next(
