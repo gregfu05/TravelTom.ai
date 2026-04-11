@@ -682,26 +682,28 @@ def build_effective_recommendation_query_text(
     if prior_query:
         return _merge_query_fragments(normalized_message, prior_query)
 
-    fragments: list[str] = [normalized_message]
+    follow_up_fragments: list[str] = [normalized_message]
     effective_item_type = resolve_effective_item_type(
         message=normalized_message,
         session_state=session_state,
     )
     if effective_item_type is not None:
-        fragments.append(effective_item_type)
+        follow_up_fragments.append(effective_item_type)
 
     if session_state.constraints.destination:
-        fragments.append(session_state.constraints.destination)
+        follow_up_fragments.append(session_state.constraints.destination)
 
     weighted_interests = sorted(
         session_state.preferences.weighted_interests.items(),
         key=lambda item: (-item[1], item[0]),
     )
     for interest, _weight in weighted_interests[:3]:
-        fragments.append(interest)
+        follow_up_fragments.append(interest)
 
     normalized_fragments = [
-        fragment.strip() for fragment in fragments if fragment and fragment.strip()
+        fragment.strip()
+        for fragment in follow_up_fragments
+        if fragment and fragment.strip()
     ]
     return " ".join(dict.fromkeys(normalized_fragments))
 

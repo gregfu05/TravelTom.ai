@@ -37,8 +37,10 @@ FASTAPI_AZURE_AUTH_INSTALLED = True
 
 try:
     from fastapi_azure_auth import (
-        B2CMultiTenantAuthorizationCodeBearer as azure_b2c_scheme_class,
+        B2CMultiTenantAuthorizationCodeBearer as _AzureB2CSchemeClass,
     )
+
+    azure_b2c_scheme_class = _AzureB2CSchemeClass
 except ImportError:  # pragma: no cover - dependency is installed in runtime env
     FASTAPI_AZURE_AUTH_INSTALLED = False
     azure_b2c_scheme_class = None

@@ -1021,7 +1021,10 @@ class OrchestratorService:
             recent_messages=recent_messages,
             user_message=user_message,
             recommendations=displayed_results,
-            fallback_message=self.build_results_message(displayed_results),
+            fallback_message=self.build_results_message(
+                displayed_results,
+                session_state=next_state,
+            ),
             outcome="results",
             response_composer=response_composer,
         )
