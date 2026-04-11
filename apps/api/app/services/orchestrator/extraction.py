@@ -704,6 +704,8 @@ def build_effective_recommendation_query_text(
         fragment.strip() for fragment in fragments if fragment and fragment.strip()
     ]
     return " ".join(dict.fromkeys(normalized_fragments))
+
+
 def apply_structured_state_patch(
     *,
     session_state: SessionState,

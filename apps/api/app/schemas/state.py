@@ -117,9 +117,9 @@ class ConversationState(BaseModel):
         ]
         | None
     ) = None
-    last_recommendation_item_type: Literal["destination", "hotel", "flight"] | None = (
-        None
-    )
+    last_recommendation_item_type: Literal[
+        "destination", "hotel", "flight"
+    ] | None = None
     last_recommendation_query: str | None = None
     last_recommendation_result_ids: list[str] = Field(default_factory=list)
 
