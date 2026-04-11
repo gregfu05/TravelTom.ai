@@ -234,6 +234,43 @@ class OrchestratorService:
         self._policy = policy_config or OrchestratorPolicyConfig()
         self._planner_cooldowns: dict[str, datetime] = {}
 
+    def _enforce_recommendation_slot_gating(
+        self,
+        *,
+        user_message: str,
+        prepared_turn: PreparedChatTurn,
+    ) -> PreparedChatTurn:
+        """Return a clarification turn when required slots are missing."""
+
+        if not prepared_turn.plan.should_call_recommendation_tool:
+            return prepared_turn
+
+        item_type_override = prepared_turn.plan.query_controls.filters.get("item_type")
+        missing_slots = missing_core_constraint_slots(
+            prepared_turn.session_state,
+            item_type_override=str(item_type_override) if item_type_override else None,
+        )
+        if not missing_slots:
+            return prepared_turn
+
+        gated_plan = LLMOrchestrationPlan(
+            intent="clarify",
+            should_call_recommendation_tool=False,
+            clarification_message=build_clarification_message(
+                prepared_turn.session_state,
+                acknowledged_slots=prepared_turn.acknowledged_slots or None,
+                message=user_message,
+            ),
+            state_patch=prepared_turn.plan.state_patch,
+            query_controls=prepared_turn.plan.query_controls,
+        )
+        return PreparedChatTurn(
+            session_state=prepared_turn.session_state,
+            plan=gated_plan,
+            acknowledged_slots=prepared_turn.acknowledged_slots,
+            planner_used=prepared_turn.planner_used,
+        )
+
     def build_chat_messages(
         self,
         *,
@@ -301,6 +338,10 @@ class OrchestratorService:
             previous_state=session_state,
             recent_messages=history,
             planner_executor=planner_executor,
+        )
+        prepared_turn = self._enforce_recommendation_slot_gating(
+            user_message=message,
+            prepared_turn=prepared_turn,
         )
         prepared_state = prepared_turn.session_state
         acknowledged_slots = prepared_turn.acknowledged_slots
