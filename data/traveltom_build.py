@@ -143,7 +143,7 @@ def make_id(name: str, lat, lon) -> str:
 
 
 def cached_get(key: str, url: str, params=None, delay=0, timeout=30):
-    h = hashlib.md5(key.encode()).hexdigest()
+    h = hashlib.sha256(key.encode()).hexdigest()
     fp = CACHE_DIR / f"{h}.json"
     if fp.exists():
         return json.loads(fp.read_text())
