@@ -155,7 +155,7 @@ def cached_get(key: str, url: str, params=None, delay=0, timeout=30):
         if delay: time.sleep(delay)
         return data
     except Exception as e:
-        log.warning(f"  GET failed [{key}]: {e}")
+        log.warning(f"  GET failed [req={h[:8]}] ({type(e).__name__})")
         return None
 
 
@@ -172,7 +172,7 @@ def cached_post(key: str, url: str, data_body: str, delay=0, timeout=90):
         if delay: time.sleep(delay)
         return data
     except Exception as e:
-        log.warning(f"  POST failed [{key}]: {e}")
+        log.warning(f"  POST failed [req={h[:8]}] ({type(e).__name__})")
         return None
 
 
