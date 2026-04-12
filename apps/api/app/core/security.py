@@ -14,7 +14,9 @@ from fastapi.security.oauth2 import SecurityScopes
 
 try:
     from limits.storage import MemoryStorage  # type: ignore[import-not-found]
-    from limits.strategies import MovingWindowRateLimiter  # type: ignore[import-not-found]
+    from limits.strategies import (
+        MovingWindowRateLimiter,  # type: ignore[import-not-found]
+    )
     from limits.util import parse as parse_rate_limit  # type: ignore[import-not-found]
 
     LIMITS_INSTALLED = True
