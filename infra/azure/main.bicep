@@ -28,6 +28,24 @@ param ollamaPlanningModel string = 'llama3.1:8b'
 @description('Ollama response model name.')
 param ollamaResponseModel string = 'llama3.1:8b'
 
+@minValue(0)
+@description('Minimum Ollama replicas to keep warm.')
+param ollamaMinReplicas int = environment == 'prod' ? 1 : 0
+
+@minValue(1)
+@description('Maximum Ollama replicas.')
+param ollamaMaxReplicas int = 1
+
+@minValue(1)
+@description('CPU cores for the Ollama container.')
+param ollamaCpu int = 4
+
+@description('Memory for the Ollama container (e.g. 8Gi, 16Gi).')
+param ollamaMemory string = environment == 'prod' ? '16Gi' : '8Gi'
+
+@description('How long Ollama keeps models in memory after requests.')
+param ollamaKeepAlive string = environment == 'prod' ? '30m' : '10m'
+
 @description('PostgreSQL admin username.')
 param postgresAdminLogin string
 
@@ -142,9 +160,16 @@ module ollamaApp './modules/ollama-app.bicep' = {
     location: location
     containerAppEnvironmentId: containerEnv.id
     image: ollamaImage
-    registryServer: acr.outputs.loginServer
     workloadProfileName: gpuWorkloadProfileName
-    modelName: ollamaPlanningModel
+    modelNames: [
+      ollamaPlanningModel
+      ollamaResponseModel
+    ]
+    minReplicas: ollamaMinReplicas
+    maxReplicas: ollamaMaxReplicas
+    cpu: ollamaCpu
+    memory: ollamaMemory
+    keepAlive: ollamaKeepAlive
   }
 }
 
