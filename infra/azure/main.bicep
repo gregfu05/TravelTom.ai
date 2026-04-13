@@ -86,6 +86,10 @@ var apiAppName = '${resourcePrefix}-api'
 var webAppName = '${resourcePrefix}-web'
 var ollamaAppName = '${resourcePrefix}-ollama'
 var gpuWorkloadProfileName = 'gpu-t4'
+var acrPullRoleDefinitionId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+)
 
 module monitoring './modules/monitoring.bicep' = {
   name: 'monitoring'
@@ -277,6 +281,30 @@ module webApp './modules/container-app.bicep' = {
     secrets: []
     ingressExternal: true
     livenessPath: '/'
+  }
+}
+
+resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
+  name: acrName
+}
+
+resource apiAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(containerRegistry.id, apiApp.outputs.principalId, acrPullRoleDefinitionId)
+  scope: containerRegistry
+  properties: {
+    roleDefinitionId: acrPullRoleDefinitionId
+    principalId: apiApp.outputs.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource webAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(containerRegistry.id, webApp.outputs.principalId, acrPullRoleDefinitionId)
+  scope: containerRegistry
+  properties: {
+    roleDefinitionId: acrPullRoleDefinitionId
+    principalId: webApp.outputs.principalId
+    principalType: 'ServicePrincipal'
   }
 }
 
