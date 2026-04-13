@@ -10,20 +10,33 @@ param containerAppEnvironmentId string
 @description('Container image for Ollama (e.g. ollama/ollama:latest).')
 param image string
 
-@description('ACR login server for registry authentication.')
-param registryServer string
+@description('Optional ACR login server for registry authentication.')
+param registryServer string = ''
 
 @description('Name of the GPU workload profile defined on the managed environment.')
 param workloadProfileName string
 
-@description('Ollama model to pull on startup (e.g. llama3.1:8b).')
-param modelName string = 'llama3.1:8b'
+@description('Ollama models to pull on startup.')
+param modelNames array = [
+  'llama3.1:8b'
+]
 
 @description('Minimum replicas (0 enables scale-to-zero).')
 param minReplicas int = 0
 
 @description('Maximum replicas.')
 param maxReplicas int = 1
+
+@description('CPU cores allocated to the Ollama container.')
+param cpu int = 4
+
+@description('Memory allocated to the Ollama container (e.g. 8Gi, 16Gi).')
+param memory string = '8Gi'
+
+@description('How long Ollama keeps models loaded in memory after requests (e.g. 30m).')
+param keepAlive string = '30m'
+
+var startupPullModels = empty(modelNames) ? 'llama3.1:8b' : join(modelNames, ',')
 
 resource app 'Microsoft.App/containerApps@2024-03-01' = {
   name: appName
@@ -38,12 +51,14 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: 11434
         transport: 'auto'
       }
-      registries: [
-        {
-          server: registryServer
-          identity: 'system'
-        }
-      ]
+      registries: empty(registryServer)
+        ? []
+        : [
+            {
+              server: registryServer
+              identity: 'system'
+            }
+          ]
     }
     template: {
       containers: [
@@ -53,12 +68,20 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           command: [
             '/bin/sh'
             '-c'
-            'ollama serve & sleep 5 && ollama pull ${modelName} && wait'
+            'ollama serve & pid=$!; until ollama list >/dev/null 2>&1; do sleep 2; done; for model in $(echo "$OLLAMA_PULL_MODELS" | tr "," " "); do [ -n "$model" ] && ollama pull "$model"; done; wait $pid'
           ]
           env: [
             {
               name: 'OLLAMA_HOST'
               value: '0.0.0.0:11434'
+            }
+            {
+              name: 'OLLAMA_PULL_MODELS'
+              value: startupPullModels
+            }
+            {
+              name: 'OLLAMA_KEEP_ALIVE'
+              value: keepAlive
             }
           ]
           probes: [
@@ -70,7 +93,16 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               }
               initialDelaySeconds: 10
               periodSeconds: 10
-              failureThreshold: 30
+              failureThreshold: 90
+            }
+            {
+              type: 'Readiness'
+              httpGet: {
+                path: '/api/tags'
+                port: 11434
+              }
+              initialDelaySeconds: 10
+              periodSeconds: 10
             }
             {
               type: 'Liveness'
@@ -83,8 +115,8 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             }
           ]
           resources: {
-            cpu: 4
-            memory: '8Gi'
+            cpu: cpu
+            memory: memory
           }
         }
       ]
@@ -100,3 +132,4 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 output fqdn string = app.properties.configuration.ingress.fqdn
+output principalId string = app.identity.principalId
