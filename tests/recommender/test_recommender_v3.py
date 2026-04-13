@@ -160,7 +160,9 @@ def test_multiword_destination_filter_from_constraints() -> None:
     )
 
     assert response.results
-    assert all(item.features.get("city") == "Santa Barbara" for item in response.results)
+    assert all(
+        item.features.get("city") == "Santa Barbara" for item in response.results
+    )
 
 
 def test_item_type_filter_maps_to_entity_type_hotel() -> None:
@@ -218,8 +220,10 @@ def test_response_includes_map_url_and_version() -> None:
 
     assert response.results
     assert response.ranking_version == "recommender-v3:heuristic-ranker-v3"
-    assert response.results[0].features["map_url"].startswith(
-        "https://www.google.com/maps?q="
+    assert (
+        response.results[0]
+        .features["map_url"]
+        .startswith("https://www.google.com/maps?q=")
     )
 
 
@@ -241,4 +245,6 @@ def test_ml_mode_falls_back_to_heuristic_when_artifact_missing(
     )
 
     assert response.results
-    assert "ml-ranker-v3-lgbm-ltr-fallback-heuristic-ranker-v3" in response.ranking_version
+    assert (
+        "ml-ranker-v3-lgbm-ltr-fallback-heuristic-ranker-v3" in response.ranking_version
+    )

@@ -10,7 +10,6 @@ from traveltom.recommendor.ranking_eval_v3 import (
 )
 
 
-
 def test_evaluate_grouped_ranking_metrics() -> None:
     frame = pd.DataFrame(
         [
@@ -28,7 +27,6 @@ def test_evaluate_grouped_ranking_metrics() -> None:
     assert metrics.ndcg_at_k > 0
     assert metrics.mrr_at_k > 0
     assert metrics.hit_rate_at_k == 1.0
-
 
 
 def test_compare_grouped_rankers_reports_deltas() -> None:

@@ -144,21 +144,22 @@ def test_entity_geo_and_item_type_alignment_features() -> None:
     assert frame.loc["r1", "f_align_item_type_match"] == 0.0
     assert frame.loc["h1", "f_geo_city_match"] == 1.0
     assert frame.loc["r1", "f_geo_city_match"] == 0.0
-    assert frame.loc["h1", "f_geo_destination_match_count"] > frame.loc[
-        "r1", "f_geo_destination_match_count"
-    ]
+    assert (
+        frame.loc["h1", "f_geo_destination_match_count"]
+        > frame.loc["r1", "f_geo_destination_match_count"]
+    )
 
 
 def test_text_alignment_features_rank_more_relevant_candidate_higher() -> None:
     artifacts = build_ranking_features(context=_context(), candidates=_candidates())
     frame = artifacts.features.set_index("business_id")
 
-    assert frame.loc["h1", "f_rel_name_token_hits"] > frame.loc[
-        "r1", "f_rel_name_token_hits"
-    ]
-    assert frame.loc["h1", "f_rel_text_overall"] > frame.loc[
-        "r1", "f_rel_text_overall"
-    ]
-    assert frame.loc["h1", "f_align_category_term_hits"] > frame.loc[
-        "r1", "f_align_category_term_hits"
-    ]
+    assert (
+        frame.loc["h1", "f_rel_name_token_hits"]
+        > frame.loc["r1", "f_rel_name_token_hits"]
+    )
+    assert frame.loc["h1", "f_rel_text_overall"] > frame.loc["r1", "f_rel_text_overall"]
+    assert (
+        frame.loc["h1", "f_align_category_term_hits"]
+        > frame.loc["r1", "f_align_category_term_hits"]
+    )

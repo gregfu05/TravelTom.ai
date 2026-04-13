@@ -18,16 +18,14 @@ from traveltom.recommendor.ranking_features_v3 import RankingFeatureContext
 
 class DummyPredictModel:
     def predict(self, matrix: pd.DataFrame) -> np.ndarray:
-        return (
-            matrix["f_rel_text_overall"].to_numpy(dtype=np.float32)
-            + 0.2 * matrix["f_quality_stars"].to_numpy(dtype=np.float32)
-        )
+        return matrix["f_rel_text_overall"].to_numpy(dtype=np.float32) + 0.2 * matrix[
+            "f_quality_stars"
+        ].to_numpy(dtype=np.float32)
 
 
 class BrokenPredictModel:
     def predict(self, matrix: pd.DataFrame) -> np.ndarray:
         raise RuntimeError("predict failed")
-
 
 
 def _context() -> RankingFeatureContext:
@@ -49,7 +47,6 @@ def _context() -> RankingFeatureContext:
     )
 
 
-
 def _feature_frame() -> pd.DataFrame:
     return pd.DataFrame(
         [
@@ -69,12 +66,10 @@ def _feature_frame() -> pd.DataFrame:
     )
 
 
-
 def test_ml_feature_columns_are_stable() -> None:
     assert "business_id" not in ML_FEATURE_COLUMNS
     assert "f_quality_stars" in ML_FEATURE_COLUMNS
     assert "f_rel_text_overall" in ML_FEATURE_COLUMNS
-
 
 
 def test_ml_ranker_falls_back_when_artifact_missing(tmp_path) -> None:
@@ -89,12 +84,15 @@ def test_ml_ranker_falls_back_when_artifact_missing(tmp_path) -> None:
     assert "score_ml" in output.scored.columns
 
 
-
 def test_ml_ranker_loads_artifact_and_scores(tmp_path) -> None:
     artifact_path = tmp_path / "ranker.pkl"
     payload = {
         "model": DummyPredictModel(),
-        "feature_columns": ["f_rel_text_overall", "f_quality_stars", "f_quality_review_count"],
+        "feature_columns": [
+            "f_rel_text_overall",
+            "f_quality_stars",
+            "f_quality_review_count",
+        ],
         "model_version": "test-v1",
         "model_family": "lightgbm-ltr",
         "schema_version": "ranking-features-v3-v1",
@@ -110,7 +108,6 @@ def test_ml_ranker_loads_artifact_and_scores(tmp_path) -> None:
     assert output.version.endswith("@test-v1")
     assert "score_ml" in output.scored.columns
     assert output.scored.iloc[0]["business_id"] == "a"
-
 
 
 def test_ml_ranker_falls_back_on_prediction_failure(tmp_path) -> None:
@@ -134,7 +131,6 @@ def test_ml_ranker_falls_back_on_prediction_failure(tmp_path) -> None:
     assert output.fallback_reason.startswith("prediction_failure:")
 
 
-
 def test_load_artifact_metadata(tmp_path) -> None:
     artifact_path = tmp_path / "meta.pkl"
     payload = {
@@ -153,7 +149,6 @@ def test_load_artifact_metadata(tmp_path) -> None:
     assert metadata is not None
     assert metadata["model_version"] == "m1"
     assert metadata["feature_count"] == 1
-
 
 
 def test_clear_ml_ranker_cache_is_callable() -> None:

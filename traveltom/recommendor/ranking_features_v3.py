@@ -114,14 +114,19 @@ def build_ranking_features(
     """Build a stable ranking feature frame for retrieved candidates."""
 
     if candidates.empty:
-        return RankingFeatureArtifacts(features=pd.DataFrame(columns=RANKING_FEATURE_COLUMNS))
+        return RankingFeatureArtifacts(
+            features=pd.DataFrame(columns=RANKING_FEATURE_COLUMNS)
+        )
 
     working = candidates.copy()
     working = _ensure_candidate_columns(working)
 
     features = pd.DataFrame(
         {
-            "business_id": working["business_id"].astype("string").fillna("").astype(str),
+            "business_id": working["business_id"]
+            .astype("string")
+            .fillna("")
+            .astype(str),
         }
     )
 
@@ -134,7 +139,9 @@ def build_ranking_features(
         working,
         "retrieval_category_match",
     )
-    features["f_retrieval_geo_match"] = _safe_numeric_series(working, "retrieval_geo_match")
+    features["f_retrieval_geo_match"] = _safe_numeric_series(
+        working, "retrieval_geo_match"
+    )
     features["f_retrieval_entity_type_match"] = _safe_numeric_series(
         working,
         "retrieval_entity_type_match",
@@ -175,8 +182,8 @@ def build_ranking_features(
     )
     query_token_count = float(max(1, len(context.query_tokens)))
     features["f_rel_query_token_coverage"] = (
-        (name_hits + category_hits + description_hits) / query_token_count
-    )
+        name_hits + category_hits + description_hits
+    ) / query_token_count
     features["f_rel_text_overall"] = (
         1.8 * name_hits + 1.4 * category_hits + 1.0 * description_hits
     )
@@ -184,7 +191,9 @@ def build_ranking_features(
     category_term_hits = _token_match_count(categories_norm, context.category_terms)
     features["f_align_category_term_hits"] = category_term_hits
     category_term_count = float(max(1, len(context.category_terms)))
-    features["f_align_category_term_coverage"] = category_term_hits / category_term_count
+    features["f_align_category_term_coverage"] = (
+        category_term_hits / category_term_count
+    )
 
     entity_type_norm = _safe_text_series(working, "entity_type_norm")
     entity_constraint_present = 1.0 if context.entity_types else 0.0
@@ -192,7 +201,9 @@ def build_ranking_features(
     if context.entity_types:
         entity_match = entity_type_norm.isin(context.entity_types)
     else:
-        entity_match = pd.Series(np.zeros(len(working), dtype=bool), index=working.index)
+        entity_match = pd.Series(
+            np.zeros(len(working), dtype=bool), index=working.index
+        )
     features["f_align_entity_type_match"] = entity_match.astype(np.float32)
 
     requested_item_types = (
@@ -205,10 +216,14 @@ def build_ranking_features(
     if requested_item_types:
         item_type_match = entity_type_norm.isin(requested_item_types)
     else:
-        item_type_match = pd.Series(np.zeros(len(working), dtype=bool), index=working.index)
+        item_type_match = pd.Series(
+            np.zeros(len(working), dtype=bool), index=working.index
+        )
     features["f_align_item_type_match"] = item_type_match.astype(np.float32)
 
-    city_match = _field_match_feature(_safe_text_series(working, "city_norm"), context.city)
+    city_match = _field_match_feature(
+        _safe_text_series(working, "city_norm"), context.city
+    )
     state_match = _field_match_feature(
         _safe_text_series(working, "state_norm"),
         context.state,
@@ -298,24 +313,21 @@ def build_ranking_features(
     features["f_metadata_has_address"] = has_address
     features["f_metadata_has_coordinates"] = has_coordinates
     features["f_metadata_completeness_score"] = (
-        has_description
-        + has_website
-        + has_phone
-        + has_address
-        + has_coordinates
+        has_description + has_website + has_phone + has_address + has_coordinates
     ) / 5.0
 
     description_raw = _safe_text_series(working, "description")
-    features["f_struct_description_char_len"] = description_raw.str.len().astype(np.float32)
+    features["f_struct_description_char_len"] = description_raw.str.len().astype(
+        np.float32
+    )
     features["f_struct_description_token_count"] = (
         description_raw.str.split().str.len().fillna(0).astype(np.float32)
     )
     features["f_struct_category_count"] = _category_count_feature(working)
     features["f_struct_source_known"] = _non_empty_text_indicator(working, "source")
-    features["f_struct_missing_primary_text"] = (
-        (1 - has_description)
-        * (features["f_struct_category_count"] <= 0).astype(np.float32)
-    )
+    features["f_struct_missing_primary_text"] = (1 - has_description) * (
+        features["f_struct_category_count"] <= 0
+    ).astype(np.float32)
 
     features = _finalize_feature_frame(features)
     return RankingFeatureArtifacts(features=features)
@@ -367,13 +379,7 @@ def _ensure_candidate_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _safe_text_series(df: pd.DataFrame, column: str) -> pd.Series:
-    return (
-        df[column]
-        .astype("string")
-        .fillna("")
-        .astype(str)
-        .str.strip()
-    )
+    return df[column].astype("string").fillna("").astype(str).str.strip()
 
 
 def _safe_numeric_series(df: pd.DataFrame, column: str) -> pd.Series:
@@ -388,7 +394,9 @@ def _token_match_count(series: pd.Series, tokens: Iterable[str]) -> pd.Series:
     counts = np.zeros(len(series), dtype=np.float32)
     for token in token_list:
         pattern = rf"\b{re.escape(token)}\b"
-        counts += series.str.contains(pattern, regex=True, na=False).to_numpy(dtype=np.float32)
+        counts += series.str.contains(pattern, regex=True, na=False).to_numpy(
+            dtype=np.float32
+        )
 
     return pd.Series(counts, index=series.index, dtype=np.float32)
 
@@ -465,7 +473,9 @@ def _price_range_features(
 
 def _non_empty_text_indicator(df: pd.DataFrame, column: str) -> pd.Series:
     values = _safe_text_series(df, column)
-    return ((values != "") & (~values.str.lower().isin(["nan", "none"]))).astype(np.float32)
+    return ((values != "") & (~values.str.lower().isin(["nan", "none"]))).astype(
+        np.float32
+    )
 
 
 def _category_count_feature(df: pd.DataFrame) -> pd.Series:
@@ -473,9 +483,11 @@ def _category_count_feature(df: pd.DataFrame) -> pd.Series:
     split_values = categories.str.split(r"[;|/]", regex=True)
 
     return split_values.map(
-        lambda values: float(sum(1 for value in values if str(value).strip()))
-        if isinstance(values, list)
-        else 0.0
+        lambda values: (
+            float(sum(1 for value in values if str(value).strip()))
+            if isinstance(values, list)
+            else 0.0
+        )
     ).astype(np.float32)
 
 
@@ -489,11 +501,17 @@ def _finalize_feature_frame(features: pd.DataFrame) -> pd.DataFrame:
             else:
                 final[column] = 0.0
 
-    numeric_columns = [column for column in RANKING_FEATURE_COLUMNS if column != "business_id"]
-    final[numeric_columns] = final[numeric_columns].apply(
-        pd.to_numeric,
-        errors="coerce",
-    ).fillna(0.0)
+    numeric_columns = [
+        column for column in RANKING_FEATURE_COLUMNS if column != "business_id"
+    ]
+    final[numeric_columns] = (
+        final[numeric_columns]
+        .apply(
+            pd.to_numeric,
+            errors="coerce",
+        )
+        .fillna(0.0)
+    )
 
     final = final[list(RANKING_FEATURE_COLUMNS)]
     return final

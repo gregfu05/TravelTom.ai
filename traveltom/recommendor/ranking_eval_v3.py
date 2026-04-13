@@ -84,8 +84,16 @@ def evaluate_grouped_ranking(
     topk_mean_labels: list[float] = []
 
     for _, group in grouped:
-        labels = pd.to_numeric(group[label_column], errors="coerce").fillna(0).to_numpy(dtype=np.float32)
-        scores = pd.to_numeric(group[score_column], errors="coerce").fillna(0).to_numpy(dtype=np.float32)
+        labels = (
+            pd.to_numeric(group[label_column], errors="coerce")
+            .fillna(0)
+            .to_numpy(dtype=np.float32)
+        )
+        scores = (
+            pd.to_numeric(group[score_column], errors="coerce")
+            .fillna(0)
+            .to_numpy(dtype=np.float32)
+        )
 
         ndcg_value = ndcg_at_k(labels, scores, k=k)
         mrr_value = mrr_at_k(labels, scores, k=k)

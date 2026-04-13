@@ -16,7 +16,6 @@ from traveltom.recommendor.ml_training_v3 import (
 )
 
 
-
 def _catalog() -> pd.DataFrame:
     return pd.DataFrame(
         [
@@ -120,7 +119,6 @@ def _catalog() -> pd.DataFrame:
     )
 
 
-
 def _queries() -> list[RecommendationQuery]:
     return [
         RecommendationQuery(
@@ -142,7 +140,6 @@ def _queries() -> list[RecommendationQuery]:
     ]
 
 
-
 def test_build_weak_supervision_training_dataset() -> None:
     dataset = build_weak_supervision_training_dataset(
         catalog=_catalog(),
@@ -159,7 +156,6 @@ def test_build_weak_supervision_training_dataset() -> None:
     assert sum(dataset.group_sizes) == len(dataset.frame)
     assert all(query_id in dataset.query_contexts for query_id in dataset.query_ids)
     assert (dataset.frame["label"] >= 0).all()
-
 
 
 def test_build_training_dataset_from_explicit_judgments() -> None:
@@ -208,7 +204,6 @@ def test_build_training_dataset_from_explicit_judgments() -> None:
     assert dataset.frame["label"].max() >= 3
 
 
-
 def test_feature_matrix_uses_stable_columns() -> None:
     dataset = build_weak_supervision_training_dataset(
         catalog=_catalog(),
@@ -220,7 +215,6 @@ def test_feature_matrix_uses_stable_columns() -> None:
     matrix = build_feature_matrix(dataset)
     assert list(matrix.columns) == list(ML_FEATURE_COLUMNS)
     assert not matrix.isna().any().any()
-
 
 
 def test_split_train_validation_by_query_preserves_grouping() -> None:

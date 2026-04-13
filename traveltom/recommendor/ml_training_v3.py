@@ -131,12 +131,7 @@ def build_training_dataset_from_judgments(
             .clip(lower=0)
             .to_dict()
         )
-        labels = (
-            features["business_id"]
-            .map(label_lookup)
-            .fillna(0)
-            .astype(np.int32)
-        )
+        labels = features["business_id"].map(label_lookup).fillna(0).astype(np.int32)
 
         frame = features.copy()
         frame["query_id"] = str(query_id)
@@ -174,10 +169,14 @@ def build_weak_supervision_training_dataset(
     if prepared_catalog.empty:
         return _empty_training_dataset(label_strategy=LABEL_STRATEGY_WEAK)
 
-    candidate_queries = list(queries) if queries is not None else generate_weak_supervision_queries(
-        catalog=prepared_catalog,
-        max_queries=max_queries,
-        random_seed=random_seed,
+    candidate_queries = (
+        list(queries)
+        if queries is not None
+        else generate_weak_supervision_queries(
+            catalog=prepared_catalog,
+            max_queries=max_queries,
+            random_seed=random_seed,
+        )
     )
     if not candidate_queries:
         return _empty_training_dataset(label_strategy=LABEL_STRATEGY_WEAK)
@@ -385,7 +384,8 @@ def _derive_weak_labels(features: pd.DataFrame) -> np.ndarray:
         + 0.18 * np.clip(numeric["f_geo_country_match"], 0.0, 1.0)
         + 0.12 * np.clip(numeric["f_geo_country_name_match"], 0.0, 1.0)
         + 0.10 * np.clip(numeric["f_geo_continent_match"], 0.0, 1.0)
-        + 0.10 * _saturating_positive(numeric["f_geo_destination_match_count"], scale=2.0)
+        + 0.10
+        * _saturating_positive(numeric["f_geo_destination_match_count"], scale=2.0)
         + 0.08 * np.clip(numeric["f_geo_any_match"], 0.0, 1.0)
     )
     operational = (
@@ -440,7 +440,9 @@ def _query_from_judgment_group(
 
     session_id = _clean_text(first.get("session_id", "")) or f"judgment-{query_id}"
     query_text = _clean_text(first.get("query", "")) or "recommendations"
-    max_results = _coerce_int(first.get("max_results", 40), default=40, minimum=1, maximum=50)
+    max_results = _coerce_int(
+        first.get("max_results", 40), default=40, minimum=1, maximum=50
+    )
 
     return RecommendationQuery(
         session_id=session_id,
@@ -540,7 +542,9 @@ def _dataset_from_frame(
     ordered = frame.copy()
     ordered["query_id"] = ordered["query_id"].astype(str)
     ordered["business_id"] = ordered["business_id"].astype(str)
-    ordered["label"] = pd.to_numeric(ordered["label"], errors="coerce").fillna(0).astype(np.int32)
+    ordered["label"] = (
+        pd.to_numeric(ordered["label"], errors="coerce").fillna(0).astype(np.int32)
+    )
 
     query_sizes = ordered.groupby("query_id", sort=True).size()
     query_ids = tuple(query_sizes.index.astype(str).tolist())
@@ -579,7 +583,9 @@ def _finalize_training_dataset(
         .apply(pd.to_numeric, errors="coerce")
         .fillna(0.0)
     )
-    combined["label"] = pd.to_numeric(combined["label"], errors="coerce").fillna(0).astype(np.int32)
+    combined["label"] = (
+        pd.to_numeric(combined["label"], errors="coerce").fillna(0).astype(np.int32)
+    )
 
     ordered_columns = ["query_id", "business_id", "label", *ML_FEATURE_COLUMNS]
     combined = combined[ordered_columns]

@@ -107,7 +107,9 @@ class LightGBMLTRRankerV3:
                 features=features,
                 feature_columns=artifact.feature_columns,
             )
-            prediction = np.asarray(artifact.model.predict(matrix), dtype=np.float32).reshape(-1)
+            prediction = np.asarray(
+                artifact.model.predict(matrix), dtype=np.float32
+            ).reshape(-1)
             if prediction.shape[0] != len(features):
                 raise ValueError("prediction row count does not match feature rows")
 
@@ -183,7 +185,9 @@ class LightGBMLTRRankerV3:
         context: RankingFeatureContext,
         reason: str,
     ) -> MLRankerOutput:
-        heuristic_output = self._fallback_ranker.score(features=features, context=context)
+        heuristic_output = self._fallback_ranker.score(
+            features=features, context=context
+        )
         scored = heuristic_output.scored.copy()
         if "score_ml" not in scored.columns:
             scored["score_ml"] = np.nan
@@ -212,7 +216,9 @@ def load_artifact_metadata(path: Path) -> dict[str, Any] | None:
         return None
 
     feature_columns = payload.get("feature_columns")
-    feature_count = len(feature_columns) if isinstance(feature_columns, (list, tuple)) else 0
+    feature_count = (
+        len(feature_columns) if isinstance(feature_columns, (list, tuple)) else 0
+    )
 
     return {
         "model_version": str(payload.get("model_version", "")),
@@ -274,9 +280,7 @@ def _build_model_matrix(
         if column not in working.columns:
             working[column] = 0.0
     return (
-        working[list(feature_columns)]
-        .apply(pd.to_numeric, errors="coerce")
-        .fillna(0.0)
+        working[list(feature_columns)].apply(pd.to_numeric, errors="coerce").fillna(0.0)
     )
 
 
@@ -297,7 +301,9 @@ def _attach_heuristic_components(
         "score_completeness",
     ]
 
-    available_columns = [column for column in component_columns if column in heuristic_scored]
+    available_columns = [
+        column for column in component_columns if column in heuristic_scored
+    ]
     merged = features.copy().merge(
         heuristic_scored[available_columns],
         on="business_id",
@@ -309,9 +315,7 @@ def _attach_heuristic_components(
             merged[column] = 0.0
 
     merged[component_columns[1:]] = (
-        merged[component_columns[1:]]
-        .apply(pd.to_numeric, errors="coerce")
-        .fillna(0.0)
+        merged[component_columns[1:]].apply(pd.to_numeric, errors="coerce").fillna(0.0)
     )
     return merged
 

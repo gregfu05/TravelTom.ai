@@ -94,7 +94,9 @@ def main() -> None:
 
     if args.output_metrics_json is not None:
         args.output_metrics_json.parent.mkdir(parents=True, exist_ok=True)
-        args.output_metrics_json.write_text(json.dumps(evaluation, indent=2), encoding="utf-8")
+        args.output_metrics_json.write_text(
+            json.dumps(evaluation, indent=2), encoding="utf-8"
+        )
 
     if args.output_training_frame is not None:
         save_training_dataset(training_data, args.output_training_frame)
@@ -189,8 +191,12 @@ def _evaluate_model_against_heuristic(
             "candidate": "ml-ranker-v3-lgbm-ltr",
         }
 
-    eval_frame = validation.frame[["query_id", "business_id", "label", *ML_FEATURE_COLUMNS]].copy()
-    eval_frame["score_ml"] = np.asarray(model.predict(build_feature_matrix(validation)), dtype=np.float32)
+    eval_frame = validation.frame[
+        ["query_id", "business_id", "label", *ML_FEATURE_COLUMNS]
+    ].copy()
+    eval_frame["score_ml"] = np.asarray(
+        model.predict(build_feature_matrix(validation)), dtype=np.float32
+    )
     eval_frame["score_heuristic"] = _heuristic_scores_for_dataset(validation)
 
     comparison = compare_grouped_rankers(
@@ -226,7 +232,11 @@ def _heuristic_scores_for_dataset(dataset: RankerTrainingDataset) -> np.ndarray:
         on=["query_id", "business_id"],
         how="left",
     )
-    return pd.to_numeric(merged["score_heuristic"], errors="coerce").fillna(0.0).to_numpy(dtype=np.float32)
+    return (
+        pd.to_numeric(merged["score_heuristic"], errors="coerce")
+        .fillna(0.0)
+        .to_numpy(dtype=np.float32)
+    )
 
 
 def _empty_context() -> RankingFeatureContext:

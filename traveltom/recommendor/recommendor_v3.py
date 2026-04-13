@@ -192,7 +192,9 @@ def recommendation_tool(
         ranker=ranker,
     )
     if ranking.ranked.empty:
-        return RecommendationToolResponse(results=[], ranking_version=ranking.ranking_version)
+        return RecommendationToolResponse(
+            results=[], ranking_version=ranking.ranking_version
+        )
 
     return _build_response(
         ranking.ranked,
@@ -303,7 +305,14 @@ def _prepare_catalog(raw: pd.DataFrame) -> pd.DataFrame:
         if column not in df.columns:
             df[column] = ""
 
-    for column in ("latitude", "longitude", "stars", "review_count", "price_level", "popularity"):
+    for column in (
+        "latitude",
+        "longitude",
+        "stars",
+        "review_count",
+        "price_level",
+        "popularity",
+    ):
         if column not in df.columns:
             df[column] = np.nan
 
@@ -328,7 +337,14 @@ def _prepare_catalog(raw: pd.DataFrame) -> pd.DataFrame:
     ):
         df[column] = df[column].astype("string").fillna("")
 
-    for column in ("latitude", "longitude", "stars", "review_count", "price_level", "popularity"):
+    for column in (
+        "latitude",
+        "longitude",
+        "stars",
+        "review_count",
+        "price_level",
+        "popularity",
+    ):
         df[column] = pd.to_numeric(df[column], errors="coerce")
 
     df["is_open"] = pd.to_numeric(df["is_open"], errors="coerce").fillna(1).astype(int)
@@ -386,8 +402,12 @@ def _build_retrieval_request(query: RecommendationQuery) -> RetrievalRequest:
     country_name = _normalize_optional_text(query.filters.get("country_name"))
     continent = _normalize_optional_text(query.filters.get("continent"))
 
-    destination_from_constraints = _normalize_optional_text(query.constraints.destination)
-    destination_from_filters = _normalize_optional_text(query.filters.get("destination"))
+    destination_from_constraints = _normalize_optional_text(
+        query.constraints.destination
+    )
+    destination_from_filters = _normalize_optional_text(
+        query.filters.get("destination")
+    )
     destination_from_text = _extract_location_from_query_text(normalized_query_text)
     destination_hint = (
         destination_from_constraints
@@ -396,7 +416,9 @@ def _build_retrieval_request(query: RecommendationQuery) -> RetrievalRequest:
     )
 
     query_tokens = tuple(
-        _extract_query_tokens(normalized_query_text)[: RetrievalConfig().max_query_tokens]
+        _extract_query_tokens(normalized_query_text)[
+            : RetrievalConfig().max_query_tokens
+        ]
     )
     category_terms = tuple(_extract_category_terms(query, query_tokens))
 
@@ -451,7 +473,9 @@ def _retrieve_candidates(
         candidates = candidates[candidates["is_open"] == 1]
 
     if request.entity_types:
-        candidates = candidates[candidates["entity_type_norm"].isin(request.entity_types)]
+        candidates = candidates[
+            candidates["entity_type_norm"].isin(request.entity_types)
+        ]
         if candidates.empty:
             return RetrievalArtifacts(candidates=candidates)
 
@@ -460,9 +484,13 @@ def _retrieve_candidates(
         return RetrievalArtifacts(candidates=candidates)
 
     candidates = candidates.copy()
-    candidates["retrieval_price_match"] = _compute_price_match_feature(candidates, request)
+    candidates["retrieval_price_match"] = _compute_price_match_feature(
+        candidates, request
+    )
     if request.price_level_min is not None or request.price_level_max is not None:
-        price_strict_mask = _price_level_within_range(candidates["price_level"], request)
+        price_strict_mask = _price_level_within_range(
+            candidates["price_level"], request
+        )
         if price_strict_mask.any():
             candidates = candidates[price_strict_mask]
 
@@ -470,7 +498,9 @@ def _retrieve_candidates(
         candidates["categories_norm"], request.category_terms
     )
 
-    candidates["retrieval_text_match"] = _compute_text_match_feature(candidates, request)
+    candidates["retrieval_text_match"] = _compute_text_match_feature(
+        candidates, request
+    )
 
     if request.category_terms and (candidates["retrieval_category_match"] > 0).any():
         candidates = candidates[candidates["retrieval_category_match"] > 0]
@@ -608,7 +638,9 @@ def _build_response(
 ) -> RecommendationToolResponse:
     results: list[RecommendationResult] = []
 
-    for rank, row in enumerate(ranked.head(request.max_results).itertuples(index=False), start=1):
+    for rank, row in enumerate(
+        ranked.head(request.max_results).itertuples(index=False), start=1
+    ):
         entity_type = _normalize_text(getattr(row, "entity_type", ""))
         item_type = _RESULT_ITEM_TYPE_BY_ENTITY_TYPE.get(entity_type, "destination")
 
@@ -622,7 +654,9 @@ def _build_response(
             "source": getattr(row, "source", ""),
         }
 
-        map_url = _build_map_url(getattr(row, "latitude", np.nan), getattr(row, "longitude", np.nan))
+        map_url = _build_map_url(
+            getattr(row, "latitude", np.nan), getattr(row, "longitude", np.nan)
+        )
         if map_url is not None:
             features["map_url"] = map_url
 
@@ -650,7 +684,9 @@ def _build_response(
     return RecommendationToolResponse(results=results, ranking_version=ranking_version)
 
 
-def _apply_geo_filters(candidates: pd.DataFrame, request: RetrievalRequest) -> pd.DataFrame:
+def _apply_geo_filters(
+    candidates: pd.DataFrame, request: RetrievalRequest
+) -> pd.DataFrame:
     filtered = candidates
 
     explicit_filters = (
@@ -674,7 +710,9 @@ def _apply_geo_filters(candidates: pd.DataFrame, request: RetrievalRequest) -> p
 
     destination_mask = np.zeros(len(filtered), dtype=bool)
     for field in _GEO_FIELDS:
-        destination_mask |= _location_match_series(filtered[field], request.destination_hint)
+        destination_mask |= _location_match_series(
+            filtered[field], request.destination_hint
+        )
 
     if destination_mask.any():
         return filtered[destination_mask]
@@ -687,7 +725,9 @@ def _compute_entity_type_match_feature(
     request: RetrievalRequest,
 ) -> pd.Series:
     if not request.entity_types:
-        return pd.Series(np.ones(len(candidates), dtype=np.float32), index=candidates.index)
+        return pd.Series(
+            np.ones(len(candidates), dtype=np.float32), index=candidates.index
+        )
 
     return pd.Series(
         np.where(candidates["entity_type_norm"].isin(request.entity_types), 1.0, 0.0),
@@ -696,7 +736,9 @@ def _compute_entity_type_match_feature(
     )
 
 
-def _compute_geo_match_feature(candidates: pd.DataFrame, request: RetrievalRequest) -> pd.Series:
+def _compute_geo_match_feature(
+    candidates: pd.DataFrame, request: RetrievalRequest
+) -> pd.Series:
     score = np.zeros(len(candidates), dtype=np.float32)
 
     for field, value in (
@@ -708,7 +750,9 @@ def _compute_geo_match_feature(candidates: pd.DataFrame, request: RetrievalReque
     ):
         if value is None:
             continue
-        score += _location_match_series(candidates[field], value).to_numpy(dtype=np.float32)
+        score += _location_match_series(candidates[field], value).to_numpy(
+            dtype=np.float32
+        )
 
     if request.destination_hint:
         destination_match = np.zeros(len(candidates), dtype=bool)
@@ -721,12 +765,16 @@ def _compute_geo_match_feature(candidates: pd.DataFrame, request: RetrievalReque
     return pd.Series(score, index=candidates.index, dtype=np.float32)
 
 
-def _compute_price_match_feature(candidates: pd.DataFrame, request: RetrievalRequest) -> pd.Series:
+def _compute_price_match_feature(
+    candidates: pd.DataFrame, request: RetrievalRequest
+) -> pd.Series:
     has_price = candidates["price_level"].notna()
     within_range = _price_level_within_range(candidates["price_level"], request)
 
     if request.price_level_min is None and request.price_level_max is None:
-        return pd.Series(np.where(has_price, 1.0, 0.8), index=candidates.index, dtype=np.float32)
+        return pd.Series(
+            np.where(has_price, 1.0, 0.8), index=candidates.index, dtype=np.float32
+        )
 
     # Best effort with sparse price_level: unknown values are not dropped by default.
     score = np.where(within_range, 1.0, 0.0)
@@ -734,20 +782,30 @@ def _compute_price_match_feature(candidates: pd.DataFrame, request: RetrievalReq
     return pd.Series(score, index=candidates.index, dtype=np.float32)
 
 
-def _compute_text_match_feature(candidates: pd.DataFrame, request: RetrievalRequest) -> pd.Series:
+def _compute_text_match_feature(
+    candidates: pd.DataFrame, request: RetrievalRequest
+) -> pd.Series:
     if not request.query_tokens:
-        return pd.Series(np.zeros(len(candidates), dtype=np.float32), index=candidates.index)
+        return pd.Series(
+            np.zeros(len(candidates), dtype=np.float32), index=candidates.index
+        )
 
     name_hits = _token_match_count(candidates["name_norm"], request.query_tokens)
-    category_hits = _token_match_count(candidates["categories_norm"], request.query_tokens)
-    full_text_hits = _token_match_count(candidates["search_text_norm"], request.query_tokens)
+    category_hits = _token_match_count(
+        candidates["categories_norm"], request.query_tokens
+    )
+    full_text_hits = _token_match_count(
+        candidates["search_text_norm"], request.query_tokens
+    )
 
     # Keep this retrieval oriented and interpretable.
     text_score = 1.8 * name_hits + 1.4 * category_hits + 1.0 * full_text_hits
     return text_score.astype(np.float32)
 
 
-def _price_level_within_range(series: pd.Series, request: RetrievalRequest) -> pd.Series:
+def _price_level_within_range(
+    series: pd.Series, request: RetrievalRequest
+) -> pd.Series:
     working = pd.Series(np.ones(len(series), dtype=bool), index=series.index)
     if request.price_level_min is not None:
         working &= series.fillna(request.price_level_min) >= request.price_level_min
@@ -764,7 +822,9 @@ def _token_match_count(series: pd.Series, tokens: Iterable[str]) -> pd.Series:
     score = np.zeros(len(series), dtype=np.float32)
     for token in token_list:
         pattern = rf"\b{re.escape(token)}\b"
-        score += series.str.contains(pattern, regex=True, na=False).to_numpy(dtype=np.float32)
+        score += series.str.contains(pattern, regex=True, na=False).to_numpy(
+            dtype=np.float32
+        )
 
     return pd.Series(score, index=series.index, dtype=np.float32)
 
@@ -814,18 +874,26 @@ def _extract_query_tokens(text: str) -> list[str]:
     return unique_tokens
 
 
-def _extract_category_terms(query: RecommendationQuery, query_tokens: tuple[str, ...]) -> list[str]:
+def _extract_category_terms(
+    query: RecommendationQuery, query_tokens: tuple[str, ...]
+) -> list[str]:
     terms: set[str] = set()
 
     category_filter = query.filters.get("category")
     categories_filter = query.filters.get("categories")
 
-    for value in _coerce_str_list(category_filter) + _coerce_str_list(categories_filter):
+    for value in _coerce_str_list(category_filter) + _coerce_str_list(
+        categories_filter
+    ):
         normalized = _normalize_text(value)
         if normalized:
             terms.update(_extract_query_tokens(normalized))
 
-    terms.update(token for token in query_tokens if token not in {"hotel", "hotels", "flight", "flights"})
+    terms.update(
+        token
+        for token in query_tokens
+        if token not in {"hotel", "hotels", "flight", "flights"}
+    )
 
     return sorted(terms)
 
@@ -876,7 +944,9 @@ def _derive_price_level_max_from_budget(query: RecommendationQuery) -> float | N
 
     trip_days = 1
     if query.constraints.dates is not None:
-        trip_days = max(1, (query.constraints.dates.end - query.constraints.dates.start).days + 1)
+        trip_days = max(
+            1, (query.constraints.dates.end - query.constraints.dates.start).days + 1
+        )
 
     per_person_daily_budget = budget.max / float(travelers * trip_days)
     if per_person_daily_budget <= 60:
@@ -964,9 +1034,7 @@ def _normalize_text(value: Any) -> str:
         return ""
 
     ascii_text = (
-        unicodedata.normalize("NFKD", text)
-        .encode("ascii", "ignore")
-        .decode("ascii")
+        unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
     )
     lowered = ascii_text.lower()
     cleaned = re.sub(r"[^a-z0-9\s'-]", " ", lowered)

@@ -161,7 +161,9 @@ def _compute_quality_component(
     config: HeuristicRankerConfig,
 ) -> pd.Series:
     stars = _clip01(features["f_quality_stars"] / 5.0)
-    reviews = _clip01(features["f_quality_log_review_count"] / config.quality_review_log_scale)
+    reviews = _clip01(
+        features["f_quality_log_review_count"] / config.quality_review_log_scale
+    )
     popularity = _clip01(
         features["f_quality_log_popularity"] / config.quality_popularity_log_scale
     )
@@ -223,9 +225,9 @@ def _compute_alignment_component(features: pd.DataFrame) -> pd.Series:
 
     category_alignment = _clip01(features["f_align_category_term_coverage"])
 
-    return (
-        0.45 * item_match + 0.35 * entity_match + 0.20 * category_alignment
-    ).astype(np.float32)
+    return (0.45 * item_match + 0.35 * entity_match + 0.20 * category_alignment).astype(
+        np.float32
+    )
 
 
 def _compute_geo_component(
@@ -315,10 +317,14 @@ def _ensure_numeric_features(features: pd.DataFrame) -> pd.DataFrame:
             working[column] = 0.0
 
     numeric_cols = [column for column in working.columns if column != "business_id"]
-    working[numeric_cols] = working[numeric_cols].apply(
-        pd.to_numeric,
-        errors="coerce",
-    ).fillna(0.0)
+    working[numeric_cols] = (
+        working[numeric_cols]
+        .apply(
+            pd.to_numeric,
+            errors="coerce",
+        )
+        .fillna(0.0)
+    )
 
     return working
 

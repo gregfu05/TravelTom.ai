@@ -43,7 +43,9 @@ def main() -> None:
         raise SystemExit("No evaluation data rows produced.")
 
     heuristic = HeuristicRankerV3()
-    ml_ranker = LightGBMLTRRankerV3(config=MLRankerConfig(artifact_path=args.artifact_path))
+    ml_ranker = LightGBMLTRRankerV3(
+        config=MLRankerConfig(artifact_path=args.artifact_path)
+    )
 
     eval_rows: list[pd.DataFrame] = []
     ml_fallback_count = 0
@@ -74,7 +76,9 @@ def main() -> None:
             merged["score_heuristic"],
             errors="coerce",
         ).fillna(0.0)
-        merged["score_ml"] = pd.to_numeric(merged["score_ml"], errors="coerce").fillna(0.0)
+        merged["score_ml"] = pd.to_numeric(merged["score_ml"], errors="coerce").fillna(
+            0.0
+        )
 
         eval_rows.append(merged)
 
