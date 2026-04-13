@@ -1,37 +1,30 @@
-# Core data manipulation and analysis
-import pandas as pd
-import numpy as np
-
-# Visualization libraries
-import matplotlib.pyplot as plt
-import seaborn as sns
-import plotly.express as px
-import plotly.graph_objects as go
-
-# Spatial and mapping (for geo notebook)
-import geopandas as gpd
-import folium
-from folium.plugins import HeatMap
-from shapely.geometry import Point
-
-# Statistical and ML utilities
-from sklearn.cluster import KMeans
-from sklearn.linear_model import LinearRegression
-from scipy.stats import pearsonr
-from sklearn.preprocessing import StandardScaler
-
-# Utilities
-import json
+# noqa: F401 - Imports re-exported for use in notebooks
 import warnings
+from pathlib import Path
+
+import folium  # noqa: F401
+import geopandas as gpd  # noqa: F401
+import matplotlib.pyplot as plt
+import numpy as np  # noqa: F401
+import pandas as pd  # noqa: F401
+import plotly.express as px  # noqa: F401
+import plotly.graph_objects as go  # noqa: F401
+import seaborn as sns
+from folium.plugins import HeatMap  # noqa: F401
+from scipy.stats import pearsonr  # noqa: F401
+from shapely.geometry import Point  # noqa: F401
+from sklearn.cluster import KMeans  # noqa: F401
+from sklearn.linear_model import LinearRegression  # noqa: F401
+from sklearn.preprocessing import StandardScaler  # noqa: F401
 
 warnings.filterwarnings("ignore")
 
 # Set plotting styles
 plt.style.use("seaborn-v0_8")
 sns.set_palette("husl")
+plt.rcParams["figure.figsize"] = (14, 5)
 
 # ── Paths ────────────────────────────────────────────────────────────────────
-from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
@@ -91,13 +84,3 @@ FOLIUM_TILES = "CartoDB positron"
 MAP_CENTER = {"lat": 20.0, "lon": 0.0}  # world-centered default
 SCATTER_ALPHA = 0.4
 FIG_SIZE = (14, 5)
-
-# ── Apply styles (matches your imports) ──────────────────────────────────────
-plt.style.use("seaborn-v0_8")
-sns.set_palette("husl")
-plt.rcParams["figure.figsize"] = FIG_SIZE
-
-# ── Suppress known noisy warnings ────────────────────────────────────────────
-import warnings
-
-warnings.filterwarnings("ignore")
