@@ -3,29 +3,12 @@
 from __future__ import annotations
 
 import logging
-import time
 import uuid
 from datetime import datetime, timezone
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends, Request, status
 from fastapi.security.oauth2 import SecurityScopes
-
-try:
-    from limits.storage import MemoryStorage  # type: ignore[import-not-found]
-    from limits.strategies import (
-        MovingWindowRateLimiter,  # type: ignore[import-not-found]
-    )
-    from limits.util import parse as parse_rate_limit  # type: ignore[import-not-found]
-
-    LIMITS_INSTALLED = True
-except ModuleNotFoundError:  # pragma: no cover
-    MemoryStorage = None  # type: ignore[assignment]
-    MovingWindowRateLimiter = None  # type: ignore[assignment]
-    parse_rate_limit = None  # type: ignore[assignment]
-    LIMITS_INSTALLED = False
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -35,69 +18,34 @@ from app.core.local_auth import (
     NotLocalTokenError,
     decode_access_token,
 )
+from app.core.optional_deps import (
+    AzureB2CScheme,
+    OptionalDepsNotInstalledError,
+    get_azure_b2c_scheme_factory,
+    get_chat_rate_limiter_backend,
+)
 from app.db.session import get_db
 from app.repositories.auth_sessions import AuthSessionRepository
 from app.schemas.auth import AuthenticatedPrincipal, LocalAccessTokenClaims
-
-if TYPE_CHECKING:
-    from fastapi_azure_auth import (  # type: ignore[import-not-found]
-        B2CMultiTenantAuthorizationCodeBearer as AzureB2CScheme,
-    )
-
-azure_b2c_scheme_class: type[Any] | None
-FASTAPI_AZURE_AUTH_INSTALLED = True
-
-try:
-    from fastapi_azure_auth import (  # type: ignore[import-not-found]
-        B2CMultiTenantAuthorizationCodeBearer as _AzureB2CSchemeClass,
-    )
-
-    azure_b2c_scheme_class = _AzureB2CSchemeClass
-except ImportError:  # pragma: no cover - dependency is installed in runtime env
-    FASTAPI_AZURE_AUTH_INSTALLED = False
-    azure_b2c_scheme_class = None
 
 logger = logging.getLogger(__name__)
 
 
 class ChatRateLimiter:
-    """In-memory chat rate limiter backed by ``limits`` primitives."""
+    """Chat rate limiter backed by an optional backend implementation."""
 
     def __init__(self) -> None:
-        self._disabled = not LIMITS_INSTALLED
-        if self._disabled:
-            self._storage = None
-            self._limiter = None
-        else:
-            assert MemoryStorage is not None
-            assert MovingWindowRateLimiter is not None
-            self._storage = MemoryStorage()
-            self._limiter = MovingWindowRateLimiter(self._storage)
+        self._backend = get_chat_rate_limiter_backend()
 
     def reset(self) -> None:
         """Reset all in-memory rate limit state."""
 
-        if self._disabled or self._storage is None:
-            return
-        self._storage.reset()
+        self._backend.reset()
 
     def check(self, *, rate_limit: str, key: str) -> int | None:
         """Consume one token from the configured rate limit."""
 
-        if self._disabled:
-            # Dependency not installed in the test environment; treat rate limiting
-            # as disabled.
-            return None
-
-        assert parse_rate_limit is not None
-        assert self._limiter is not None
-        parsed_limit = parse_rate_limit(rate_limit)
-        if self._limiter.hit(parsed_limit, key):
-            return None
-
-        window = self._limiter.get_window_stats(parsed_limit, key)
-        retry_after_seconds = max(0, int(window.reset_time - time.time()))
-        return retry_after_seconds
+        return self._backend.check(rate_limit=rate_limit, key=key)
 
 
 @lru_cache()
@@ -107,8 +55,6 @@ def get_azure_b2c_scheme() -> AzureB2CScheme | None:
     settings = get_settings()
     if not settings.auth_enabled:
         return None
-    if not FASTAPI_AZURE_AUTH_INSTALLED:
-        raise RuntimeError("fastapi-azure-auth is not installed")
     if not settings.auth_app_client_id or not settings.auth_openid_config_url:
         raise RuntimeError("Azure AD B2C authentication is not fully configured")
 
@@ -116,10 +62,14 @@ def get_azure_b2c_scheme() -> AzureB2CScheme | None:
         scope: f"Required TravelTom API scope: {scope}"
         for scope in settings.auth_required_scopes_list
     }
-    assert azure_b2c_scheme_class is not None
-    return azure_b2c_scheme_class(
+
+    try:
+        factory = get_azure_b2c_scheme_factory()
+    except OptionalDepsNotInstalledError as exc:
+        raise RuntimeError("fastapi-azure-auth is not installed") from exc
+
+    return factory.build(
         app_client_id=settings.auth_app_client_id,
-        auto_error=True,
         scopes=scopes or None,
         openid_config_url=settings.auth_openid_config_url,
     )
@@ -362,14 +312,14 @@ async def enforce_chat_rate_limit(
             "context": {
                 "auth_enabled": settings.auth_enabled,
                 "chat_rate_limit": settings.chat_rate_limit,
-                "client_host": (
-                    request.client.host if request.client is not None else None
-                ),
+                "client_host": request.client.host
+                if request.client is not None
+                else None,
                 "identifier": identifier,
                 "path": str(request.url.path),
-                "principal_subject": (
-                    principal.subject if principal is not None else None
-                ),
+                "principal_subject": principal.subject
+                if principal is not None
+                else None,
                 "retry_after_seconds": retry_after_seconds,
             },
         },
