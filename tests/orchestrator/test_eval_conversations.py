@@ -12,16 +12,22 @@ They follow the patterns used in tests/orchestrator/test_service.py.
 from __future__ import annotations
 
 from app.schemas.state import SessionState
-from app.schemas.tools.recommendations import RecommendationQuery, RecommendationToolResponse
+from app.schemas.tools.recommendations import (
+    RecommendationQuery,
+    RecommendationToolResponse,
+)
 from app.services.orchestrator.service import OrchestratorService
 from langchain_core.messages import AIMessage
 
 
-def test_eval_missing_core_slots_asks_for_destination_dates_budget_and_no_tool_call() -> None:
+def test_eval_missing_core_slots_asks_for_destination_dates_budget_and_no_tool_call(
+) -> None:
     service = OrchestratorService()
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
 
-    def recommendation_executor(query: RecommendationQuery) -> RecommendationToolResponse:
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
         captured_query["value"] = query
         return RecommendationToolResponse.model_validate(
             {"ranking_version": "heuristic-v1", "results": []}
@@ -45,7 +51,9 @@ def test_eval_complete_request_calls_tool_immediately_and_no_clarification() -> 
     service = OrchestratorService()
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
 
-    def recommendation_executor(query: RecommendationQuery) -> RecommendationToolResponse:
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
         captured_query["value"] = query
         return RecommendationToolResponse.model_validate(
             {
@@ -79,10 +87,13 @@ def test_eval_complete_request_calls_tool_immediately_and_no_clarification() -> 
     assert "budget" not in assistant
 
 
-def test_eval_empty_results_fallback_no_hallucinations_and_suggests_adjustments() -> None:
+def test_eval_empty_results_fallback_no_hallucinations_and_suggests_adjustments(
+) -> None:
     service = OrchestratorService()
 
-    def recommendation_executor(_query: RecommendationQuery) -> RecommendationToolResponse:
+    def recommendation_executor(
+        _query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
         return RecommendationToolResponse.model_validate(
             {"ranking_version": "heuristic-v1", "results": []}
         )
@@ -131,7 +142,9 @@ def test_eval_personalization_follow_up_query_includes_interests() -> None:
 
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
 
-    def recommendation_executor(query: RecommendationQuery) -> RecommendationToolResponse:
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
         captured_query["value"] = query
         return RecommendationToolResponse.model_validate(
             {"ranking_version": "heuristic-v1", "results": []}

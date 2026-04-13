@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Union
 
 from sqlalchemy import DateTime, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -21,4 +21,10 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+    weighted_interests: Mapped[dict[str, float]] = mapped_column(
+        JSONB(astext_type=Text()),
+        nullable=False,
+        server_default="{}",
+        default=dict,
     )

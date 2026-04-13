@@ -365,9 +365,20 @@ def build_invalid_request_message(session_state: SessionState) -> str:
 def build_empty_results_message(session_state: SessionState) -> str:
     """Build deterministic copy for empty recommendation results."""
 
+    next_slot = next_missing_core_constraint_slot(session_state)
+    if next_slot is not None:
+        return (
+            "I did not find grounded matches with those constraints yet. "
+            + _CORE_SLOT_QUESTIONS[next_slot]
+        )
+
+    destination = session_state.constraints.destination
+    destination_clause = f" for {destination}" if destination else ""
+
     return (
-        "I am not seeing strong matches with those constraints yet. "
-        f"{build_clarification_message(session_state)}"
+        "I did not find grounded matches with those constraints"
+        + destination_clause
+        + ". Try adjusting your budget, changing the travel dates, or switching the location."
     )
 
 
