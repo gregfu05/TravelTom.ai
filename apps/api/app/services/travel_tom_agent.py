@@ -52,7 +52,7 @@ from app.services.recommendation_query import (
     RecommendationServiceUnavailableError,
     RecommendationTool,
 )
-from traveltom.recommendor.recommendor_v2 import recommendation_tool
+from traveltom.recommendor.recommendor_v3 import recommendation_tool
 
 _CHAT_AGENT_SYSTEM_PROMPT = """
 You are TravelTom's backend chat agent.
