@@ -6,6 +6,7 @@ import pickle
 
 import numpy as np
 import pandas as pd
+
 from traveltom.recommendor.ml_ranker_v3 import (
     ML_FEATURE_COLUMNS,
     LightGBMLTRRankerV3,

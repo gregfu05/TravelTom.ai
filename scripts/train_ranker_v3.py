@@ -13,39 +13,38 @@ import pickle
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-API_ROOT = REPO_ROOT / "apps" / "api"
-if str(API_ROOT) not in sys.path:
-    sys.path.insert(0, str(API_ROOT))
+if TYPE_CHECKING:
+    from traveltom.recommendor.ml_training_v3 import RankerTrainingDataset
+    from traveltom.recommendor.ranking_features_v3 import RankingFeatureContext
 
-from traveltom.recommendor.heuristic_ranker_v3 import HeuristicRankerV3
-from traveltom.recommendor.ml_ranker_v3 import (
-    ML_FEATURE_COLUMNS,
-    MODEL_FAMILY,
-    MODEL_SCHEMA_VERSION,
-)
-from traveltom.recommendor.ml_training_v3 import (
-    LABEL_STRATEGY_EXPLICIT,
-    RankerTrainingDataset,
-    build_feature_matrix,
-    build_training_dataset_from_judgments,
-    build_weak_supervision_training_dataset,
-    load_judgments_csv,
-    save_training_dataset,
-    split_train_validation_by_query,
-)
-from traveltom.recommendor.ranking_eval_v3 import compare_grouped_rankers
-from traveltom.recommendor.ranking_features_v3 import RankingFeatureContext
+
+def _bootstrap_repo_paths() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+
+    api_root = repo_root / "apps" / "api"
+    if str(api_root) not in sys.path:
+        sys.path.insert(0, str(api_root))
 
 
 def main() -> None:
+    _bootstrap_repo_paths()
+    from traveltom.recommendor.ml_ranker_v3 import (
+        ML_FEATURE_COLUMNS,
+        MODEL_FAMILY,
+        MODEL_SCHEMA_VERSION,
+    )
+    from traveltom.recommendor.ml_training_v3 import (
+        save_training_dataset,
+        split_train_validation_by_query,
+    )
+
     args = _parse_args()
 
     training_data = _load_training_data(args)
@@ -107,6 +106,13 @@ def main() -> None:
 
 
 def _load_training_data(args: argparse.Namespace) -> RankerTrainingDataset:
+    from traveltom.recommendor.ml_training_v3 import (
+        LABEL_STRATEGY_EXPLICIT,
+        build_training_dataset_from_judgments,
+        build_weak_supervision_training_dataset,
+        load_judgments_csv,
+    )
+
     if args.judgments_csv is not None:
         judgments = load_judgments_csv(args.judgments_csv)
         dataset = build_training_dataset_from_judgments(
@@ -138,6 +144,8 @@ def _train_lgbm_ranker(
     num_leaves: int,
     seed: int,
 ) -> Any:
+    from traveltom.recommendor.ml_training_v3 import build_feature_matrix
+
     try:
         from lightgbm import LGBMRanker
     except ImportError as exc:
@@ -182,6 +190,10 @@ def _evaluate_model_against_heuristic(
     validation: RankerTrainingDataset,
     k: int,
 ) -> dict[str, float | int | str]:
+    from traveltom.recommendor.ml_ranker_v3 import ML_FEATURE_COLUMNS
+    from traveltom.recommendor.ml_training_v3 import build_feature_matrix
+    from traveltom.recommendor.ranking_eval_v3 import compare_grouped_rankers
+
     if validation.frame.empty:
         return {
             "k": k,
@@ -211,6 +223,9 @@ def _evaluate_model_against_heuristic(
 
 
 def _heuristic_scores_for_dataset(dataset: RankerTrainingDataset) -> np.ndarray:
+    from traveltom.recommendor.heuristic_ranker_v3 import HeuristicRankerV3
+    from traveltom.recommendor.ml_ranker_v3 import ML_FEATURE_COLUMNS
+
     ranker = HeuristicRankerV3()
     scored_blocks: list[pd.DataFrame] = []
 
@@ -240,6 +255,8 @@ def _heuristic_scores_for_dataset(dataset: RankerTrainingDataset) -> np.ndarray:
 
 
 def _empty_context() -> RankingFeatureContext:
+    from traveltom.recommendor.ranking_features_v3 import RankingFeatureContext
+
     return RankingFeatureContext(
         normalized_query_text="",
         query_tokens=tuple(),

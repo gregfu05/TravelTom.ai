@@ -18,11 +18,11 @@ import pandas as pd
 from app.schemas.tools.recommendations import RecommendationQuery
 
 from traveltom.recommendor.ml_ranker_v3 import ML_FEATURE_COLUMNS
+from traveltom.recommendor.ranking_features_v3 import RankingFeatureContext
 from traveltom.recommendor.recommendor_v3 import (
     build_candidate_feature_artifacts,
     prepare_catalog_for_v3,
 )
-from traveltom.recommendor.ranking_features_v3 import RankingFeatureContext
 
 LABEL_STRATEGY_EXPLICIT = "explicit-judgment-v1"
 LABEL_STRATEGY_WEAK = "weak-supervision-v1"
