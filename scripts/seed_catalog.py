@@ -503,9 +503,19 @@ def main() -> int:
     return 0
 
 
+def _read_dataframe(file_path: Path) -> pd.DataFrame:
+    """Read a DataFrame from various file formats."""
+    if file_path.suffix == ".csv":
+        return pd.read_csv(file_path)
+    elif file_path.suffix == ".parquet":
+        return pd.read_parquet(file_path)
+    else:
+        raise ValueError(f"Unsupported file format: {file_path.suffix}")
+
+
 def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
     if dataset_path.exists():
-        return pd.read_csv(dataset_path), str(dataset_path)
+        return _read_dataframe(dataset_path), str(dataset_path)
 
     default_clean_path = DEFAULT_DATASET.resolve()
     if dataset_path != default_clean_path:
@@ -521,7 +531,7 @@ def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
     default_clean_path.parent.mkdir(parents=True, exist_ok=True)
     copyfile(DEFAULT_RAW_DATASET, default_clean_path)
     return (
-        pd.read_csv(default_clean_path),
+        _read_dataframe(default_clean_path),
         f"{default_clean_path} (copied from raw snapshot)",
     )
 
