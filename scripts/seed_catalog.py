@@ -1,4 +1,4 @@
-"""Seed `catalog_items` from the TravelTom clean CSV dataset.
+"""Seed `catalog_items` from the Yelp business CSV dataset.
 
 Usage examples (run from repo root):
   python scripts/seed_catalog.py
@@ -32,7 +32,12 @@ if str(API_ROOT) not in sys.path:
 from app.db.models.catalog_item import CatalogItem  # noqa: E402
 from app.db.session import get_engine, get_session_factory  # noqa: E402
 
-DEFAULT_DATASET = REPO_ROOT / "traveltom" / "datasets" / "traveltom_clean.csv"
+DEFAULT_DATASET = (
+    REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean2.csv"
+)
+DEFAULT_RAW_DATASET = (
+    REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean2.csv"
+)
 BUSINESS_ID_NAMESPACE = uuid.UUID("56f6e980-b2c0-4be2-a238-7176bf5a4fa7")
 
 HOTEL_KEYWORDS = (
@@ -70,13 +75,13 @@ T = TypeVar("T")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Seed catalog_items from TravelTom clean CSV."
+        description="Seed catalog_items from cleaned Composite CSV."
     )
     parser.add_argument(
         "--dataset",
         type=Path,
         default=DEFAULT_DATASET,
-        help="Path to source CSV dataset (defaults to traveltom_clean.csv).",
+        help="Path to source CSV dataset (defaults to cleaned snapshot).",
     )
     parser.add_argument(
         "--batch-size",
@@ -499,15 +504,26 @@ def main() -> int:
 
 
 def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
-    if not dataset_path.exists():
+    if dataset_path.exists():
+        return pd.read_csv(dataset_path), str(dataset_path)
+
+    default_clean_path = DEFAULT_DATASET.resolve()
+    if dataset_path != default_clean_path:
         raise FileNotFoundError(f"Dataset not found: {dataset_path}")
 
-    suffix = dataset_path.suffix.casefold()
-    if suffix != ".csv":
-        raise ValueError(
-            "Only CSV datasets are supported for seeding. " f"Received: {dataset_path}"
+    if not DEFAULT_RAW_DATASET.exists():
+        raise FileNotFoundError(
+            f"Dataset not found: {dataset_path} and raw fallback missing: "
+            f"{DEFAULT_RAW_DATASET.resolve()}"
         )
-    return pd.read_csv(dataset_path, low_memory=False), str(dataset_path)
+
+    # Fast bootstrap fallback: mirror raw snapshot to the cleaned path.
+    default_clean_path.parent.mkdir(parents=True, exist_ok=True)
+    copyfile(DEFAULT_RAW_DATASET, default_clean_path)
+    return (
+        pd.read_csv(default_clean_path),
+        f"{default_clean_path} (copied from raw snapshot)",
+    )
 
 
 if __name__ == "__main__":
