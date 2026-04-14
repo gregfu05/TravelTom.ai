@@ -5,12 +5,15 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 
 def main() -> None:
     args = _parse_args()
     candidate = _read_json(args.metrics_json)
-    baseline = _read_json(args.baseline_metrics_json) if args.baseline_metrics_json else None
+    baseline = (
+        _read_json(args.baseline_metrics_json) if args.baseline_metrics_json else None
+    )
 
     decision = {
         "coverage_gate_passed": _coverage_gate_passed(candidate),
@@ -31,24 +34,28 @@ def main() -> None:
 
 
 def _coverage_gate_passed(metrics: dict[str, object]) -> bool:
-    return float(metrics.get("coverage_at_k_rate", 0.0)) >= 0.95
+    return _metric_as_float(metrics, "coverage_at_k_rate") >= 0.95
 
 
 def _ranking_gate_passed(
     candidate: dict[str, object],
     baseline: dict[str, object] | None,
 ) -> bool:
-    candidate_ndcg = float(candidate.get("candidate_ndcg_at_k", 0.0))
-    candidate_map = float(candidate.get("candidate_map_at_k", 0.0))
+    candidate_ndcg = _metric_as_float(candidate, "candidate_ndcg_at_k")
+    candidate_map = _metric_as_float(candidate, "candidate_map_at_k")
 
     if baseline is None:
         return candidate_ndcg >= 0.20 and candidate_map >= 0.10
 
-    baseline_ndcg = float(
-        baseline.get("candidate_ndcg_at_k", baseline.get("baseline_ndcg_at_k", 0.0))
+    baseline_ndcg = _metric_as_float(
+        baseline,
+        "candidate_ndcg_at_k",
+        fallback_key="baseline_ndcg_at_k",
     )
-    baseline_map = float(
-        baseline.get("candidate_map_at_k", baseline.get("baseline_map_at_k", 0.0))
+    baseline_map = _metric_as_float(
+        baseline,
+        "candidate_map_at_k",
+        fallback_key="baseline_map_at_k",
     )
     return candidate_ndcg >= (baseline_ndcg * 0.99) and candidate_map >= (
         baseline_map * 0.99
@@ -57,6 +64,24 @@ def _ranking_gate_passed(
 
 def _read_json(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _metric_as_float(
+    metrics: dict[str, object],
+    key: str,
+    *,
+    fallback_key: str | None = None,
+) -> float:
+    value = metrics.get(key)
+    if value is None and fallback_key is not None:
+        value = metrics.get(fallback_key)
+    if value is None:
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        return float(value)
+    raise ValueError(f"Expected numeric metric for '{key}', got {type(value).__name__}")
 
 
 def _parse_args() -> argparse.Namespace:

@@ -187,7 +187,8 @@ def test_blob_artifact_download_requires_supported_dependencies(monkeypatch) -> 
         "_download_azure_blob_artifact",
         lambda reference: (_ for _ in ()).throw(
             RuntimeError(
-                "Azure blob artifact loading requires azure-identity and azure-storage-blob"
+                "Azure blob artifact loading requires "
+                "azure-identity and azure-storage-blob"
             )
         ),
     )

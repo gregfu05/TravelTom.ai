@@ -97,7 +97,9 @@ def main() -> None:
         or args.git_sha
         or os.getenv("GITHUB_SHA", ""),
         "artifact_path": str(args.output_artifact),
-        "metrics_path": str(args.output_metrics_json) if args.output_metrics_json else "",
+        "metrics_path": (
+            str(args.output_metrics_json) if args.output_metrics_json else ""
+        ),
         "label_strategy": training_data.label_strategy,
     }
 
