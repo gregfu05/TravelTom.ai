@@ -65,17 +65,16 @@ apps/api/
 ## Module boundaries
 
 - Orchestrator service:
-  - Owns structured planner validation, chat-agent transcript normalization,
-    deterministic fallback logic, and grounded response normalization.
+  - Acts as the coordination entrypoint for phased orchestration.
+  - Owns final API response mapping, clarification continuity, pending
+    recommendation memory, and safe fallback routing.
   - Does not own route wiring or LangChain tool registration.
-  - Keeps deterministic guardrails for state extraction, carry-forward query
-    shaping, clarification continuity, pending recommendation memory, query-filter
-    normalization, duplicate follow-up suppression, and safe tool-decision fallback.
+  - Delegates planner/state preparation, routing decisions, recommendation
+    execution, and recommendation outcome normalization to focused
+    collaborators under `app/services/orchestrator/`.
   - Owns the hybrid recommendation policy:
     destination exploration can start from partial signal, while hotel and
     flight searches still wait for destination, dates, and budget.
-  - Merges validated planner `state_patch` payloads through
-    `apply_structured_state_patch(...)` before `/chat` agent execution.
   - Converts validated recommendation data into route-safe `OrchestratorResponse`
     payloads.
 - TravelTom agent service (`app/services/travel_tom_agent.py`):
@@ -84,11 +83,20 @@ apps/api/
   - Owns the shared chat `create_agent` runtime for `/chat` and the
     deterministic `create_agent` runtime for `direct_recommendation` mode.
   - Owns `@tool` registration for the shared deterministic recommendation tool.
-  - Owns provider-backed grounded response composition after validated
-    tool/state normalization for `/chat`.
   - Delegates planner validation, deterministic state preparation, transcript
     normalization, and fallback logic to `OrchestratorService`.
   - Wraps deterministic recommendation execution without changing recommender logic.
+- Orchestrator turn preparer (`app/services/orchestrator/turn_preparer.py`):
+  - Owns deterministic hint extraction, planner invocation/validation,
+    normalized planner output shaping, and recommendation slot gating.
+- Orchestrator decision engine (`app/services/orchestrator/decision_engine.py`):
+  - Owns the direct-response versus chat-agent routing decision after a turn is prepared.
+- Orchestrator recommendation runner (`app/services/orchestrator/recommendation_runner.py`):
+  - Owns validated recommendation query construction and deterministic
+    recommendation execution for fallback/bypass paths.
+- Orchestrator response assembler (`app/services/orchestrator/response_assembler.py`):
+  - Owns normalized recommendation outcome handling for results, empty results,
+    and duplicate-only follow-up suppression.
 - Orchestrator model provider (`app/services/orchestrator/llm_provider.py`):
   - Owns chat-model construction for OpenAI and Ollama chat-agent calls.
   - Owns deterministic in-process models for disabled chat fallback and direct

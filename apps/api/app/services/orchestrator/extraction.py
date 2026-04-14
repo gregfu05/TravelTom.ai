@@ -315,6 +315,12 @@ _MONTH_NAME_DATE_PATTERN = re.compile(
     rf"(?:(?:,\s*|\s+)(?P<year>\d{{4}})(?!\s*(?:{_CURRENCY_WORD_GROUP})\b))?\b",
     flags=re.IGNORECASE,
 )
+_MONTH_NAME_DATE_RANGE_PATTERN = re.compile(
+    rf"\b(?P<month>{_MONTH_WORD})\.?\s+(?P<start_day>\d{{1,2}})(?:st|nd|rd|th)?\s*"
+    rf"(?:-|to|through|until)\s*(?P<end_day>\d{{1,2}})(?:st|nd|rd|th)?"
+    rf"(?:(?:,\s*|\s+)(?P<year>\d{{4}})(?!\s*(?:{_CURRENCY_WORD_GROUP})\b))?\b",
+    flags=re.IGNORECASE,
+)
 _DAY_FIRST_MONTH_NAME_DATE_PATTERN = re.compile(
     rf"\b(?P<day>\d{{1,2}})(?:st|nd|rd|th)?(?:\s+of)?\s+(?P<month>{_MONTH_WORD})\.?"
     rf"(?:(?:,\s*|\s+)(?P<year>\d{{4}})(?!\s*(?:{_CURRENCY_WORD_GROUP})\b))?\b",
@@ -655,39 +661,58 @@ def build_effective_recommendation_query_text(
             prior_query
             and session_state.conversation.last_clarification_kind == "search_type"
         ):
-            return _merge_query_fragments(normalized_message, prior_query)
-        if (
+            base = _merge_query_fragments(normalized_message, prior_query)
+        elif (
             prior_query
             and explicit_item_type is None
             and session_state.conversation.last_requested_slots
             and session_state.conversation.last_user_intent in {"recommend", "refine"}
         ):
-            return _merge_query_fragments(normalized_message, prior_query)
-        return normalized_message
+            base = _merge_query_fragments(normalized_message, prior_query)
+        else:
+            base = normalized_message
+
+        if base != normalized_message:
+            return base
+
+        fragments: list[str] = [base]
+        if session_state.constraints.destination:
+            fragments.append(session_state.constraints.destination)
+
+        weighted_interests = sorted(
+            session_state.preferences.weighted_interests.items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+        for interest, _weight in weighted_interests[:3]:
+            fragments.append(interest)
+
+        return _merge_query_fragments(*fragments)
 
     if prior_query:
         return _merge_query_fragments(normalized_message, prior_query)
 
-    fragments: list[str] = [normalized_message]
+    follow_up_fragments: list[str] = [normalized_message]
     effective_item_type = resolve_effective_item_type(
         message=normalized_message,
         session_state=session_state,
     )
     if effective_item_type is not None:
-        fragments.append(effective_item_type)
+        follow_up_fragments.append(effective_item_type)
 
     if session_state.constraints.destination:
-        fragments.append(session_state.constraints.destination)
+        follow_up_fragments.append(session_state.constraints.destination)
 
     weighted_interests = sorted(
         session_state.preferences.weighted_interests.items(),
         key=lambda item: (-item[1], item[0]),
     )
     for interest, _weight in weighted_interests[:3]:
-        fragments.append(interest)
+        follow_up_fragments.append(interest)
 
     normalized_fragments = [
-        fragment.strip() for fragment in fragments if fragment and fragment.strip()
+        fragment.strip()
+        for fragment in follow_up_fragments
+        if fragment and fragment.strip()
     ]
     return " ".join(dict.fromkeys(normalized_fragments))
 
@@ -907,6 +932,30 @@ def _collect_explicit_dates(message: str, *, today: date) -> list[date]:
         )
         if parsed_date is not None:
             candidates.append((match.start(), parsed_date))
+
+    for match in _MONTH_NAME_DATE_RANGE_PATTERN.finditer(message):
+        month_key = match.group("month").casefold().rstrip(".")
+        month = _MONTH_NAME_TO_NUMBER.get(month_key)
+        if month is None:
+            continue
+
+        parsed_year_text = match.group("year")
+        year = int(parsed_year_text) if parsed_year_text else today.year
+        start_day = int(match.group("start_day"))
+        end_day = int(match.group("end_day"))
+        start_date = _safe_date(year, month, start_day)
+        end_date = _safe_date(year, month, end_day)
+        if start_date is None or end_date is None:
+            continue
+
+        if parsed_year_text is None and end_date < today:
+            start_date = _safe_date(year + 1, month, start_day)
+            end_date = _safe_date(year + 1, month, end_day)
+            if start_date is None or end_date is None:
+                continue
+
+        candidates.append((match.start(), start_date))
+        candidates.append((match.start() + 1, end_date))
 
     for pattern in (_MONTH_NAME_DATE_PATTERN, _DAY_FIRST_MONTH_NAME_DATE_PATTERN):
         for match in pattern.finditer(message):

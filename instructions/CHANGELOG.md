@@ -1,5 +1,19 @@
 # Instructions Changelog
 
+## 2026-04-14
+
+- Documented the phased orchestrator refactor while preserving runtime behavior:
+  - `04-llm-orchestrator/orchestrator-overview.md` now describes the internal
+    `TurnPreparer`, `RecommendationDecisionEngine`,
+    `RecommendationRunner`, `ResponseAssembler`, and typed runtime-contract
+    layers that sit under `OrchestratorService`.
+  - `04-llm-orchestrator/prompts-and-guardrails.md` now records the phased
+    runtime boundary and the internal typed agent-result normalization step
+    used before transcript inspection.
+  - `02-backend/services-and-modules.md` now documents `TravelTomAgent` as a
+    runtime adapter and records the narrower responsibilities of the new
+    orchestrator collaborators.
+
 ## 2026-04-10
 
 - Documented the Azure runtime deployment implementation surface:

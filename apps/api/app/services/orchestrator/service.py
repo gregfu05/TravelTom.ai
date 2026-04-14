@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import json
-import logging
 from collections.abc import Mapping
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Callable, Literal, Sequence, cast
 
-from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from pydantic import ValidationError
 
 from app.schemas.api.recommendations import (
@@ -30,9 +28,8 @@ from app.schemas.tools.recommendations import (
     RecommendationResult,
     RecommendationToolResponse,
 )
+from app.services.orchestrator.decision_engine import RecommendationDecisionEngine
 from app.services.orchestrator.extraction import (
-    apply_message_state_updates,
-    apply_structured_state_patch,
     build_effective_recommendation_query_text,
     extract_query_filters,
     is_follow_up_refinement,
@@ -41,12 +38,9 @@ from app.services.orchestrator.extraction import (
 from app.services.orchestrator.policies import (
     build_clarification_message,
     build_empty_message,
-    build_empty_results_message,
     build_guardrail_plan,
     build_invalid_request_message,
     build_invalid_tool_payload_message,
-    build_no_new_results_message,
-    build_planning_prompt_context,
     build_response_prompt_context,
     build_tool_failure_message,
     build_tool_timeout_message,
@@ -57,6 +51,13 @@ from app.services.orchestrator.policies import (
     missing_core_constraint_slots,
     requested_slots_for_clarification,
 )
+from app.services.orchestrator.recommendation_runner import RecommendationRunner
+from app.services.orchestrator.response_assembler import ResponseAssembler
+from app.services.orchestrator.runtime_types import (
+    AgentRunResult,
+    RecommendationOutcome,
+)
+from app.services.orchestrator.turn_preparer import TurnPreparer
 
 RecommendationExecutor = Callable[[RecommendationQuery], RecommendationToolResponse]
 AgentExecutor = Callable[[list[dict[str, str]]], dict[str, Any]]
@@ -68,18 +69,6 @@ _VALID_ITEM_TYPES = {"destination", "hotel", "flight"}
 _STATE_CONTEXT_PREFIX = "TRAVELTOM_SESSION_STATE_JSON:"
 _DIRECT_QUERY_PREFIX = "TRAVELTOM_DIRECT_RECOMMENDATION_QUERY_JSON:"
 _RECOMMENDATION_CONTEXT_PREFIX = "TRAVELTOM_RECOMMENDATION_CONTEXT_JSON:"
-logger = logging.getLogger(__name__)
-_PLANNER_FAILURE_COOLDOWN_SECONDS = 120
-
-
-@dataclass(frozen=True)
-class PreparedChatTurn:
-    """Validated pre-agent state plus normalized planning metadata."""
-
-    session_state: SessionState
-    plan: LLMOrchestrationPlan
-    acknowledged_slots: list[str]
-    planner_used: bool
 
 
 class PlannerExecutionError(RuntimeError):
@@ -232,7 +221,13 @@ class OrchestratorService:
         policy_config: OrchestratorPolicyConfig | None = None,
     ) -> None:
         self._policy = policy_config or OrchestratorPolicyConfig()
-        self._planner_cooldowns: dict[str, datetime] = {}
+        self._turn_preparer = TurnPreparer(policy=self._policy)
+        self._decision_engine = RecommendationDecisionEngine()
+        self._recommendation_runner = RecommendationRunner(
+            policy=self._policy,
+            turn_preparer=self._turn_preparer,
+        )
+        self._response_assembler = ResponseAssembler(policy=self._policy)
 
     def build_chat_messages(
         self,
@@ -296,35 +291,26 @@ class OrchestratorService:
                 requested_slots=session_state.conversation.last_requested_slots,
             )
 
-        prepared_turn = self._prepare_chat_turn(
+        prepared_turn = self._turn_preparer.prepare_turn(
             user_message=message,
             previous_state=session_state,
             recent_messages=history,
             planner_executor=planner_executor,
         )
+        prepared_turn = self._turn_preparer.enforce_recommendation_slot_gating(
+            user_message=message,
+            prepared_turn=prepared_turn,
+        )
         prepared_state = prepared_turn.session_state
         acknowledged_slots = prepared_turn.acknowledged_slots
-
-        if not prepared_turn.plan.should_call_recommendation_tool:
-            return self._direct_response_from_plan(
-                user_message=message,
-                session_state=prepared_state,
-                previous_state=session_state,
-                plan=prepared_turn.plan,
-                acknowledged_slots=acknowledged_slots,
-                recent_messages=history,
-                recommendation_executor=recommendation_executor,
-                response_composer=response_composer,
-            )
-        if (
-            prepared_turn.plan.should_call_recommendation_tool
-            and recommendation_executor is not None
-            and self._should_bypass_agent_for_recommendation(
-                user_message=message,
-                previous_state=session_state,
-                session_state=prepared_state,
-            )
-        ):
+        routing_decision = self._decision_engine.decide(
+            user_message=message,
+            previous_state=session_state,
+            session_state=prepared_state,
+            prepared_turn=prepared_turn,
+            recommendation_executor_available=recommendation_executor is not None,
+        )
+        if routing_decision.path == "direct_response":
             return self._direct_response_from_plan(
                 user_message=message,
                 session_state=prepared_state,
@@ -337,12 +323,14 @@ class OrchestratorService:
             )
 
         try:
-            agent_result = agent_executor(
-                self.build_chat_messages(
-                    user_message=message,
-                    session_state=prepared_state,
-                    recent_messages=history,
-                    query_controls=prepared_turn.plan.query_controls,
+            agent_result = AgentRunResult.from_raw(
+                agent_executor(
+                    self.build_chat_messages(
+                        user_message=message,
+                        session_state=prepared_state,
+                        recent_messages=history,
+                        query_controls=prepared_turn.plan.query_controls,
+                    )
                 )
             )
         except Exception:
@@ -372,11 +360,13 @@ class OrchestratorService:
     def response_from_direct_agent_result(
         self,
         *,
-        agent_result: dict[str, Any],
+        agent_result: AgentRunResult | dict[str, Any],
     ) -> RecommendationToolRuntimePayload:
         """Extract the tool payload from a deterministic recommendation agent."""
 
-        tool_message = self._last_recommendation_tool_message(agent_result)
+        if isinstance(agent_result, dict):
+            agent_result = AgentRunResult.from_raw(agent_result)
+        tool_message = agent_result.last_recommendation_tool_message()
         if tool_message is None:
             return RecommendationToolRuntimePayload(
                 status="failure",
@@ -470,55 +460,39 @@ class OrchestratorService:
     ) -> RecommendationQuery | None:
         """Build a normalized recommendation query from state and user text."""
 
-        effective_query = _normalize_text_value(query_text_override)
-        if effective_query is None:
-            effective_query = build_effective_recommendation_query_text(
-                message=user_message,
-                session_state=session_state,
-            )
-        payload: dict[str, Any] = {
-            "session_id": session_state.session_id,
-            "query": effective_query,
-            "constraints": self._build_constraints_payload(session_state),
-            "filters": self._merge_query_filters(
-                user_message=user_message,
-                session_state=session_state,
-                filters_override=filters_override,
-            ),
-            "max_results": max_results or self._policy.max_recommendation_results,
-            "ranking_version": "heuristic-v1",
-        }
-        try:
-            return RecommendationQuery.model_validate(payload)
-        except ValidationError:
-            return None
+        return self._recommendation_runner.build_query(
+            user_message=user_message,
+            session_state=session_state,
+            max_results=max_results,
+            query_text_override=query_text_override,
+            filters_override=filters_override,
+        )
+
+    def _merge_query_filters(
+        self,
+        *,
+        user_message: str,
+        session_state: SessionState,
+        filters_override: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self._turn_preparer.merge_query_filters(
+            user_message=user_message,
+            session_state=session_state,
+            filters_override=filters_override,
+        )
 
     def build_results_message(
         self,
         results: list[RecommendationResult],
+        *,
+        session_state: SessionState | None = None,
     ) -> str:
         """Build deterministic grounded copy from recommendation results."""
 
-        preview_limit = max(1, self._policy.max_recommendation_results)
-        limit_notice = next(
-            (
-                str(item.features.get("limit_notice"))
-                for item in results
-                if isinstance(item.features, dict) and item.features.get("limit_notice")
-            ),
-            None,
+        return self._response_assembler.build_results_message(
+            results,
+            session_state=session_state,
         )
-        preview_items = "\n".join(
-            f"{i}. {self._recommendation_display_name(item)}"
-            for i, item in enumerate(results[:preview_limit], start=1)
-        )
-        base = (
-            f"I found {len(results)} places that fit your request. "
-            f"Top picks:\n{preview_items}"
-        )
-        if limit_notice:
-            return f"{limit_notice} {base}"
-        return base
 
     def _response_from_agent_result(
         self,
@@ -528,14 +502,13 @@ class OrchestratorService:
         previous_state: SessionState,
         plan: LLMOrchestrationPlan,
         acknowledged_slots: list[str],
-        agent_result: dict[str, Any],
+        agent_result: AgentRunResult,
         recent_messages: Sequence[TranscriptMessage],
         recommendation_executor: RecommendationExecutor | None,
         response_composer: ResponseComposer | None,
     ) -> OrchestratorResponse:
-        messages = self._messages_from_agent_result(agent_result)
-        final_ai_message = self._last_final_ai_message(messages)
-        tool_message = self._last_recommendation_tool_message(agent_result)
+        final_ai_message = agent_result.last_final_ai_message()
+        tool_message = agent_result.last_recommendation_tool_message()
         conversation_intent = self._turn_intent(
             previous_state,
             user_message,
@@ -623,16 +596,11 @@ class OrchestratorService:
             )
 
         recommendation_response = runtime_payload.response
-        tool_call = self._last_recommendation_tool_call(messages)
+        tool_call = agent_result.last_recommendation_tool_call()
         tool_query = self._extract_tool_call_query(tool_call)
         tool_filters = self._extract_tool_call_filters(tool_call) or dict(
             plan.query_controls.filters
         )
-        next_state = session_state.model_copy(deep=True)
-        next_state.last_message_at = datetime.now(timezone.utc)
-        next_state.last_recommendation_version = recommendation_response.ranking_version
-        next_state.conversation.last_requested_slots = []
-        next_state.conversation.last_user_intent = conversation_intent
         effective_item_type: RecommendationItemType | None = (
             self._extract_tool_call_item_type(tool_call)
         )
@@ -648,8 +616,7 @@ class OrchestratorService:
             effective_item_type = self._normalize_item_type(resolved_item_type)
         if effective_item_type is None:
             effective_item_type = "destination"
-        next_state.conversation.last_recommendation_item_type = effective_item_type
-        next_state.conversation.last_recommendation_query = (
+        effective_query = (
             tool_query
             or self._normalize_query_override(plan.query_controls.query)
             or build_effective_recommendation_query_text(
@@ -657,44 +624,25 @@ class OrchestratorService:
                 session_state=session_state,
             )
         )
-
-        if not recommendation_response.results:
-            next_state.conversation.last_recommendation_result_ids = []
-            next_state.status = "explore"
-            next_state.conversation.last_clarification_kind = "refine_preference"
-            next_state.conversation.last_search_outcome = "empty_results"
-            fallback = build_empty_results_message(next_state)
-            assistant_message = self._compose_assistant_message(
-                session_state=next_state,
-                recent_messages=recent_messages,
-                user_message=user_message,
-                recommendations=[],
-                fallback_message=fallback,
-                outcome="empty_results",
-                response_composer=response_composer,
-                candidate_message=final_ai_message.text if final_ai_message else None,
-            )
-            return OrchestratorResponse(
-                session_id=next_state.session_id,
-                assistant_message=assistant_message,
-                recommendations=[],
-                itinerary=next_state.itinerary.model_dump(),
-                state=next_state.model_dump(mode="json"),
-            )
-
-        displayed_results, duplicate_only = self._select_results_for_response(
-            user_message=user_message,
+        outcome = self._response_assembler.normalize_recommendation_outcome(
             previous_state=previous_state,
-            results=recommendation_response.results,
+            session_state=session_state,
+            user_message=user_message,
+            recommendation_response=recommendation_response,
+            recommendation_item_type=effective_item_type,
+            recommendation_query=effective_query,
+            allow_retry_on_duplicate=recommendation_executor is not None,
+            candidate_message=final_ai_message.text if final_ai_message else None,
         )
-        if duplicate_only and recommendation_executor is not None:
+        outcome.next_state.conversation.last_user_intent = conversation_intent
+        if outcome.retry_with_expanded_results and recommendation_executor is not None:
             return self._run_recommendation_fallback(
                 user_message=user_message,
                 session_state=session_state,
                 previous_state=previous_state,
                 recent_messages=recent_messages,
                 recommendation_executor=recommendation_executor,
-                max_results=self._expanded_follow_up_max_results(
+                max_results=self._recommendation_runner.expanded_follow_up_max_results(
                     requested_max_results=plan.query_controls.max_results,
                     previous_state=previous_state,
                     user_message=user_message,
@@ -704,56 +652,11 @@ class OrchestratorService:
                 response_composer=response_composer,
                 intent=conversation_intent,
             )
-
-        if duplicate_only:
-            next_state.status = "refine"
-            next_state.conversation.last_recommendation_result_ids = list(
-                previous_state.conversation.last_recommendation_result_ids
-            )
-            next_state.conversation.last_clarification_kind = "refine_preference"
-            next_state.conversation.last_search_outcome = "no_new_results"
-            fallback = build_no_new_results_message(next_state)
-            assistant_message = self._compose_assistant_message(
-                session_state=next_state,
-                recent_messages=recent_messages,
-                user_message=user_message,
-                recommendations=[],
-                fallback_message=fallback,
-                outcome="empty_results",
-                response_composer=response_composer,
-                candidate_message=final_ai_message.text if final_ai_message else None,
-            )
-            return OrchestratorResponse(
-                session_id=next_state.session_id,
-                assistant_message=assistant_message,
-                recommendations=[],
-                itinerary=next_state.itinerary.model_dump(),
-                state=next_state.model_dump(mode="json"),
-            )
-
-        next_state.conversation.last_recommendation_result_ids = [
-            item.item_id for item in displayed_results
-        ]
-        next_state.status = "refine"
-        next_state.conversation.last_clarification_kind = None
-        next_state.conversation.last_search_outcome = "results"
-        fallback = self.build_results_message(displayed_results)
-        assistant_message = self._compose_assistant_message(
-            session_state=next_state,
+        return self._orchestrator_response_from_recommendation_outcome(
+            outcome=outcome,
             recent_messages=recent_messages,
             user_message=user_message,
-            recommendations=displayed_results,
-            fallback_message=fallback,
-            outcome="results",
             response_composer=response_composer,
-            candidate_message=final_ai_message.text if final_ai_message else None,
-        )
-        return OrchestratorResponse(
-            session_id=next_state.session_id,
-            assistant_message=assistant_message,
-            recommendations=displayed_results,
-            itinerary=next_state.itinerary.model_dump(),
-            state=next_state.model_dump(mode="json"),
         )
 
     def _fallback_from_agent_failure(
@@ -834,10 +737,12 @@ class OrchestratorService:
         response_composer: ResponseComposer | None,
         intent: Intent | None = None,
     ) -> OrchestratorResponse:
-        effective_max_results = self._expanded_follow_up_max_results(
-            requested_max_results=max_results,
-            previous_state=previous_state,
-            user_message=user_message,
+        effective_max_results = (
+            self._recommendation_runner.expanded_follow_up_max_results(
+                requested_max_results=max_results,
+                previous_state=previous_state,
+                user_message=user_message,
+            )
         )
         query = self.build_recommendation_query(
             user_message=user_message,
@@ -865,8 +770,9 @@ class OrchestratorService:
             )
 
         try:
-            recommendation_response = RecommendationToolResponse.model_validate(
-                recommendation_executor(query)
+            execution_result = self._recommendation_runner.execute(
+                query=query,
+                recommendation_executor=recommendation_executor,
             )
         except ValidationError:
             return self._safe_error_response(
@@ -887,522 +793,38 @@ class OrchestratorService:
                 or self._turn_intent(previous_state, user_message, session_state),
             )
 
-        next_state = session_state.model_copy(deep=True)
-        next_state.last_message_at = datetime.now(timezone.utc)
-        next_state.last_recommendation_version = recommendation_response.ranking_version
-        next_state.conversation.last_requested_slots = []
-        next_state.conversation.last_user_intent = intent or self._turn_intent(
+        outcome = self._response_assembler.normalize_recommendation_outcome(
+            previous_state=previous_state,
+            session_state=session_state,
+            user_message=user_message,
+            recommendation_response=execution_result.response,
+            recommendation_item_type=self._normalize_item_type(
+                execution_result.query.filters.get("item_type")
+            )
+            or "destination",
+            recommendation_query=execution_result.query.query,
+            allow_retry_on_duplicate=False,
+        )
+        outcome.next_state.conversation.last_user_intent = intent or self._turn_intent(
             previous_state,
             user_message,
             session_state,
         )
-        next_state.conversation.last_recommendation_item_type = (
-            self._normalize_item_type(query.filters.get("item_type")) or "destination"
-        )
-        next_state.conversation.last_recommendation_query = query.query
-
-        if not recommendation_response.results:
-            next_state.conversation.last_recommendation_result_ids = []
-            next_state.status = "explore"
-            next_state.conversation.last_clarification_kind = "refine_preference"
-            next_state.conversation.last_search_outcome = "empty_results"
-            assistant_message = self._compose_assistant_message(
-                session_state=next_state,
-                recent_messages=recent_messages,
-                user_message=user_message,
-                recommendations=[],
-                fallback_message=build_empty_results_message(next_state),
-                outcome="empty_results",
-                response_composer=response_composer,
-            )
-            return OrchestratorResponse(
-                session_id=next_state.session_id,
-                assistant_message=assistant_message,
-                recommendations=[],
-                itinerary=next_state.itinerary.model_dump(),
-                state=next_state.model_dump(mode="json"),
-            )
-
-        displayed_results, duplicate_only = self._select_results_for_response(
-            user_message=user_message,
-            previous_state=previous_state,
-            results=recommendation_response.results,
-        )
-        if duplicate_only:
-            next_state.status = "refine"
-            next_state.conversation.last_recommendation_result_ids = list(
-                previous_state.conversation.last_recommendation_result_ids
-            )
-            next_state.conversation.last_clarification_kind = "refine_preference"
-            next_state.conversation.last_search_outcome = "no_new_results"
-            assistant_message = self._compose_assistant_message(
-                session_state=next_state,
-                recent_messages=recent_messages,
-                user_message=user_message,
-                recommendations=[],
-                fallback_message=build_no_new_results_message(next_state),
-                outcome="empty_results",
-                response_composer=response_composer,
-            )
-            return OrchestratorResponse(
-                session_id=next_state.session_id,
-                assistant_message=assistant_message,
-                recommendations=[],
-                itinerary=next_state.itinerary.model_dump(),
-                state=next_state.model_dump(mode="json"),
-            )
-
-        next_state.conversation.last_recommendation_result_ids = [
-            item.item_id for item in displayed_results
-        ]
-        next_state.status = "refine"
-        next_state.conversation.last_clarification_kind = None
-        next_state.conversation.last_search_outcome = "results"
-        assistant_message = self._compose_assistant_message(
-            session_state=next_state,
+        return self._orchestrator_response_from_recommendation_outcome(
+            outcome=outcome,
             recent_messages=recent_messages,
             user_message=user_message,
-            recommendations=displayed_results,
-            fallback_message=self.build_results_message(displayed_results),
-            outcome="results",
             response_composer=response_composer,
         )
-        return OrchestratorResponse(
-            session_id=next_state.session_id,
-            assistant_message=assistant_message,
-            recommendations=displayed_results,
-            itinerary=next_state.itinerary.model_dump(),
-            state=next_state.model_dump(mode="json"),
-        )
-
-    def _build_constraints_payload(self, session_state: SessionState) -> dict[str, Any]:
-        constraints: dict[str, Any] = {}
-        if session_state.constraints.origin:
-            constraints["origin"] = session_state.constraints.origin
-        if session_state.constraints.destination:
-            constraints["destination"] = session_state.constraints.destination
-        if session_state.constraints.dates:
-            constraints["dates"] = session_state.constraints.dates.model_dump(
-                mode="json"
-            )
-        if session_state.constraints.budget:
-            constraints["budget"] = session_state.constraints.budget.model_dump(
-                mode="json"
-            )
-        if session_state.constraints.party_size:
-            constraints["party_size"] = (
-                session_state.constraints.party_size.model_dump()
-            )
-        return constraints
-
-    def _expanded_follow_up_max_results(
-        self,
-        *,
-        requested_max_results: int | None,
-        previous_state: SessionState,
-        user_message: str,
-    ) -> int:
-        base_max_results = (
-            requested_max_results or self._policy.max_recommendation_results
-        )
-        if not self._is_duplicate_sensitive_follow_up(
-            user_message=user_message,
-            previous_state=previous_state,
-        ):
-            return base_max_results
-
-        prior_result_count = len(
-            previous_state.conversation.last_recommendation_result_ids
-        )
-        if prior_result_count <= 0:
-            return base_max_results
-
-        return min(50, max(1, base_max_results) + prior_result_count)
-
-    def _select_results_for_response(
-        self,
-        *,
-        user_message: str,
-        previous_state: SessionState,
-        results: list[RecommendationResult],
-    ) -> tuple[list[RecommendationResult], bool]:
-        if not self._is_duplicate_sensitive_follow_up(
-            user_message=user_message,
-            previous_state=previous_state,
-        ):
-            return results[: self._policy.max_recommendation_results], False
-
-        prior_result_ids = set(
-            previous_state.conversation.last_recommendation_result_ids
-        )
-        if not prior_result_ids:
-            return results[: self._policy.max_recommendation_results], False
-
-        unseen_results = [
-            item for item in results if item.item_id not in prior_result_ids
-        ]
-        if unseen_results:
-            return unseen_results[: self._policy.max_recommendation_results], False
-        return [], True
-
-    def _is_duplicate_sensitive_follow_up(
-        self,
-        *,
-        user_message: str,
-        previous_state: SessionState,
-    ) -> bool:
-        if not previous_state.conversation.last_recommendation_result_ids:
-            return False
-        return is_follow_up_refinement(user_message)
-
-    def _prepare_chat_turn(
-        self,
-        *,
-        user_message: str,
-        previous_state: SessionState,
-        recent_messages: Sequence[TranscriptMessage],
-        planner_executor: PlannerExecutor | None,
-    ) -> PreparedChatTurn:
-        deterministic_state = apply_message_state_updates(
-            message=user_message,
-            session_state=previous_state,
-        )
-        acknowledged_slots = self._captured_core_slots(
-            previous_state=previous_state,
-            next_state=deterministic_state,
-        )
-        fallback_turn = PreparedChatTurn(
-            session_state=deterministic_state,
-            plan=self._normalize_planning_plan(
-                user_message=user_message,
-                previous_state=previous_state,
-                session_state=deterministic_state,
-                plan=build_guardrail_plan(
-                    message=user_message,
-                    session_state=deterministic_state,
-                    max_results=self._policy.max_recommendation_results,
-                ),
-            ),
-            acknowledged_slots=acknowledged_slots,
-            planner_used=False,
-        )
-        if planner_executor is None:
-            return fallback_turn
-
-        if self._planner_is_in_cooldown(previous_state.session_id):
-            return fallback_turn
-
-        if self._should_skip_planner(
-            user_message=user_message,
-            previous_state=previous_state,
-            deterministic_state=deterministic_state,
-            fallback_plan=fallback_turn.plan,
-            acknowledged_slots=acknowledged_slots,
-        ):
-            return fallback_turn
-
-        prompt = build_planning_prompt_context(
-            session_state=previous_state,
-            deterministic_hint_state=deterministic_state,
-            recent_messages=list(recent_messages),
-            user_message=user_message,
-            max_results=self._policy.max_recommendation_results,
-        )
-        try:
-            plan_payload = planner_executor(prompt)
-        except PlannerExecutionError as exc:
-            self._mark_planner_failure(previous_state.session_id)
-            logger.warning(
-                "planner_execution_failed",
-                extra={
-                    "context": {
-                        "session_id": previous_state.session_id,
-                        "error": str(exc),
-                    }
-                },
-            )
-            return fallback_turn
-        except Exception as exc:
-            self._mark_planner_failure(previous_state.session_id)
-            logger.warning(
-                "planner_execution_failed",
-                extra={
-                    "context": {
-                        "session_id": previous_state.session_id,
-                        "error": str(exc),
-                    }
-                },
-            )
-            return fallback_turn
-        if not isinstance(plan_payload, Mapping):
-            self._mark_planner_failure(previous_state.session_id)
-            logger.warning(
-                "planner_output_invalid",
-                extra={
-                    "context": {
-                        "session_id": previous_state.session_id,
-                        "error": "planner output was not a JSON object",
-                    }
-                },
-            )
-            return fallback_turn
-
-        normalized_plan_payload = self._sanitize_plan_payload(plan_payload)
-        try:
-            plan = LLMOrchestrationPlan.model_validate(normalized_plan_payload)
-            planned_state = apply_structured_state_patch(
-                session_state=previous_state,
-                state_patch=plan.state_patch.model_dump(
-                    mode="python",
-                    exclude_unset=True,
-                ),
-            )
-        except ValidationError as exc:
-            self._mark_planner_failure(previous_state.session_id)
-            logger.warning(
-                "planner_output_invalid",
-                extra={
-                    "context": {
-                        "session_id": previous_state.session_id,
-                        "error": str(exc),
-                    }
-                },
-            )
-            return fallback_turn
-
-        self._clear_planner_cooldown(previous_state.session_id)
-
-        return PreparedChatTurn(
-            session_state=planned_state,
-            plan=self._normalize_planning_plan(
-                user_message=user_message,
-                previous_state=previous_state,
-                session_state=planned_state,
-                plan=plan,
-            ),
-            acknowledged_slots=self._captured_core_slots(
-                previous_state=previous_state,
-                next_state=planned_state,
-            ),
-            planner_used=True,
-        )
-
-    def _should_skip_planner(
-        self,
-        *,
-        user_message: str,
-        previous_state: SessionState,
-        deterministic_state: SessionState,
-        fallback_plan: LLMOrchestrationPlan,
-        acknowledged_slots: Sequence[str],
-    ) -> bool:
-        del user_message
-        del previous_state
-        del deterministic_state
-        del fallback_plan
-        del acknowledged_slots
-        return False
-
-    def _should_bypass_agent_for_recommendation(
-        self,
-        *,
-        user_message: str,
-        previous_state: SessionState,
-        session_state: SessionState,
-    ) -> bool:
-        del user_message
-        if (
-            previous_state.conversation.last_requested_slots
-            and not missing_core_constraint_slots(session_state)
-        ):
-            return True
-        return bool(
-            previous_state.conversation.last_clarification_kind == "search_type"
-            and not missing_core_constraint_slots(session_state)
-        )
-
-    def _planner_is_in_cooldown(self, session_id: str) -> bool:
-        cooldown_until = self._planner_cooldowns.get(session_id)
-        if cooldown_until is None:
-            return False
-        if cooldown_until <= datetime.now(timezone.utc):
-            self._planner_cooldowns.pop(session_id, None)
-            return False
-        return True
-
-    def _mark_planner_failure(self, session_id: str) -> None:
-        self._planner_cooldowns[session_id] = datetime.now(timezone.utc) + timedelta(
-            seconds=_PLANNER_FAILURE_COOLDOWN_SECONDS
-        )
-
-    def _clear_planner_cooldown(self, session_id: str) -> None:
-        self._planner_cooldowns.pop(session_id, None)
-
-    def _sanitize_plan_payload(
-        self,
-        plan_payload: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        normalized_payload = dict(plan_payload)
-        state_patch = normalized_payload.get("state_patch")
-        if isinstance(state_patch, Mapping):
-            normalized_payload["state_patch"] = self._prune_null_patch_values(
-                dict(state_patch)
-            )
-        return normalized_payload
-
-    def _prune_null_patch_values(self, value: Any) -> Any:
-        if isinstance(value, Mapping):
-            cleaned: dict[str, Any] = {}
-            for key, nested_value in value.items():
-                normalized_nested_value = self._prune_null_patch_values(nested_value)
-                if normalized_nested_value is None:
-                    continue
-                if (
-                    isinstance(normalized_nested_value, dict)
-                    and not normalized_nested_value
-                ):
-                    continue
-                cleaned[str(key)] = normalized_nested_value
-            return cleaned
-        if isinstance(value, list):
-            cleaned_list = [self._prune_null_patch_values(item) for item in value]
-            return [
-                item
-                for item in cleaned_list
-                if item is not None and not (isinstance(item, dict) and not item)
-            ]
-        return value
-
-    def _normalize_planning_plan(
-        self,
-        *,
-        user_message: str,
-        previous_state: SessionState,
-        session_state: SessionState,
-        plan: LLMOrchestrationPlan,
-    ) -> LLMOrchestrationPlan:
-        max_results = min(
-            plan.query_controls.max_results or self._policy.max_recommendation_results,
-            self._policy.max_recommendation_results,
-        )
-        effective_query = self._normalize_query_override(plan.query_controls.query)
-        if effective_query is None:
-            effective_query = build_effective_recommendation_query_text(
-                message=user_message,
-                session_state=session_state,
-            )
-
-        filters = self._merge_query_filters(
-            user_message=user_message,
-            session_state=session_state,
-            filters_override=plan.query_controls.filters,
-        )
-        guardrail_plan = build_guardrail_plan(
-            message=user_message,
-            session_state=session_state,
-            max_results=max_results,
-        )
-
-        should_call_recommendation_tool = plan.should_call_recommendation_tool
-        if guardrail_plan.should_call_recommendation_tool:
-            should_call_recommendation_tool = True
-        elif plan.should_call_recommendation_tool:
-            should_call_recommendation_tool = False
-
-        intent = plan.intent
-        if should_call_recommendation_tool and intent == "clarify":
-            if guardrail_plan.intent in {"recommend", "refine"}:
-                intent = guardrail_plan.intent
-            else:
-                intent = "recommend"
-
-        clarification_message = _normalize_text_value(plan.clarification_message)
-        if should_call_recommendation_tool:
-            clarification_message = None
-        elif clarification_message is None:
-            clarification_message = (
-                guardrail_plan.clarification_message
-                or build_clarification_message(
-                    session_state,
-                    acknowledged_slots=self._captured_core_slots(
-                        previous_state=previous_state,
-                        next_state=session_state,
-                    )
-                    or None,
-                    message=user_message,
-                )
-            )
-
-        return LLMOrchestrationPlan(
-            intent=intent,
-            should_call_recommendation_tool=should_call_recommendation_tool,
-            clarification_message=clarification_message,
-            state_patch=plan.state_patch,
-            query_controls=RecommendationQueryControls(
-                query=effective_query,
-                filters=filters,
-                max_results=max_results,
-            ),
-        )
-
-    def _merge_query_filters(
-        self,
-        *,
-        user_message: str,
-        session_state: SessionState,
-        filters_override: Mapping[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        merged_filters: dict[str, Any] = {}
-        if filters_override:
-            for key, value in filters_override.items():
-                if key == "item_type":
-                    normalized_override = self._normalize_item_type(value)
-                    if normalized_override is not None:
-                        merged_filters[key] = normalized_override
-                    continue
-                merged_filters[key] = value
-        if "item_type" in merged_filters:
-            return merged_filters
-
-        item_type = extract_query_filters(user_message).get("item_type")
-        normalized_item_type = self._normalize_item_type(item_type)
-        if normalized_item_type is not None:
-            merged_filters["item_type"] = normalized_item_type
-            return merged_filters
-
-        remembered_item_type = resolve_effective_item_type(
-            message=user_message,
-            session_state=session_state,
-        )
-        normalized_remembered_item_type = self._normalize_item_type(
-            remembered_item_type
-        )
-        if normalized_remembered_item_type is not None:
-            merged_filters["item_type"] = normalized_remembered_item_type
-            return merged_filters
-
-        merged_filters["item_type"] = "destination"
-        return merged_filters
 
     def _normalize_item_type(
         self,
         item_type: Any,
     ) -> RecommendationItemType | None:
-        return _normalize_item_type_value(item_type)
+        return self._turn_preparer.normalize_item_type(item_type)
 
     def _normalize_query_override(self, query: Any) -> str | None:
-        return _normalize_text_value(query)
-
-    def _recommendation_display_name(self, item: RecommendationResult) -> str:
-        name = item.features.get("name")
-        map_url = item.features.get("map_url")
-        if isinstance(name, str):
-            normalized = name.strip()
-            if normalized:
-                if isinstance(map_url, str) and map_url:
-                    return f"{normalized} - {map_url}"
-                return normalized
-        return item.item_id
+        return self._turn_preparer.normalize_query_override(query)
 
     def _compose_assistant_message(
         self,
@@ -1450,49 +872,34 @@ class OrchestratorService:
 
         return fallback_message
 
-    def _messages_from_agent_result(
+    def _orchestrator_response_from_recommendation_outcome(
         self,
-        agent_result: dict[str, Any],
-    ) -> list[BaseMessage]:
-        raw_messages = agent_result.get("messages")
-        if not isinstance(raw_messages, list):
-            return []
-        return [message for message in raw_messages if isinstance(message, BaseMessage)]
-
-    def _last_final_ai_message(
-        self,
-        messages: Sequence[BaseMessage],
-    ) -> AIMessage | None:
-        for message in reversed(messages):
-            if not isinstance(message, AIMessage):
-                continue
-            if message.tool_calls:
-                continue
-            return message
-        return None
-
-    def _last_recommendation_tool_message(
-        self,
-        agent_result: dict[str, Any],
-    ) -> ToolMessage | None:
-        for message in reversed(self._messages_from_agent_result(agent_result)):
-            if not isinstance(message, ToolMessage):
-                continue
-            if message.name == "recommendation_query":
-                return message
-        return None
-
-    def _last_recommendation_tool_call(
-        self,
-        messages: Sequence[BaseMessage],
-    ) -> dict[str, Any] | None:
-        for message in reversed(messages):
-            if not isinstance(message, AIMessage):
-                continue
-            for tool_call in reversed(message.tool_calls):
-                if tool_call.get("name") == "recommendation_query":
-                    return cast(dict[str, Any], tool_call)
-        return None
+        *,
+        outcome: RecommendationOutcome,
+        recent_messages: Sequence[TranscriptMessage],
+        user_message: str,
+        response_composer: ResponseComposer | None,
+    ) -> OrchestratorResponse:
+        assistant_message = self._compose_assistant_message(
+            session_state=outcome.next_state,
+            recent_messages=recent_messages,
+            user_message=user_message,
+            recommendations=outcome.recommendations,
+            fallback_message=outcome.fallback_message,
+            outcome=cast(
+                Literal["clarification", "results", "empty_results", "invalid_request"],
+                outcome.outcome,
+            ),
+            response_composer=response_composer,
+            candidate_message=outcome.candidate_message,
+        )
+        return OrchestratorResponse(
+            session_id=outcome.next_state.session_id,
+            assistant_message=assistant_message,
+            recommendations=outcome.recommendations,
+            itinerary=outcome.next_state.itinerary.model_dump(),
+            state=outcome.next_state.model_dump(mode="json"),
+        )
 
     def _extract_tool_call_query(self, tool_call: dict[str, Any] | None) -> str | None:
         if tool_call is None:
@@ -1541,19 +948,10 @@ class OrchestratorService:
         previous_state: SessionState,
         next_state: SessionState,
     ) -> list[str]:
-        captured: list[str] = []
-        if not previous_state.constraints.origin and next_state.constraints.origin:
-            captured.append("origin")
-        if (
-            not previous_state.constraints.destination
-            and next_state.constraints.destination
-        ):
-            captured.append("destination")
-        if not previous_state.constraints.dates and next_state.constraints.dates:
-            captured.append("dates")
-        if not previous_state.constraints.budget and next_state.constraints.budget:
-            captured.append("budget")
-        return captured
+        return self._turn_preparer.captured_core_slots(
+            previous_state=previous_state,
+            next_state=next_state,
+        )
 
     def _conversation_intent(
         self,

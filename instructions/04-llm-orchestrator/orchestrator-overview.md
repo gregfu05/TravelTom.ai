@@ -31,19 +31,36 @@
   - Owns the shared chat `create_agent` instance and the deterministic direct
     recommendation `create_agent` instance.
   - Registers the recommendation tool with LangChain's `@tool` decorator.
+  - Stays adapter-focused: planner invocation, LangChain agent execution, and
+    recommendation tool execution live here, while orchestration policy and
+    response/state decisions live under `services/orchestrator/`.
   - Exposes `handle_chat` and `handle_recommendation_query` for `/chat` and
     `/recommendations/query`.
 - `apps/api/app/services/orchestrator/service.py`
-  - Runs deterministic pre-extraction, then validates and applies structured
-    planner output before the chat agent sees the turn.
+  - Coordinates the phased runtime rather than owning every branch directly.
   - Builds hidden runtime context from validated state, bounded recent
     transcript, and validated recommendation query controls.
-  - Normalizes agent transcripts into schema-valid API responses.
-  - Keeps deterministic fallback query shaping, clarification continuity,
-    pending recommendation memory, and tool/error handling.
+  - Maps normalized phase output into schema-valid `OrchestratorResponse`
+    payloads and preserves clarification continuity / intent memory.
+- `apps/api/app/services/orchestrator/turn_preparer.py`
+  - Owns deterministic hint extraction, planner invocation/validation,
+    planner cooldown handling, plan normalization, and recommendation slot
+    gating before routing.
+- `apps/api/app/services/orchestrator/decision_engine.py`
+  - Owns the routing decision between direct runtime handling and chat-agent
+    invocation once a turn has been prepared.
+- `apps/api/app/services/orchestrator/recommendation_runner.py`
+  - Owns validated recommendation query construction and deterministic
+    recommendation execution for fallback and bypass paths.
+- `apps/api/app/services/orchestrator/response_assembler.py`
+  - Owns normalized recommendation outcome handling for results, empty
+    results, duplicate-only follow-ups, and grounded fallback result copy.
+- `apps/api/app/services/orchestrator/runtime_types.py`
+  - Defines internal typed handoff objects between preparation, routing,
+    recommendation execution, and transcript normalization phases.
 - `apps/api/app/services/orchestrator/policies.py`
   - Shared planner prompt builder plus deterministic clarification and fallback
-    helpers.
+  helpers.
   - Flattens and truncates recent transcript replay for planning and response
     composition so grounded recommendation lists do not bloat later prompts.
   - Owns deterministic meta-question, repair-turn, and duplicate-only
@@ -67,8 +84,8 @@
 1. `/api/v1/chat` resolves the shared `TravelTomAgent` and calls `handle_chat`.
 2. The route loads a bounded recent transcript window from persisted `messages`
    and hydrates the validated `SessionState` from `sessions.state_json`.
-3. `OrchestratorService` applies deterministic extraction to the latest user
-   turn as advisory hint state.
+3. `TurnPreparer` applies deterministic extraction to the latest user turn as
+   advisory hint state.
 4. A structured planner receives:
    - validated current state
    - bounded recent transcript replay
@@ -82,30 +99,35 @@
 6. The planner output is validated against `LLMOrchestrationPlan`, its
    `state_patch` is merged through `apply_structured_state_patch(...)`, and
    deterministic guardrails keep tool routing safe.
-7. Runtime builds hidden agent context from:
+7. `RecommendationDecisionEngine` decides whether runtime can answer directly
+   or still needs the chat-agent loop.
+8. Runtime builds hidden agent context from:
    - merged validated state
    - bounded recent transcript replay
    - validated recommendation query controls and carry-forward hints
-8. If the planner returned a clarification path, runtime can send that
+9. If the planner returned a clarification path, runtime can send that
    clarification directly after validation without requiring a second model hop.
-9. On search-ready turns that still need agent execution, the chat
+10. On search-ready turns that still need agent execution, the chat
    `create_agent` loop either:
    - asks a clarification question, or
    - calls `recommendation_query`
    - or is bypassed on high-confidence search-ready reply turns when runtime can
      execute the same grounded recommendation path deterministically
-10. `recommendation_query` validates the request, executes the recommender,
+11. `recommendation_query` validates the request, executes the recommender,
    validates `RecommendationToolResponse`, and returns deterministic runtime data.
-11. `OrchestratorService` normalizes the final agent transcript into
+12. `RecommendationRunner` and `ResponseAssembler` normalize both agent-backed
+   tool results and deterministic fallback execution through the same
+   recommendation outcome path.
+13. `OrchestratorService` normalizes the final agent transcript into
    `OrchestratorResponse`, updates remembered recommendation intent fields in
    `SessionState.conversation`, preserves pending query/item-type memory across
    clarification turns, tracks surfaced recommendation ids for duplicate
    suppression, tracks whether the assistant is waiting on a core slot, search
    type, or refinement preference, and ignores model-invented recommendation
    content.
-12. If planner output is missing, invalid, or unsafe, runtime falls back to
+14. If planner output is missing, invalid, or unsafe, runtime falls back to
     deterministic extraction plus deterministic guardrail planning.
-13. If the agent path fails or skips a recommendation call after the final
+15. If the agent path fails or skips a recommendation call after the final
    required slot arrives, runtime falls back to deterministic clarification or
    deterministic recommendation execution using the same carry-forward shaping.
 

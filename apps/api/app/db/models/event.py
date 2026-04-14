@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Union
 
 from sqlalchemy import DateTime, Index, Integer, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -36,6 +36,8 @@ class Event(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    user_id: Mapped[Union[uuid.UUID, None]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     idempotency_key: Mapped[str] = mapped_column(Text)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB)

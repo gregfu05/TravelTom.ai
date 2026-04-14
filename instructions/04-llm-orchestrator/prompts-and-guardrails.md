@@ -14,6 +14,11 @@
     `/api/v1/chat`
   - direct LangChain `create_agent` recommendation mode for
     `/api/v1/recommendations/query`
+- Runtime orchestration is phased internally:
+  - `TurnPreparer` prepares validated state and planning metadata
+  - `RecommendationDecisionEngine` chooses direct handling versus agent execution
+  - `RecommendationRunner` owns deterministic recommendation execution
+  - `ResponseAssembler` normalizes recommendation outcomes before final reply composition
 
 ## Planner prompt
 
@@ -162,6 +167,9 @@ The runtime artifact records:
   arrives, runtime executes the deterministic recommendation path immediately.
 - `OrchestratorService` only trusts validated recommendation payloads for
   recommendation data and destination-specific claims.
+- Raw LangChain message payloads are normalized behind an internal typed agent
+  result adapter before orchestrator code inspects final AI messages, tool
+  calls, or tool artifacts.
 - Provider-backed chat still uses backend-owned grounded response composition
   after tool/state normalization; raw agent transcript text is not the final UX.
 - Direct recommendation mode bypasses conversational composition and returns only

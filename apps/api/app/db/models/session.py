@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Union
 
 from sqlalchemy import DateTime, ForeignKey, Index, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -18,7 +18,7 @@ class Session(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    user_id: Mapped[uuid.UUID | None] = mapped_column(
+    user_id: Mapped[Union[uuid.UUID, None]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     state_json: Mapped[dict[str, Any]] = mapped_column(

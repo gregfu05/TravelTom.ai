@@ -70,6 +70,7 @@ async def chat(
             async with uow:
                 owner_user_id = None
                 state_user_id = None
+                user_row = None
 
                 if principal is not None:
                     user_row = await uow.user_repository.get_or_create_from_principal(
@@ -93,6 +94,15 @@ async def chat(
                     session_id=request.session_id,
                     user_id=state_user_id,
                 )
+                if (
+                    user_row is not None
+                    and not state.preferences.weighted_interests
+                    and user_row.weighted_interests
+                ):
+                    state.preferences.weighted_interests = dict(
+                        user_row.weighted_interests
+                    )
+
                 recent_messages = await uow.chat_repository.get_recent_messages(
                     pk=pk,
                     limit=agent.recent_history_limit,
@@ -180,6 +190,7 @@ async def get_chat_session(
         async with uow:
             owner_user_id = None
             state_user_id = None
+            user_row = None
             if principal is not None:
                 user_row = await uow.user_repository.get_or_create_from_principal(
                     principal
@@ -204,6 +215,12 @@ async def get_chat_session(
                 session_id=session_id,
                 user_id=state_user_id,
             )
+            if (
+                user_row is not None
+                and not state.preferences.weighted_interests
+                and user_row.weighted_interests
+            ):
+                state.preferences.weighted_interests = dict(user_row.weighted_interests)
             messages = await uow.chat_repository.get_messages(pk=pk)
             latest_snapshot = (
                 await uow.chat_repository.get_latest_recommendation_snapshot(pk=pk)

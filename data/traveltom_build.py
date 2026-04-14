@@ -10,11 +10,11 @@ Output: output/traveltom_full.parquet + .csv
 
 import os, sys, time, json, hashlib, logging, subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 import pandas as pd
 import numpy as np
-import requests
+import requests  # type: ignore[import-untyped]
 from tqdm import tqdm
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -26,6 +26,15 @@ CACHE_DIR    = Path("cache")
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 OVERPASS_DELAY = 2.5   # be polite to OSM servers
 METEO_DELAY   = 0.25
+
+
+def _to_float_or_nan(value: object) -> float:
+    if value in (None, ""):
+        return float("nan")
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return float("nan")
 
 # Unified schema — every row in the final dataset has these columns
 SCHEMA = [
@@ -408,7 +417,7 @@ def norm_destinations() -> list[dict]:
         if cat in ["beach", "nature", "adventure"]: etype = "activity"
         elif cat in ["city"]: etype = "attraction"
 
-        attrs = {}
+        attrs: dict[str, float | str] = {}
         if cost and not pd.isna(cost): attrs["avg_cost_usd"] = float(cost)
         if season and not pd.isna(season): attrs["best_season"] = str(season)
         unesco = r.get("unesco_site") or r.get("unesco", "")
@@ -526,11 +535,20 @@ OVERPASS_QUERIES = {
 }
 
 
-def parse_osm_element(el: dict, city: str, meta: dict, etype: str) -> dict:
+def parse_osm_element(
+    el: dict[str, object],
+    city: str,
+    meta: dict[str, object],
+    etype: str,
+) -> dict[str, object] | None:
     """Convert one OSM element to unified row."""
     tags = el.get("tags", {})
-    lat = el.get("lat") or (el.get("center") or {}).get("lat")
-    lon = el.get("lon") or (el.get("center") or {}).get("lon")
+    if not isinstance(tags, dict):
+        tags = {}
+    center = el.get("center")
+    center_mapping = center if isinstance(center, Mapping) else {}
+    lat = el.get("lat") or center_mapping.get("lat")
+    lon = el.get("lon") or center_mapping.get("lon")
     name = tags.get("name", "")
     if not name: return None
 
@@ -563,8 +581,8 @@ def parse_osm_element(el: dict, city: str, meta: dict, etype: str) -> dict:
         "state": meta["st"],
         "country": meta["cc"],
         "continent": meta["cont"],
-        "latitude": float(lat) if lat else np.nan,
-        "longitude": float(lon) if lon else np.nan,
+        "latitude": _to_float_or_nan(lat),
+        "longitude": _to_float_or_nan(lon),
         "stars": stars,
         "review_count": 0,
         "categories": ";".join(cats),
@@ -629,7 +647,10 @@ def stage_cities_meta() -> pd.DataFrame:
 
     rows = []
     for city, meta in CITIES.items():
-        s, w, n, e = meta["bb"]
+        bb = meta["bb"]
+        if not isinstance(bb, (list, tuple)) or len(bb) != 4:
+            continue
+        s, w, n, e = tuple(_to_float_or_nan(part) for part in bb)
         rows.append({
             "city": city,
             "country_code": meta["cc"],
