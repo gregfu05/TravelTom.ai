@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any
 
 from app.schemas.orchestrator import (
@@ -163,7 +164,7 @@ def test_orchestrator_planner_prompt_truncates_long_transcript_messages() -> Non
     assert "..." in captured_prompt["value"]
 
 
-def test_orchestrator_greeting_uses_planner_when_available() -> None:
+def test_orchestrator_greeting_bypasses_planner_for_fast_path() -> None:
     service = OrchestratorService()
     planner_called = {"value": False}
 
@@ -187,7 +188,7 @@ def test_orchestrator_greeting_uses_planner_when_available() -> None:
         ),
     )
 
-    assert planner_called["value"] is True
+    assert planner_called["value"] is False
     assert response.assistant_message.startswith("Hi, I'm Tom.")
     assert response.state["constraints"].get("destination") is None
     assert response.state["entities"]["destinations"] == []
@@ -382,7 +383,7 @@ def test_orchestrator_logs_planner_failure_and_falls_back_safely(caplog: Any) ->
 
     assert response.assistant_message
     assert any(
-        record.message == "planner_execution_failed" for record in caplog.records
+        record.getMessage() == "planner_execution_failed" for record in caplog.records
     )
 
 
@@ -1853,6 +1854,30 @@ def test_orchestrator_handles_invalid_tool_payload_with_safe_copy() -> None:
     )
 
     assert "invalid recommendation payload" in response.assistant_message
+    assert response.recommendations == []
+
+
+def test_orchestrator_recommendation_fallback_timeout_returns_timeout_copy() -> None:
+    service = OrchestratorService()
+
+    def recommendation_executor(
+        _query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        raise FuturesTimeoutError()
+
+    response = service.handle_message(
+        user_message="show me hotels",
+        session_state=_base_state(),
+        planner_executor=lambda _prompt: {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "query_controls": {"filters": {"item_type": "hotel"}},
+        },
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="Checking")]},
+        recommendation_executor=recommendation_executor,
+    )
+
+    assert "could not finish the search in time" in response.assistant_message
     assert response.recommendations == []
 
 

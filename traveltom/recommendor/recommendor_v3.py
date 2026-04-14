@@ -9,6 +9,7 @@ Current architecture:
 
 from __future__ import annotations
 
+import hashlib
 import math
 import os
 import re
@@ -169,11 +170,17 @@ class CandidateFeatureArtifacts:
 def recommendation_tool(
     query: RecommendationQuery,
     catalog: pd.DataFrame | None = None,
+    *,
+    catalog_prepared: bool = False,
 ) -> RecommendationToolResponse:
     """Return recommendations using retrieval-first v3 architecture."""
 
     ranker = _resolve_ranker(query)
-    artifacts = build_candidate_feature_artifacts(query=query, catalog=catalog)
+    artifacts = build_candidate_feature_artifacts(
+        query=query,
+        catalog=catalog,
+        catalog_prepared=catalog_prepared,
+    )
 
     if artifacts.retrieval.candidates.empty:
         return RecommendationToolResponse(
@@ -247,7 +254,20 @@ def build_candidate_feature_artifacts(
 def prepare_catalog_for_v3(*, catalog: pd.DataFrame | None = None) -> pd.DataFrame:
     """Return normalized catalog frame used by recommender_v3."""
 
-    return _prepare_catalog(catalog if catalog is not None else _load_catalog())
+    if catalog is None:
+        return _load_prepared_catalog()
+    return _prepare_catalog(catalog)
+
+
+def is_catalog_prepared_for_v3() -> bool:
+    """Return whether the default catalog has already been normalized and cached."""
+
+    return _load_prepared_catalog.cache_info().currsize > 0
+
+
+@lru_cache()
+def _load_prepared_catalog() -> pd.DataFrame:
+    return _prepare_catalog(_load_catalog())
 
 
 @lru_cache()
@@ -285,7 +305,7 @@ def _prepare_catalog(raw: pd.DataFrame) -> pd.DataFrame:
     if raw.empty:
         return pd.DataFrame()
 
-    df = raw.copy()
+    df = _canonicalize_catalog_schema(raw.copy())
 
     for column in (
         "business_id",
@@ -387,6 +407,196 @@ def _prepare_catalog(raw: pd.DataFrame) -> pd.DataFrame:
     ).str.replace(r"\s+", " ", regex=True)
 
     return df
+
+
+def _canonicalize_catalog_schema(raw: pd.DataFrame) -> pd.DataFrame:
+    working = raw.copy()
+    row_count = len(working)
+
+    def _series(name: str) -> pd.Series:
+        if name in working.columns:
+            return working[name]
+        return pd.Series([np.nan] * row_count, index=working.index)
+
+    name_series = _series("name").astype("string").fillna("")
+    city_series = _series("city").astype("string").fillna("")
+    country_series = _series("country").astype("string").fillna("")
+
+    if "business_id" not in working.columns:
+        working["business_id"] = _build_synthetic_business_ids(
+            name_series=name_series,
+            city_series=city_series,
+            country_series=country_series,
+            index=working.index,
+        )
+    else:
+        business_id = _series("business_id").astype("string").fillna("").str.strip()
+        missing_business_id = business_id.eq("")
+        if missing_business_id.any():
+            synthetic_ids = _build_synthetic_business_ids(
+                name_series=name_series,
+                city_series=city_series,
+                country_series=country_series,
+                index=working.index,
+            )
+            business_id = business_id.where(~missing_business_id, synthetic_ids)
+        working["business_id"] = business_id
+
+    if "categories" not in working.columns and "categories_clean" in working.columns:
+        working["categories"] = _series("categories_clean")
+
+    if "description" not in working.columns and "description_clean" in working.columns:
+        working["description"] = _series("description_clean")
+    elif "description_clean" in working.columns:
+        description = _series("description").astype("string")
+        description_clean = _series("description_clean").astype("string")
+        working["description"] = description.where(
+            description.fillna("").str.strip().ne(""),
+            description_clean,
+        )
+
+    if "entity_type" not in working.columns:
+        working["entity_type"] = _derive_entity_type_series(working)
+    else:
+        entity_type = _series("entity_type").astype("string").fillna("").str.strip()
+        missing_entity_type = entity_type.eq("")
+        if missing_entity_type.any():
+            derived = _derive_entity_type_series(working)
+            entity_type = entity_type.where(~missing_entity_type, derived)
+        working["entity_type"] = entity_type
+
+    if "source" not in working.columns:
+        working["source"] = _derive_source_series(working)
+    else:
+        source = _series("source").astype("string").fillna("").str.strip()
+        missing_source = source.eq("")
+        if missing_source.any():
+            derived_source = _derive_source_series(working)
+            source = source.where(~missing_source, derived_source)
+        working["source"] = source
+
+    if "stars" not in working.columns and "stars_norm" in working.columns:
+        working["stars"] = _rescale_series(
+            pd.to_numeric(_series("stars_norm"), errors="coerce"),
+            minimum=0.0,
+            maximum=5.0,
+        )
+
+    if "review_count" not in working.columns and "review_count_norm" in working.columns:
+        review_scaled = _rescale_series(
+            pd.to_numeric(_series("review_count_norm"), errors="coerce"),
+            minimum=0.0,
+            maximum=1000.0,
+        )
+        working["review_count"] = np.round(review_scaled).astype("Int64")
+
+    if "popularity" not in working.columns:
+        if "popularity_norm" in working.columns:
+            working["popularity"] = _rescale_series(
+                pd.to_numeric(_series("popularity_norm"), errors="coerce"),
+                minimum=0.0,
+                maximum=10.0,
+            )
+        elif "quality_score" in working.columns:
+            working["popularity"] = _rescale_series(
+                pd.to_numeric(_series("quality_score"), errors="coerce"),
+                minimum=0.0,
+                maximum=10.0,
+            )
+
+    if "country_name" not in working.columns and "country" in working.columns:
+        working["country_name"] = _series("country")
+
+    return working
+
+
+def _build_synthetic_business_ids(
+    *,
+    name_series: pd.Series,
+    city_series: pd.Series,
+    country_series: pd.Series,
+    index: pd.Index,
+) -> pd.Series:
+    seed = (
+        name_series.astype("string").fillna("")
+        + "|"
+        + city_series.astype("string").fillna("")
+        + "|"
+        + country_series.astype("string").fillna("")
+        + "|"
+        + index.astype(str)
+    )
+    return seed.map(_stable_business_id).astype("string")
+
+
+def _stable_business_id(seed: str) -> str:
+    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()
+    return f"tt-{digest[:16]}"
+
+
+def _derive_entity_type_series(df: pd.DataFrame) -> pd.Series:
+    index = df.index
+    hotel = _coerce_flag_series(df, "entity_type_hotel")
+    flight = _coerce_flag_series(df, "entity_type_flight")
+    restaurant = _coerce_flag_series(df, "entity_type_restaurant")
+    attraction = _coerce_flag_series(df, "entity_type_attraction")
+
+    values = np.select(
+        [
+            flight.to_numpy(dtype=bool),
+            hotel.to_numpy(dtype=bool),
+            restaurant.to_numpy(dtype=bool),
+            attraction.to_numpy(dtype=bool),
+        ],
+        ["flight", "hotel", "restaurant", "attraction"],
+        default="destination",
+    )
+    return pd.Series(values, index=index, dtype="string")
+
+
+def _derive_source_series(df: pd.DataFrame) -> pd.Series:
+    index = df.index
+    tbo_hotels = _coerce_flag_series(df, "source_tbo_hotels")
+    tripadvisor = _coerce_flag_series(df, "source_tripadvisor")
+    openstreetmap = _coerce_flag_series(df, "source_openstreetmap")
+
+    values = np.select(
+        [
+            tbo_hotels.to_numpy(dtype=bool),
+            tripadvisor.to_numpy(dtype=bool),
+            openstreetmap.to_numpy(dtype=bool),
+        ],
+        ["tbo_hotels", "tripadvisor", "openstreetmap"],
+        default="",
+    )
+    return pd.Series(values, index=index, dtype="string")
+
+
+def _coerce_flag_series(df: pd.DataFrame, column: str) -> pd.Series:
+    if column not in df.columns:
+        return pd.Series(np.zeros(len(df), dtype=bool), index=df.index)
+    numeric = pd.to_numeric(df[column], errors="coerce").fillna(0)
+    return numeric.astype(float) > 0
+
+
+def _rescale_series(
+    series: pd.Series,
+    *,
+    minimum: float,
+    maximum: float,
+) -> pd.Series:
+    cleaned = pd.to_numeric(series, errors="coerce")
+    if cleaned.notna().sum() == 0:
+        return pd.Series(np.nan, index=series.index)
+
+    low = float(cleaned.min(skipna=True))
+    high = float(cleaned.max(skipna=True))
+    if math.isclose(low, high):
+        midpoint = minimum + (maximum - minimum) / 2.0
+        return pd.Series(midpoint, index=series.index)
+
+    scaled = (cleaned - low) / (high - low)
+    return minimum + scaled * (maximum - minimum)
 
 
 def _build_retrieval_request(query: RecommendationQuery) -> RetrievalRequest:
@@ -1070,6 +1280,7 @@ def _location_variants(value: str) -> set[str]:
 
 __all__ = [
     "build_candidate_feature_artifacts",
+    "is_catalog_prepared_for_v3",
     "prepare_catalog_for_v3",
     "recommendation_tool",
 ]

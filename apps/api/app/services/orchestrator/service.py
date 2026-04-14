@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 from typing import Any, Callable, Literal, Sequence, cast
 
@@ -780,6 +781,15 @@ class OrchestratorService:
                 session_state=session_state,
                 user_message=user_message,
                 assistant_message=build_invalid_tool_payload_message(),
+                intent=intent
+                or self._turn_intent(previous_state, user_message, session_state),
+            )
+        except FuturesTimeoutError:
+            return self._safe_error_response(
+                previous_state=previous_state,
+                session_state=session_state,
+                user_message=user_message,
+                assistant_message=build_tool_timeout_message(),
                 intent=intent
                 or self._turn_intent(previous_state, user_message, session_state),
             )

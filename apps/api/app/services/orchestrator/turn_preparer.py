@@ -27,6 +27,10 @@ from app.services.orchestrator.policies import (
     build_clarification_message,
     build_guardrail_plan,
     build_planning_prompt_context,
+    is_greeting,
+    is_meta_question,
+    is_repair_turn,
+    is_social_turn,
     missing_core_constraint_slots,
 )
 from app.services.orchestrator.runtime_types import PreparedTurn
@@ -98,6 +102,14 @@ class TurnPreparer:
             planner_used=False,
         )
         if planner_executor is None:
+            return fallback_turn
+
+        if (
+            is_social_turn(user_message)
+            or is_greeting(user_message)
+            or is_meta_question(user_message)
+            or is_repair_turn(user_message)
+        ):
             return fallback_turn
 
         if self._planner_is_in_cooldown(previous_state.session_id):

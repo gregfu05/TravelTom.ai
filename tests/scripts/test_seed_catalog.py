@@ -1,10 +1,11 @@
-"""Unit tests for seed catalog item-type classification."""
+"""Unit tests for seed catalog helpers."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 import scripts.seed_catalog as seed_catalog
 from scripts.seed_catalog import _item_type_from_tags
@@ -25,31 +26,28 @@ def test_item_type_detects_flight_tags() -> None:
     assert _item_type_from_tags(tags) == "flight"
 
 
-def test_load_source_dataset_copies_raw_when_cleaned_missing(
-    tmp_path: Path, monkeypatch
-) -> None:
-    raw_path = tmp_path / "business_SB.parquet"
-    clean_path = tmp_path / "business_SB_Cleaned.parquet"
-
+def test_load_source_dataset_reads_csv(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "traveltom_clean.csv"
     source = pd.DataFrame(
         [
             {
-                "business_id": "abc",
                 "name": "Test Hotel",
                 "city": "Santa Barbara",
-                "is_open": 1,
-                "review_count": 42,
-                "stars": 4.5,
+                "country": "US",
             }
         ]
     )
-    source.to_parquet(raw_path, index=False)
+    source.to_csv(dataset_path, index=False)
 
-    monkeypatch.setattr(seed_catalog, "DEFAULT_RAW_DATASET", raw_path)
-    monkeypatch.setattr(seed_catalog, "DEFAULT_DATASET", clean_path)
+    loaded, source_label = seed_catalog._load_source_dataset(dataset_path)
 
-    loaded, source_label = seed_catalog._load_source_dataset(clean_path)
-
-    assert clean_path.exists()
-    assert "copied from raw snapshot" in source_label
+    assert source_label == str(dataset_path)
     pd.testing.assert_frame_equal(loaded, source)
+
+
+def test_load_source_dataset_rejects_non_csv(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "business_SB_Cleaned.parquet"
+    dataset_path.write_text("legacy", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Only CSV datasets"):
+        seed_catalog._load_source_dataset(dataset_path)
