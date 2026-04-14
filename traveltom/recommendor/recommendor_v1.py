@@ -40,7 +40,7 @@ _CATEGORY_FALLBACK_PATTERNS: dict[str, str] = {
     "cat_Nightlife": r"\bnightlife\b|\bnight\s+club\b|\bclub\b|\bdance\b|\bkaraoke\b",
 }
 
-_VALID_ITEM_TYPES = {"destination", "hotel", "flight"}
+_VALID_ITEM_TYPES = {"hotel", "restaurant", "activity"}
 _HOTEL_LODGING_TAGS = {
     "hotel",
     "hotels",
@@ -132,9 +132,7 @@ def recommendation_tool(
     for rank, row in enumerate(
         ranked.head(max_results).itertuples(index=False), start=1
     ):
-        item_type = (
-            row.item_type if row.item_type in _VALID_ITEM_TYPES else "destination"
-        )
+        item_type = row.item_type if row.item_type in _VALID_ITEM_TYPES else "activity"
         results.append(
             RecommendationResult(
                 item_id=str(row.business_id),
@@ -187,10 +185,8 @@ def _load_catalog_from_database() -> pd.DataFrame:
         if popularity is None:
             popularity = stars * float(np.log1p(review_count))
 
-        raw_item_type = str(row["item_type"] or "destination")
-        item_type = (
-            raw_item_type if raw_item_type in _VALID_ITEM_TYPES else "destination"
-        )
+        raw_item_type = str(row["item_type"] or "activity")
+        item_type = raw_item_type if raw_item_type in _VALID_ITEM_TYPES else "activity"
 
         records.append(
             {
@@ -215,7 +211,8 @@ def _load_catalog_from_database() -> pd.DataFrame:
 async def _fetch_catalog_rows() -> list[dict[str, Any]]:
     connection = await asyncpg.connect(_database_url_for_asyncpg())
     try:
-        rows = await connection.fetch("""
+        rows = await connection.fetch(
+            """
             SELECT
                 id::text AS id,
                 item_type,
@@ -226,7 +223,8 @@ async def _fetch_catalog_rows() -> list[dict[str, Any]]:
                 tags,
                 metadata_json
             FROM catalog_items
-            """)
+            """
+        )
         return [dict(row) for row in rows]
     finally:
         await connection.close()
@@ -264,7 +262,7 @@ def _ensure_required_columns(catalog: pd.DataFrame) -> None:
     if "business_id" not in catalog.columns:
         catalog["business_id"] = catalog.index.map(str)
     if "item_type" not in catalog.columns:
-        catalog["item_type"] = "destination"
+        catalog["item_type"] = "activity"
     if "name" not in catalog.columns:
         catalog["name"] = catalog["business_id"]
     if "city" not in catalog.columns:
@@ -281,7 +279,7 @@ def _ensure_required_columns(catalog: pd.DataFrame) -> None:
         catalog["is_open"] = 1
 
     catalog["item_type"] = catalog["item_type"].apply(
-        lambda value: value if value in _VALID_ITEM_TYPES else "destination"
+        lambda value: value if value in _VALID_ITEM_TYPES else "activity"
     )
     catalog["stars"] = pd.to_numeric(catalog["stars"], errors="coerce").fillna(0.0)
     catalog["review_count"] = (
@@ -422,12 +420,12 @@ def _extract_requested_item_type(filters: dict[str, Any]) -> str | None:
     if not isinstance(value, str):
         return None
     normalized = value.strip().casefold()
-    if normalized in {"destination", "destinations"}:
-        return "destination"
     if normalized in {"hotel", "hotels"}:
         return "hotel"
-    if normalized in {"flight", "flights"}:
-        return "flight"
+    if normalized in {"restaurant", "restaurants"}:
+        return "restaurant"
+    if normalized in {"activity", "activities"}:
+        return "activity"
     return None
 
 

@@ -123,14 +123,14 @@ Rollback notes: Downgrade migration to previous revision.
 
 #### Step 5: Add catalog seed script and sample data
 
-Objective: Provide a deterministic seed dataset for local dev and tests that covers destinations, hotels, and flights.
+Objective: Provide a deterministic seed dataset for local dev and tests that covers hotels, restaurants, and activities.
 Rationale: Required for consistent recommender outputs and tests.
 Preconditions: Step 4 complete.
 Files to touch:
 - [scripts/seed_catalog.py](scripts/seed_catalog.py)
 - [scripts/data/catalog_seed.json](scripts/data/catalog_seed.json)
 Implementation tasks:
-- [ ] Create a deterministic catalog dataset with destinations, hotels, and flights (include flight-specific metadata).
+- [ ] Create a deterministic catalog dataset with hotels, restaurants, and activities.
 - [ ] Implement seed script to upsert into `catalog_items`.
 Commands to run:
 ```bash
@@ -157,7 +157,7 @@ Files to touch:
 - [apps/api/app/services/recommender/pgvector.py](apps/api/app/services/recommender/pgvector.py)
 Implementation tasks:
 - [ ] Define retrieval interface and candidate schema.
-- [ ] Implement pgvector similarity query with hard filters (budget, dates, star rating, location, flight constraints).
+- [ ] Implement pgvector similarity query with hard filters (budget, dates, star rating, and location).
 - [ ] Return top-K candidates (default 100–300).
 Commands to run:
 ```bash
@@ -181,8 +181,8 @@ Files to touch:
 - [apps/api/app/services/recommender/ranker.py](apps/api/app/services/recommender/ranker.py)
 - [tests/recommender/test_ranker.py](tests/recommender/test_ranker.py)
 Implementation tasks:
-- [ ] Implement scoring formula, flight penalties, and tie-breaks.
-- [ ] Add unit tests for determinism, monotonicity, and flight penalty behavior.
+- [ ] Implement scoring formula and tie-breaks.
+- [ ] Add unit tests for determinism and monotonicity behavior.
 Commands to run:
 ```bash
 python -m pytest tests/recommender/test_ranker.py -q
@@ -300,7 +300,7 @@ Commands to run:
 python -m pytest tests/api/test_chat.py -q
 ```
 Acceptance criteria:
-- Chat endpoint returns assistant message and recommendations for destinations, hotels, and flights.
+- Chat endpoint returns assistant message and recommendations for hotels, restaurants, and activities.
 Verification:
 - Integration test passes with seeded data.
 Doc updates required:
@@ -426,7 +426,7 @@ Rollback notes: Revert chat components and store.
 
 #### Step 16: Add recommendations panel
 
-Objective: Render recommendations with explanations and ranking for destinations, hotels, and flights.
+Objective: Render recommendations with explanations and ranking for hotels, restaurants, and activities.
 Rationale: Visualizes deterministic output from recommender.
 Preconditions: Step 15 complete.
 Files to touch:
@@ -533,8 +533,8 @@ Files to touch:
 - [tests/recommender/*.py](tests/recommender/*.py)
 - [tests/api/*.py](tests/api/*.py)
 Implementation tasks:
-- [ ] Add fixtures and test helpers (destinations, hotels, flights).
-- [ ] Implement unit tests for ranker and retrieval, including flight penalties.
+- [ ] Add fixtures and test helpers (hotels, restaurants, activities).
+- [ ] Implement unit tests for ranker and retrieval for the supported recommendation types.
 Commands to run:
 ```bash
 python -m pytest -q

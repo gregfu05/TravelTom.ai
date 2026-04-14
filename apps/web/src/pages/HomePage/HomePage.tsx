@@ -43,8 +43,8 @@ export function HomePage() {
             I want a 7-day Europe trip in June with a 2,500 USD budget.
           </p>
           <p className="chat-bubble chat-bubble-assistant">
-            Great. I found high-value options with balanced flight time and
-            hotel quality. Here are your top picks:
+            Great. I found high-value options with strong hotel quality and
+            nearby dining. Here are your top picks:
           </p>
 
           <div className="preview-grid">

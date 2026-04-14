@@ -399,7 +399,7 @@ export function ChatView() {
                     onSubmit: submitDraft,
                   })
                 }
-                placeholder="Share a destination idea, or give destination, dates, and budget..."
+                placeholder="Share your destination, or add destination, dates, and budget..."
                 rows={2}
                 disabled={isSending || isTravelTomCooldownActive || isHydrating}
                 required
@@ -419,8 +419,8 @@ export function ChatView() {
               </button>
             </div>
             <p className="chat-form-hint">
-              Destination exploration can start broad. For hotels or flights,
-              include destination, dates, and budget.
+              For hotels, include destination, dates, and budget. For
+              restaurants or activities, destination is enough to get started.
             </p>
           </form>
         </div>

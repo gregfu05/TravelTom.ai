@@ -102,7 +102,7 @@ def test_orchestrator_planner_prompt_includes_transcript_and_deterministic_hints
             "state_patch": {},
             "query_controls": {
                 "query": "calm scenic destinations",
-                "filters": {"item_type": "destination"},
+                "filters": {"item_type": "activity"},
             },
         }
 
@@ -413,11 +413,11 @@ def test_orchestrator_follow_up_refine_uses_planner_when_available() -> None:
                 "ranking_version": "heuristic-v1",
                 "results": [
                     {
-                        "item_id": "dest-quiet-2",
-                        "item_type": "destination",
+                        "item_id": "activity-quiet-2",
+                        "item_type": "activity",
                         "score": 0.91,
                         "rank": 1,
-                        "features": {"name": "Planner Override Destination"},
+                        "features": {"name": "Planner Override Activity"},
                         "explanation": "Planner query controls shaped the fallback.",
                     }
                 ],
@@ -451,7 +451,7 @@ def test_orchestrator_meta_turn_does_not_auto_trigger_search() -> None:
             "constraints": {"destination": "Santa Barbara"},
             "conversation": {
                 "last_user_intent": "recommend",
-                "last_recommendation_item_type": "destination",
+                "last_recommendation_item_type": "activity",
                 "last_recommendation_query": "recommend something in santa barbara",
                 "last_recommendation_result_ids": ["dest-1", "dest-2"],
             },
@@ -488,7 +488,7 @@ def test_orchestrator_repair_turn_does_not_auto_trigger_search() -> None:
             "constraints": {"destination": "Santa Barbara"},
             "conversation": {
                 "last_user_intent": "recommend",
-                "last_recommendation_item_type": "destination",
+                "last_recommendation_item_type": "activity",
                 "last_recommendation_query": "recommend something in santa barbara",
                 "last_recommendation_result_ids": ["dest-1", "dest-2"],
             },
@@ -759,7 +759,7 @@ def test_orchestrator_fallback_preserves_prior_topic_terms_for_follow_up() -> No
     assert response.recommendations[0].item_id == "hotel-lisbon-2"
 
 
-def test_orchestrator_explicit_override_replaces_carried_item_type() -> None:
+def test_orchestrator_flight_request_returns_unsupported_message() -> None:
     service = OrchestratorService()
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
 
@@ -770,16 +770,7 @@ def test_orchestrator_explicit_override_replaces_carried_item_type() -> None:
         return RecommendationToolResponse.model_validate(
             {
                 "ranking_version": "heuristic-v1",
-                "results": [
-                    {
-                        "item_id": "flight-lisbon-1",
-                        "item_type": "flight",
-                        "score": 0.88,
-                        "rank": 1,
-                        "features": {"name": "LIS Flight"},
-                        "explanation": "Switches to flights explicitly.",
-                    }
-                ],
+                "results": [],
             }
         )
 
@@ -792,9 +783,11 @@ def test_orchestrator_explicit_override_replaces_carried_item_type() -> None:
 
     query = captured_query["value"]
     assert query is None
-    assert response.state["conversation"]["last_recommendation_item_type"] == "flight"
-    assert response.state["conversation"]["last_requested_slots"] == ["origin"]
-    assert "flying from" in response.assistant_message.casefold()
+    assert response.state["conversation"]["last_recommendation_item_type"] == "hotel"
+    assert response.state["conversation"]["last_requested_slots"] == []
+    assert response.assistant_message == (
+        "Flights are not supported. I can help with hotels, restaurants, or activities."
+    )
 
 
 def test_orchestrator_generic_trip_flow_asks_for_search_type_after_budget() -> None:
@@ -835,7 +828,7 @@ def test_orchestrator_generic_trip_flow_asks_for_search_type_after_budget() -> N
     assert response.state["conversation"]["last_clarification_kind"] == "search_type"
     assert response.state["conversation"]["last_recommendation_item_type"] is None
     assert response.state["conversation"]["last_requested_slots"] == []
-    assert "hotel recommendations or flights" in response.assistant_message
+    assert "hotels, restaurants, or activities" in response.assistant_message
 
 
 def test_orchestrator_one_shot_trip_message_asks_for_search_type() -> None:
@@ -859,7 +852,7 @@ def test_orchestrator_one_shot_trip_message_asks_for_search_type() -> None:
     }
     assert response.state["conversation"]["last_user_intent"] == "recommend"
     assert response.state["conversation"]["last_clarification_kind"] == "search_type"
-    assert "hotel recommendations or flights" in response.assistant_message
+    assert "hotels, restaurants, or activities" in response.assistant_message
 
 
 def test_orchestrator_search_type_reply_uses_planner_when_available() -> None:
@@ -923,8 +916,8 @@ def test_orchestrator_search_type_reply_uses_planner_when_available() -> None:
             TranscriptMessage(
                 role="assistant",
                 content=(
-                    "I have your destination, dates, and budget. Should I look for "
-                    "hotel recommendations or flights?"
+                    "For that destination, would you like hotel, restaurant, "
+                    "or activity recommendations?"
                 ),
             )
         ],
@@ -942,7 +935,7 @@ def test_orchestrator_search_type_reply_uses_planner_when_available() -> None:
     assert response.state["conversation"]["last_recommendation_item_type"] == "hotel"
 
 
-def test_orchestrator_vague_search_type_defaults_to_hotels() -> None:
+def test_orchestrator_vague_search_type_reply_stays_in_clarification() -> None:
     service = OrchestratorService()
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
     state = SessionState.model_validate(
@@ -990,8 +983,8 @@ def test_orchestrator_vague_search_type_defaults_to_hotels() -> None:
             TranscriptMessage(
                 role="assistant",
                 content=(
-                    "I have your destination, dates, and budget. Should I look for "
-                    "hotel recommendations or flights?"
+                    "For that destination, would you like hotel, restaurant, "
+                    "or activity recommendations?"
                 ),
             )
         ],
@@ -1000,11 +993,10 @@ def test_orchestrator_vague_search_type_defaults_to_hotels() -> None:
     )
 
     query = captured_query["value"]
-    assert query is not None
-    assert query.filters["item_type"] == "hotel"
-    assert "Santa Barbara 10th May to 20th May 2000 euros" in query.query
-    assert response.state["conversation"]["last_recommendation_item_type"] == "hotel"
-    assert response.recommendations[0].item_type == "hotel"
+    assert query is None
+    assert response.state["conversation"]["last_recommendation_item_type"] is None
+    assert response.state["conversation"]["last_clarification_kind"] == "search_type"
+    assert "hotels, restaurants, or activities" in response.assistant_message
 
 
 def test_orchestrator_planner_first_trip_flow_reaches_hotel_recommendation() -> None:
@@ -1037,7 +1029,8 @@ def test_orchestrator_planner_first_trip_flow_reaches_hotel_recommendation() -> 
                 "intent": "recommend",
                 "should_call_recommendation_tool": False,
                 "clarification_message": (
-                    "Should I look for hotel recommendations or flights?"
+                    "For that destination, would you like hotel, restaurant, "
+                    "or activity recommendations?"
                 ),
                 "state_patch": {
                     "constraints": {
@@ -1265,11 +1258,13 @@ def test_orchestrator_lower_cost_keeps_hotel_context_when_planner_clarifies() ->
     )
 
 
-def test_orchestrator_search_type_reply_for_flights_asks_for_origin() -> None:
+def test_orchestrator_search_type_reply_for_flights_returns_unsupported_message() -> (
+    None
+):
     service = OrchestratorService()
     state = SessionState.model_validate(
         {
-            "session_id": "sess-search-type-flight",
+            "session_id": "sess-search-type-unsupported",
             "constraints": {
                 "destination": "Lisbon",
                 "dates": {"start": "2026-04-04", "end": "2026-04-05"},
@@ -1290,18 +1285,20 @@ def test_orchestrator_search_type_reply_for_flights_asks_for_origin() -> None:
             TranscriptMessage(
                 role="assistant",
                 content=(
-                    "I have your destination, dates, and budget. Should I look for "
-                    "hotel recommendations or flights?"
+                    "For that destination, would you like hotel, restaurant, "
+                    "or activity recommendations?"
                 ),
             )
         ],
         agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
     )
 
-    assert response.state["conversation"]["last_recommendation_item_type"] == "flight"
-    assert response.state["conversation"]["last_requested_slots"] == ["origin"]
-    assert response.state["conversation"]["last_clarification_kind"] == "core_slot"
-    assert "flying from" in response.assistant_message.casefold()
+    assert response.state["conversation"]["last_recommendation_item_type"] is None
+    assert response.state["conversation"]["last_requested_slots"] == []
+    assert response.state["conversation"]["last_clarification_kind"] == "search_type"
+    assert response.assistant_message == (
+        "Flights are not supported. I can help with hotels, restaurants, or activities."
+    )
 
 
 def test_orchestrator_vague_reply_after_empty_results_gives_stronger_guidance() -> None:
@@ -1363,15 +1360,15 @@ def test_orchestrator_vague_reply_after_empty_results_gives_stronger_guidance() 
     assert response.state["conversation"]["last_search_outcome"] == "empty_results"
 
 
-def test_orchestrator_flight_route_reply_captures_origin_and_destination() -> None:
+def test_orchestrator_flight_route_reply_returns_unsupported_message() -> None:
     service = OrchestratorService()
     state = SessionState.model_validate(
         {
-            "session_id": "sess-flight-route",
+            "session_id": "sess-unsupported-route",
             "conversation": {
                 "last_requested_slots": ["origin", "destination"],
                 "last_user_intent": "recommend",
-                "last_recommendation_item_type": "flight",
+                "last_recommendation_item_type": "hotel",
                 "last_recommendation_query": "recommend flights",
             },
         }
@@ -1383,16 +1380,21 @@ def test_orchestrator_flight_route_reply_captures_origin_and_destination() -> No
         recent_messages=[
             TranscriptMessage(
                 role="assistant",
-                content="Where are you flying from and where do you want to go?",
+                content=(
+                    "Flights are not supported. I can help with hotels, "
+                    "restaurants, or activities."
+                ),
             )
         ],
         agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
     )
 
-    assert response.state["constraints"]["origin"] == "Madrid"
-    assert response.state["constraints"]["destination"] == "Lisbon"
-    assert response.state["conversation"]["last_requested_slots"] == ["dates"]
-    assert "travel dates" in response.assistant_message.casefold()
+    assert response.state["constraints"].get("origin") is None
+    assert response.state["constraints"].get("destination") is None
+    assert response.state["conversation"]["last_requested_slots"] == []
+    assert response.assistant_message == (
+        "Flights are not supported. I can help with hotels, restaurants, or activities."
+    )
 
 
 def test_orchestrator_progressive_clarification_acknowledges_new_detail() -> None:
@@ -1626,8 +1628,8 @@ def test_orchestrator_final_slot_executes_recommendation_even_if_agent_clarifies
             "conversation": {
                 "last_requested_slots": ["budget"],
                 "last_user_intent": "recommend",
-                "last_recommendation_item_type": "destination",
-                "last_recommendation_query": "recommend a beach trip Lisbon",
+                "last_recommendation_item_type": "hotel",
+                "last_recommendation_query": "recommend a hotel trip Lisbon",
             },
         }
     )
@@ -1642,12 +1644,12 @@ def test_orchestrator_final_slot_executes_recommendation_even_if_agent_clarifies
                 "ranking_version": "heuristic-v1",
                 "results": [
                     {
-                        "item_id": "dest-lisbon-2",
-                        "item_type": "destination",
+                        "item_id": "hotel-lisbon-2",
+                        "item_type": "hotel",
                         "score": 0.91,
                         "rank": 1,
-                        "features": {"name": "Lisbon Beach Escape"},
-                        "explanation": "Fits the requested beach-city balance.",
+                        "features": {"name": "Lisbon Hotel Escape"},
+                        "explanation": "Fits the requested hotel constraints.",
                     }
                 ],
             }
@@ -1669,11 +1671,11 @@ def test_orchestrator_final_slot_executes_recommendation_even_if_agent_clarifies
 
     query = captured_query["value"]
     assert query is not None
-    assert query.filters["item_type"] == "destination"
+    assert query.filters["item_type"] == "hotel"
     assert query.constraints.destination == "Lisbon"
     assert query.constraints.budget is not None
     assert query.constraints.budget.max == 1500.0
-    assert response.recommendations[0].item_id == "dest-lisbon-2"
+    assert response.recommendations[0].item_id == "hotel-lisbon-2"
     assert response.state["conversation"]["last_requested_slots"] == []
     assert response.state["status"] == "refine"
 
@@ -1889,8 +1891,8 @@ def test_orchestrator_build_results_message_falls_back_to_item_id_without_name()
         [
             RecommendationResult.model_validate(
                 {
-                    "item_id": "dest-lisbon",
-                    "item_type": "destination",
+                    "item_id": "activity-lisbon",
+                    "item_type": "activity",
                     "score": 0.93,
                     "rank": 1,
                     "features": {},
@@ -1900,7 +1902,7 @@ def test_orchestrator_build_results_message_falls_back_to_item_id_without_name()
         ]
     )
 
-    assert "Top picks:\n1. dest-lisbon" in message
+    assert "Top picks:\n1. activity-lisbon" in message
 
 
 def test_orchestrator_extracts_direct_recommendation_payload_from_tool_message() -> (

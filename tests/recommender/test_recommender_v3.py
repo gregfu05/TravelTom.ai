@@ -220,13 +220,14 @@ def test_item_type_filter_maps_to_entity_type_hotel() -> None:
     assert all(item.features.get("entity_type") == "hotel" for item in response.results)
 
 
-def test_flight_filter_returns_empty_without_flight_entities() -> None:
+def test_activity_filter_returns_matching_activity_entities() -> None:
     response = recommendor_v3.recommendation_tool(
-        _query("flights to paris", filters={"item_type": "flight"}),
+        _query("things to do in santa barbara", filters={"item_type": "activity"}),
         catalog=_catalog(),
     )
 
-    assert response.results == []
+    assert response.results
+    assert all(item.item_type == "activity" for item in response.results)
 
 
 def test_category_and_text_signals_influence_retrieval() -> None:
@@ -243,7 +244,7 @@ def test_price_level_filter_is_best_effort() -> None:
     response = recommendor_v3.recommendation_tool(
         _query(
             "restaurants",
-            filters={"item_type": "destination", "price_level_max": 2},
+            filters={"item_type": "restaurant", "price_level_max": 2},
             max_results=10,
         ),
         catalog=_catalog(),

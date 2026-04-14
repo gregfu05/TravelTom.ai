@@ -20,7 +20,6 @@ def test_session_state_validates_canonical_payload() -> None:
         "session_id": "sess-123",
         "user_id": "user-456",
         "constraints": {
-            "origin": "JFK",
             "destination": "LIS",
             "dates": {"start": "2026-06-10", "end": "2026-06-17"},
             "trip_length_days": 7,
@@ -154,9 +153,9 @@ def test_recommendation_tool_response_allows_empty_results() -> None:
 
 def test_catalog_search_query_supports_type_alias() -> None:
     query = CatalogSearchQuery.model_validate(
-        {"q": "lisbon", "type": "destination", "limit": 10, "offset": 0}
+        {"q": "lisbon dinner", "type": "restaurant", "limit": 10, "offset": 0}
     )
-    assert query.item_type == "destination"
+    assert query.item_type == "restaurant"
 
 
 def test_event_payload_requires_idempotency_key() -> None:

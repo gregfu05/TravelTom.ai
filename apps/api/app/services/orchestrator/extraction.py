@@ -225,22 +225,6 @@ _INTEREST_KEYWORDS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-_ROUTE_PATTERN = re.compile(
-    r"\bfrom\s+(?P<origin>[a-z][a-z .'-]{1,64}?)\s+to\s+"
-    r"(?P<destination>[a-z][a-z .'-]{1,64}?)(?=(?:\s+(?:for|with|on|between|"
-    r"under|over|budget|from|starting|start|end|in|at|by)\b)|[,.!?;]|$)",
-    flags=re.IGNORECASE,
-)
-_BARE_ROUTE_PATTERN = re.compile(
-    r"^\s*(?P<origin>[a-z][a-z .'-]{1,64}?)\s+to\s+"
-    r"(?P<destination>[a-z][a-z .'-]{1,64}?)\s*$",
-    flags=re.IGNORECASE,
-)
-_ORIGIN_PATTERN = re.compile(
-    r"\bfrom\s+(?P<origin>[a-z][a-z .'-]{1,64}?)(?=(?:\s+(?:to|for|with|on|"
-    r"between|under|over|budget|in|at|by)\b)|[,.!?;]|$)",
-    flags=re.IGNORECASE,
-)
 _DESTINATION_PATTERNS = (
     re.compile(
         r"\bto\s+(?P<destination>[a-z][a-z .'-]{1,64}?)(?=(?:\s+(?:for|with|on|"
@@ -404,21 +388,48 @@ _ITEM_TYPE_PATTERNS: dict[str, tuple[str, ...]] = {
         r"\bplace to stay\b",
         r"\bstay\b",
     ),
-    "flight": (
-        r"\bflight\b",
-        r"\bflights\b",
-        r"\bairline\b",
-        r"\bairlines\b",
-        r"\bairport\b",
-        r"\bairports\b",
+    "restaurant": (
+        r"\brestaurant\b",
+        r"\brestaurants\b",
+        r"\bfood\b",
+        r"\bdining\b",
+        r"\bdinner\b",
+        r"\blunch\b",
+        r"\bbreakfast\b",
+        r"\bcafe\b",
+        r"\bcafes\b",
+        r"\beat(?:ing)?\s+out\b",
     ),
-    "destination": (
-        r"\bdestinations\b",
-        r"\bdestination\s+(?:ideas|options|recommendations?|suggestions?)\b",
-        r"\bwhere should i go\b",
-        r"\bplaces to visit\b",
+    "activity": (
+        r"\bactivity\b",
+        r"\bactivities\b",
+        r"\bthings to do\b",
+        r"\bwhat to do\b",
+        r"\bsightseeing\b",
+        r"\bexcursion\b",
+        r"\bexcursions\b",
+        r"\btour\b",
+        r"\btours\b",
+        r"\battraction\b",
+        r"\battractions\b",
     ),
 }
+_UNSUPPORTED_FLIGHT_PATTERNS = (
+    r"\bflight\b",
+    r"\bflights\b",
+    r"\bplane\b",
+    r"\bplanes\b",
+    r"\bfly\b",
+    r"\bflying\b",
+    r"\bairfare\b",
+    r"\bairfares\b",
+    r"\bticket\b",
+    r"\btickets\b",
+    r"\bairline\b",
+    r"\bairlines\b",
+    r"\bairport\b",
+    r"\bairports\b",
+)
 
 _FOLLOW_UP_PATTERNS = (
     r"\banother option\b",
@@ -469,14 +480,7 @@ def apply_message_state_updates(
     next_state = session_state.model_copy(deep=True)
 
     destination_source: str | None = None
-    origin, destination = _extract_route(
-        normalized_message,
-        session_state=session_state,
-    )
-    if destination is not None:
-        destination_source = "route"
-    if origin is None:
-        origin = _extract_origin(normalized_message)
+    destination = None
     if destination is None:
         destination = _extract_destination(normalized_message)
         if destination is not None:
@@ -490,8 +494,6 @@ def apply_message_state_updates(
         if destination is not None:
             destination_source = "leading"
 
-    if origin is not None:
-        next_state.constraints.origin = origin
     if destination is not None and _should_persist_destination_update(
         session_state=session_state,
         destination=destination,
@@ -560,11 +562,18 @@ def extract_query_filters(message: str) -> dict[str, str]:
     """Extract per-request recommendation filters from user text."""
 
     lowered = message.casefold()
-    for item_type in ("hotel", "flight", "destination"):
+    for item_type in ("hotel", "restaurant", "activity"):
         patterns = _ITEM_TYPE_PATTERNS[item_type]
         if any(re.search(pattern, lowered) for pattern in patterns):
             return {"item_type": item_type}
     return {}
+
+
+def is_unsupported_flight_request(message: str) -> bool:
+    """Return whether the user is asking for flight help, which is unsupported."""
+
+    lowered = message.casefold()
+    return any(re.search(pattern, lowered) for pattern in _UNSUPPORTED_FLIGHT_PATTERNS)
 
 
 def is_follow_up_refinement(message: str) -> bool:
@@ -592,22 +601,14 @@ def resolve_search_type_reply(
     if explicit_item_type is not None:
         return explicit_item_type
 
-    route_origin, route_destination = _extract_route(
-        message,
-        session_state=session_state,
-    )
-    if route_origin is not None and route_destination is not None:
-        return "flight"
-
-    if _extract_origin(message) is not None:
-        return "flight"
+    if is_unsupported_flight_request(message):
+        return None
 
     if not is_vague_acceptance_reply(message):
         return None
 
-    if session_state.constraints.destination:
-        return "hotel"
-    return "destination"
+    del session_state
+    return None
 
 
 def resolve_effective_item_type(
@@ -744,38 +745,6 @@ def apply_structured_state_patch(
         ).days + 1
 
     return next_state
-
-
-def _extract_route(
-    message: str,
-    *,
-    session_state: SessionState | None = None,
-) -> tuple[str | None, str | None]:
-    match = _ROUTE_PATTERN.search(message)
-    if match is not None:
-        origin = _normalize_location(match.group("origin"))
-        destination = _normalize_destination_candidate(match.group("destination"))
-        return origin, destination
-
-    if not _should_try_bare_route(message=message, session_state=session_state):
-        return None, None
-
-    bare_match = _BARE_ROUTE_PATTERN.search(message)
-    if bare_match is None:
-        return None, None
-
-    origin = _normalize_location(bare_match.group("origin"))
-    destination = _normalize_destination_candidate(bare_match.group("destination"))
-    if origin is None or destination is None:
-        return None, None
-    return origin, destination
-
-
-def _extract_origin(message: str) -> str | None:
-    match = _ORIGIN_PATTERN.search(message)
-    if match is None:
-        return None
-    return _normalize_location(match.group("origin"))
 
 
 def _extract_destination(message: str) -> str | None:
@@ -1248,24 +1217,3 @@ def _looks_like_bare_destination(value: str) -> bool:
             return False
 
     return True
-
-
-def _should_try_bare_route(
-    *,
-    message: str,
-    session_state: SessionState | None,
-) -> bool:
-    if extract_query_filters(message).get("item_type") == "flight":
-        return True
-    if session_state is None:
-        return False
-    if session_state.conversation.last_recommendation_item_type == "flight":
-        return True
-    if "origin" in session_state.conversation.last_requested_slots:
-        return True
-    if (
-        "destination" in session_state.conversation.last_requested_slots
-        and session_state.conversation.last_recommendation_item_type == "flight"
-    ):
-        return True
-    return False

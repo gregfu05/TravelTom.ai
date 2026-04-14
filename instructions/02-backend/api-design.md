@@ -168,7 +168,7 @@ Response:
   "recommendations": [
     {
       "item_id": "string",
-      "item_type": "destination|hotel|flight",
+      "item_type": "hotel|restaurant|activity",
       "score": 0.0,
       "rank": 1,
       "explanation": "string",
@@ -198,8 +198,8 @@ Implementation notes (current):
   normalized backend response and ignores model-invented recommendation
   content.
 - Hybrid recommendation policy:
-  - destination exploration can start earlier from partial signal
-  - hotel and flight searches still wait for destination, dates, and budget
+  - hotel searches wait for destination, dates, and budget
+  - restaurant and activity searches require destination
   - if the final required slot arrives and the agent still clarifies, backend
     runs the deterministic recommendation path immediately
 - Recommendation retrieval remains tool-first and deterministic; router never returns model-invented recommendation items.
@@ -260,7 +260,7 @@ Response:
   "results": [
     {
       "item_id": "string",
-      "item_type": "destination|hotel|flight",
+      "item_type": "hotel|restaurant|activity",
       "score": 0.0,
       "rank": 1,
       "features": {},
@@ -312,7 +312,7 @@ Response: `204 No Content` on success.
 
 Search and filter catalog items (used for debugging or admin tooling).
 
-Query params: `q`, `type` (`destination|hotel|flight`), `limit`, `offset`.
+Query params: `q`, `type` (`hotel|restaurant|activity`), `limit`, `offset`.
 
 ### POST /api/v1/shortlists
 

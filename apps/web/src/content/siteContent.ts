@@ -15,7 +15,7 @@ export const featurePillars = [
     kicker: "Planning Workflow",
     title: "From discovery to shortlist in one place",
     description:
-      "Move from conversation to recommended destinations, hotels, and flights without jumping across tools.",
+      "Move from conversation to recommended hotels, restaurants, and activities without jumping across tools.",
   },
 ] as const;
 
@@ -24,13 +24,13 @@ export const planningSteps = [
     step: "01",
     title: "Share your trip goals",
     description:
-      "Tell TravelTom where you are leaving from, your dates, and what kind of experience you want.",
+      "Tell TravelTom your destination, dates, budget, and what kind of experience you want.",
   },
   {
     step: "02",
     title: "Review ranked options",
     description:
-      "Get destination, hotel, and flight suggestions with scoring and concise explanations.",
+      "Get hotel, restaurant, and activity suggestions with scoring and concise explanations.",
   },
   {
     step: "03",
@@ -42,9 +42,9 @@ export const planningSteps = [
 
 export const recommendationPreview = [
   {
-    itemType: "destination",
-    title: "Lisbon, Portugal",
-    detail: "Culture-forward city break with coastal day trips",
+    itemType: "activity",
+    title: "Sunset Sailing in Lisbon",
+    detail: "Small-group river cruise with skyline views",
     rank: "#1",
   },
   {
@@ -54,9 +54,9 @@ export const recommendationPreview = [
     rank: "#2",
   },
   {
-    itemType: "flight",
-    title: "JFK -> LIS",
-    detail: "1 stop, 10h 35m, balanced price and duration",
+    itemType: "restaurant",
+    title: "Mar do Bairro",
+    detail: "Seafood-forward dinner spot with a short reservation wait",
     rank: "#3",
   },
 ] as const;
@@ -65,7 +65,7 @@ export const homepageContent = {
   heroEyebrow: "AI-Powered Travel Concierge",
   heroTitle: "Plan an incredible trip with one conversation.",
   heroDescription:
-    "TravelTom turns a rough travel idea into ranked destinations, hotels, and flights with an interface built to keep decisions clear.",
+    "TravelTom turns a rough travel idea into ranked hotels, restaurants, and activities with an interface built to keep decisions clear.",
   primaryCta: "Open Planner",
   secondaryCta: "How It Works",
   sectionTitle: "Explore the product from the angle you need first",
@@ -111,7 +111,7 @@ export const authPageContent = {
     eyebrow: "Create Your Account",
     title: "Start planning with a calmer, faster travel flow.",
     description:
-      "Create an account to move from open-ended trip ideas into a workspace built for destination discovery, hotel comparison, and flight decisions.",
+      "Create an account to move from open-ended trip ideas into a workspace built for hotel comparison, restaurant picks, and activity planning.",
     alternateLabel: "Already have an account?",
     alternateCta: "Sign in",
     panelTitle: "Why sign up now",
@@ -122,7 +122,7 @@ export const authPageContent = {
   },
   highlights: [
     "Deterministic recommendations you can compare quickly",
-    "Constraint-aware ranking across destinations, hotels, and flights",
+    "Constraint-aware ranking across hotels, restaurants, and activities",
     "A clear route back to the landing page whenever you want to reset your path",
   ],
 } as const;
@@ -136,7 +136,7 @@ export const systemFlowSteps = [
   {
     title: "Retrieve candidates",
     detail:
-      "The backend retrieves viable destination, hotel, and flight candidates from the catalog.",
+      "The backend retrieves viable hotel, restaurant, and activity candidates from the catalog.",
   },
   {
     title: "Rank deterministically",

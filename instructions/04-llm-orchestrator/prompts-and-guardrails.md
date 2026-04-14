@@ -68,10 +68,8 @@ Hard chat-agent instructions:
   user explicitly overrides it
 - while clarifying, preserve pending recommendation item type and carried query
   so the user does not need to restate `recommend`
-- destination exploration may call `recommendation_query` from partial signal
-  like vibe, trip length, or budget
 - hotel searches still wait for destination, dates, and budget
-- flight searches still wait for origin, destination, dates, and budget
+- restaurant and activity searches require destination
 - if the latest user turn supplies the final missing slot for an active
   recommendation flow, call `recommendation_query` immediately
 - if clarification is needed, ask for one next-most-useful missing detail
@@ -133,13 +131,12 @@ The runtime artifact records:
   they validate cleanly.
 - Deterministic follow-up carry-forward also recognizes lower-cost refinement
   phrasing like `lower cost` and `budget option` so fallback mode preserves the
-  active hotel/flight thread instead of resetting destination state.
-- Deterministic route extraction accepts natural flight replies like
-  `Madrid to Lisbon` when flight context is active.
+  active hotel, restaurant, or activity thread instead of resetting destination
+  state.
 - Deterministic date and budget extraction accepts compact mixed trip messages
   like `Santa Barbara 10th May to 20th May 2000 euros` without treating the
   budget as a year or overwriting the destination with date-preface filler.
-- Query filter guardrail normalizes item types to `destination|hotel|flight`.
+- Query filter guardrail normalizes item types to `hotel|restaurant|activity`.
 - Recommendation ranking version stays deterministic (`heuristic-v1`).
 - `SessionState.conversation` tracks `last_requested_slots` and
   `last_user_intent` so clarification stays progressive across turns.
@@ -157,7 +154,8 @@ The runtime artifact records:
 - Deterministic clarification keeps asking for the same missing slot until that
   slot is captured, instead of skipping ahead.
 - Generic trip-building turns can promote the session into recommendation setup
-  even if the user never explicitly says `recommend hotels` or `recommend flights`.
+  even if the user never explicitly says `recommend hotels`,
+  `recommend restaurants`, or `recommend activities`.
 - Vague replies like `Anything works` are resolved against the current
   clarification branch: they can choose a default search type, or, after a real
   empty search, trigger a stronger no-results explanation instead of a loop.

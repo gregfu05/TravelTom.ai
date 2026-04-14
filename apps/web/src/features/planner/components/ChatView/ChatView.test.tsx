@@ -65,8 +65,8 @@ describe("ChatView", () => {
       assistantMessage: "Great choice. Top picks: details below",
       recommendations: [
         {
-          itemId: "dest-lisbon",
-          itemType: "destination",
+          itemId: "activity-lisbon",
+          itemType: "activity",
           rank: 1,
           metadata: {
             name: "Lisbon",

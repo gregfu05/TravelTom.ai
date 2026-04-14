@@ -173,7 +173,7 @@ def _build_response(
         results.append(
             RecommendationResult(
                 item_id=str(row.business_id),
-                item_type="destination",
+                item_type="activity",
                 score=float(row.score),
                 rank=rank,
                 features=features,
@@ -451,7 +451,7 @@ def _city_not_found_result(city: str, limit_notice: str | None) -> Recommendatio
         features["limit_notice"] = limit_notice
     return RecommendationResult(
         item_id=f"no-results-{city}",
-        item_type="destination",
+        item_type="activity",
         score=0.0,
         rank=1,
         features=features,

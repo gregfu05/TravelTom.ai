@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, cast
 
 from app.schemas.orchestrator import OrchestratorPolicyConfig
 from app.schemas.state import SessionState
@@ -17,8 +17,6 @@ from app.services.orchestrator.policies import (
     build_no_new_results_message,
 )
 from app.services.orchestrator.runtime_types import RecommendationOutcome
-
-RecommendationItemType = Literal["destination", "hotel", "flight"]
 
 
 class ResponseAssembler:
@@ -58,9 +56,10 @@ class ResponseAssembler:
             f"{i}. {self._recommendation_display_name(item)}"
             for i, item in enumerate(results[:preview_limit], start=1)
         )
+        result_label = self._result_collection_label(results)
         base = (
             preference_preface
-            + f"I found {len(results)} places that fit your request. "
+            + f"I found {len(results)} {result_label} that fit your request. "
             + f"Top picks:\n{preview_items}"
         )
         if limit_notice:
@@ -74,7 +73,7 @@ class ResponseAssembler:
         session_state: SessionState,
         user_message: str,
         recommendation_response: RecommendationToolResponse,
-        recommendation_item_type: RecommendationItemType,
+        recommendation_item_type: str,
         recommendation_query: str,
         allow_retry_on_duplicate: bool,
         candidate_message: str | None = None,
@@ -83,7 +82,9 @@ class ResponseAssembler:
         next_state.last_message_at = datetime.now(timezone.utc)
         next_state.last_recommendation_version = recommendation_response.ranking_version
         next_state.conversation.last_requested_slots = []
-        next_state.conversation.last_recommendation_item_type = recommendation_item_type
+        next_state.conversation.last_recommendation_item_type = cast(
+            Any, recommendation_item_type
+        )
         next_state.conversation.last_recommendation_query = recommendation_query
 
         if not recommendation_response.results:
@@ -192,3 +193,19 @@ class ResponseAssembler:
                     return f"{normalized} - {map_url}"
                 return normalized
         return item.item_id
+
+    def _result_collection_label(
+        self,
+        results: list[RecommendationResult],
+    ) -> str:
+        if not results:
+            return "results"
+
+        item_type = results[0].item_type
+        if item_type == "hotel":
+            return "hotels"
+        if item_type == "restaurant":
+            return "restaurants"
+        if item_type == "activity":
+            return "activities"
+        return "results"

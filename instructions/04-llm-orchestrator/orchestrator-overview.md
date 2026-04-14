@@ -157,20 +157,18 @@
   but greetings and meta turns like `Hello Tommy` or `what do you mean` do not
   persist `constraints.destination`.
 - Planner-authored `query_controls` can shape effective item type and query
-  text, but deterministic guardrails still veto unsafe hotel/flight searches
+  text, but deterministic guardrails still veto unsafe hotel searches
   that are missing required trip details.
-- Destination exploration can start earlier from partial signal, while hotel
-  searches wait for destination, dates, and budget, and flight searches wait
-  for origin, destination, dates, and budget.
+- Hotel searches wait for destination, dates, and budget, while restaurant and
+  activity searches require destination.
 - Follow-up turns can reuse `conversation.last_recommendation_item_type` and
   `conversation.last_recommendation_query` when the user says things like
   `show me more`, `another option`, `cheaper`, or `lower cost`.
 - Generic trip-building flows can collect destination, dates, and budget first,
-  then ask a deterministic search-type question (`hotels`, `flights`, or
-  `destination ideas`) before a search runs.
-- Vague replies to that search-type question are resolved safely from the
-  validated planner-backed state: fixed-destination trips default to hotels,
-  while open-destination trips default to destination exploration.
+  then ask a deterministic search-type question (`hotels`, `restaurants`, or
+  `activities`) before a search runs.
+- Vague replies to that search-type question keep clarification active until
+  the user chooses one of the supported item types explicitly.
 - Follow-up turns also remember recently surfaced recommendation ids so
   duplicate-only tool responses can ask for refinement instead of replaying the
   same list as if it were new.

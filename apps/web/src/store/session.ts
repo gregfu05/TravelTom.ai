@@ -7,7 +7,7 @@ export type SessionMessageRole = "user" | "assistant";
 
 export interface SessionRecommendation {
   itemId: string;
-  itemType: "destination" | "hotel" | "flight";
+  itemType: "hotel" | "restaurant" | "activity";
   rank: number;
   metadata?: Record<string, unknown>;
 }

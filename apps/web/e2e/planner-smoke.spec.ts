@@ -36,8 +36,8 @@ test.beforeEach(async ({ page }) => {
         assistant_message: "Great choice. Top picks: details below",
         recommendations: [
           {
-            item_id: "dest-lisbon",
-            item_type: "destination",
+            item_id: "activity-lisbon-1",
+            item_type: "activity",
             score: 0.94,
             rank: 1,
             explanation: "Culture and food fit.",
