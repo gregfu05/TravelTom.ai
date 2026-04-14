@@ -239,44 +239,18 @@ def _compute_popularity(raw: dict[str, Any]) -> float | None:
 
 
 def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
+    if "business_id" not in df.columns:
+        raise ValueError("Missing required column: business_id")
+    
     rows: list[dict[str, Any]] = []
 
-    for index, raw in enumerate(df.to_dict(orient="records")):
-        business_id = str(raw.get("business_id") or _synthetic_business_id(raw, index))
-        tags = (
-            _split_tags(raw.get("categories_list"))
-            or _split_tags(raw.get("categories"))
-            or _split_tags(raw.get("categories_clean"))
-        )
-        if tags is None and isinstance(raw.get("categories_clean"), str):
-            tags = _split_tags(str(raw.get("categories_clean")).replace(";", ","))
+    for raw in df.to_dict(orient="records"):
+        business_id = raw.get("business_id")
 
-        inferred_attributes = {
-            key.removeprefix("attr_"): bool(value)
-            for key, value in raw.items()
-            if key.startswith("attr_") and value is not None and not pd.isna(value)
-        }
-        attributes = _coerce_attributes(raw.get("attributes"))
-        if inferred_attributes:
-            attributes = {**attributes, **inferred_attributes}
+        if business_id is None or pd.isna(business_id):
+            continue  # skip broken rows safely
 
-        category_flags = _extract_category_flags(raw)
-        popularity = _compute_popularity(raw)
-        entity_type = _entity_type_from_row(raw)
-        item_type = _item_type_from_row(raw, tags)
-        source = _source_from_row(raw)
-        description = _description_from_row(raw)
-
-        location_country = (
-            str(raw["country"])
-            if raw.get("country") is not None and not pd.isna(raw.get("country"))
-            else (
-                str(raw["country_name"])
-                if raw.get("country_name") is not None
-                and not pd.isna(raw.get("country_name"))
-                else None
-            )
-        )
+        business_id = str(business_id)
 
         rows.append(
             {
@@ -349,6 +323,8 @@ def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
             }
         )
 
+    print(df.columns)
+    print(df.head(3))
     return rows
 
 
