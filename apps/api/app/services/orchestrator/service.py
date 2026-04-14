@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Mapping
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Literal, Sequence, cast
 
@@ -57,6 +56,11 @@ from app.services.orchestrator.policies import (
     missing_core_constraint_slots,
     requested_slots_for_clarification,
 )
+from app.services.orchestrator.runtime_types import (
+    AgentRunResult,
+    PreparedTurn,
+    RecommendationExecutionResult,
+)
 
 RecommendationExecutor = Callable[[RecommendationQuery], RecommendationToolResponse]
 AgentExecutor = Callable[[list[dict[str, str]]], dict[str, Any]]
@@ -70,16 +74,6 @@ _DIRECT_QUERY_PREFIX = "TRAVELTOM_DIRECT_RECOMMENDATION_QUERY_JSON:"
 _RECOMMENDATION_CONTEXT_PREFIX = "TRAVELTOM_RECOMMENDATION_CONTEXT_JSON:"
 logger = logging.getLogger(__name__)
 _PLANNER_FAILURE_COOLDOWN_SECONDS = 120
-
-
-@dataclass(frozen=True)
-class PreparedChatTurn:
-    """Validated pre-agent state plus normalized planning metadata."""
-
-    session_state: SessionState
-    plan: LLMOrchestrationPlan
-    acknowledged_slots: list[str]
-    planner_used: bool
 
 
 class PlannerExecutionError(RuntimeError):
@@ -238,8 +232,8 @@ class OrchestratorService:
         self,
         *,
         user_message: str,
-        prepared_turn: PreparedChatTurn,
-    ) -> PreparedChatTurn:
+        prepared_turn: PreparedTurn,
+    ) -> PreparedTurn:
         """Return a clarification turn when required slots are missing."""
 
         if not prepared_turn.plan.should_call_recommendation_tool:
@@ -264,7 +258,7 @@ class OrchestratorService:
             state_patch=prepared_turn.plan.state_patch,
             query_controls=prepared_turn.plan.query_controls,
         )
-        return PreparedChatTurn(
+        return PreparedTurn(
             session_state=prepared_turn.session_state,
             plan=gated_plan,
             acknowledged_slots=prepared_turn.acknowledged_slots,
@@ -378,12 +372,14 @@ class OrchestratorService:
             )
 
         try:
-            agent_result = agent_executor(
+            agent_result = AgentRunResult.from_raw(
+                agent_executor(
                 self.build_chat_messages(
                     user_message=message,
                     session_state=prepared_state,
                     recent_messages=history,
                     query_controls=prepared_turn.plan.query_controls,
+                )
                 )
             )
         except Exception:
@@ -413,11 +409,13 @@ class OrchestratorService:
     def response_from_direct_agent_result(
         self,
         *,
-        agent_result: dict[str, Any],
+        agent_result: AgentRunResult | dict[str, Any],
     ) -> RecommendationToolRuntimePayload:
         """Extract the tool payload from a deterministic recommendation agent."""
 
-        tool_message = self._last_recommendation_tool_message(agent_result)
+        if isinstance(agent_result, dict):
+            agent_result = AgentRunResult.from_raw(agent_result)
+        tool_message = agent_result.last_recommendation_tool_message()
         if tool_message is None:
             return RecommendationToolRuntimePayload(
                 status="failure",
@@ -589,9 +587,9 @@ class OrchestratorService:
         recommendation_executor: RecommendationExecutor | None,
         response_composer: ResponseComposer | None,
     ) -> OrchestratorResponse:
-        messages = self._messages_from_agent_result(agent_result)
-        final_ai_message = self._last_final_ai_message(messages)
-        tool_message = self._last_recommendation_tool_message(agent_result)
+        messages = agent_result.messages
+        final_ai_message = agent_result.last_final_ai_message()
+        tool_message = agent_result.last_recommendation_tool_message()
         conversation_intent = self._turn_intent(
             previous_state,
             user_message,
@@ -679,7 +677,7 @@ class OrchestratorService:
             )
 
         recommendation_response = runtime_payload.response
-        tool_call = self._last_recommendation_tool_call(messages)
+        tool_call = agent_result.last_recommendation_tool_call()
         tool_query = self._extract_tool_call_query(tool_call)
         tool_filters = self._extract_tool_call_filters(tool_call) or dict(
             plan.query_controls.filters
@@ -924,8 +922,11 @@ class OrchestratorService:
             )
 
         try:
-            recommendation_response = RecommendationToolResponse.model_validate(
-                recommendation_executor(query)
+            execution_result = RecommendationExecutionResult(
+                query=query,
+                response=RecommendationToolResponse.model_validate(
+                    recommendation_executor(query)
+                ),
             )
         except ValidationError:
             return self._safe_error_response(
@@ -946,6 +947,7 @@ class OrchestratorService:
                 or self._turn_intent(previous_state, user_message, session_state),
             )
 
+        recommendation_response = execution_result.response
         next_state = session_state.model_copy(deep=True)
         next_state.last_message_at = datetime.now(timezone.utc)
         next_state.last_recommendation_version = recommendation_response.ranking_version
@@ -956,9 +958,12 @@ class OrchestratorService:
             session_state,
         )
         next_state.conversation.last_recommendation_item_type = (
-            self._normalize_item_type(query.filters.get("item_type")) or "destination"
+            self._normalize_item_type(
+                execution_result.query.filters.get("item_type")
+            )
+            or "destination"
         )
-        next_state.conversation.last_recommendation_query = query.query
+        next_state.conversation.last_recommendation_query = execution_result.query.query
 
         if not recommendation_response.results:
             next_state.conversation.last_recommendation_result_ids = []
@@ -1124,7 +1129,7 @@ class OrchestratorService:
         previous_state: SessionState,
         recent_messages: Sequence[TranscriptMessage],
         planner_executor: PlannerExecutor | None,
-    ) -> PreparedChatTurn:
+    ) -> PreparedTurn:
         deterministic_state = apply_message_state_updates(
             message=user_message,
             session_state=previous_state,
@@ -1133,7 +1138,7 @@ class OrchestratorService:
             previous_state=previous_state,
             next_state=deterministic_state,
         )
-        fallback_turn = PreparedChatTurn(
+        fallback_turn = PreparedTurn(
             session_state=deterministic_state,
             plan=self._normalize_planning_plan(
                 user_message=user_message,
@@ -1234,7 +1239,7 @@ class OrchestratorService:
 
         self._clear_planner_cooldown(previous_state.session_id)
 
-        return PreparedChatTurn(
+        return PreparedTurn(
             session_state=planned_state,
             plan=self._normalize_planning_plan(
                 user_message=user_message,
@@ -1511,50 +1516,6 @@ class OrchestratorService:
             return fallback_message
 
         return fallback_message
-
-    def _messages_from_agent_result(
-        self,
-        agent_result: dict[str, Any],
-    ) -> list[BaseMessage]:
-        raw_messages = agent_result.get("messages")
-        if not isinstance(raw_messages, list):
-            return []
-        return [message for message in raw_messages if isinstance(message, BaseMessage)]
-
-    def _last_final_ai_message(
-        self,
-        messages: Sequence[BaseMessage],
-    ) -> AIMessage | None:
-        for message in reversed(messages):
-            if not isinstance(message, AIMessage):
-                continue
-            if message.tool_calls:
-                continue
-            return message
-        return None
-
-    def _last_recommendation_tool_message(
-        self,
-        agent_result: dict[str, Any],
-    ) -> ToolMessage | None:
-        for message in reversed(self._messages_from_agent_result(agent_result)):
-            if not isinstance(message, ToolMessage):
-                continue
-            if message.name == "recommendation_query":
-                return message
-        return None
-
-    def _last_recommendation_tool_call(
-        self,
-        messages: Sequence[BaseMessage],
-    ) -> dict[str, Any] | None:
-        for message in reversed(messages):
-            if not isinstance(message, AIMessage):
-                continue
-            for tool_call in reversed(message.tool_calls):
-                if tool_call.get("name") == "recommendation_query":
-                    return cast(dict[str, Any], tool_call)
-        return None
 
     def _extract_tool_call_query(self, tool_call: dict[str, Any] | None) -> str | None:
         if tool_call is None:

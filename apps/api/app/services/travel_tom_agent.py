@@ -47,6 +47,7 @@ from app.services.orchestrator.service import (
     PlannerExecutionError,
     build_direct_query_message,
 )
+from app.services.orchestrator.runtime_types import AgentRunResult
 from app.services.recommendation_query import (
     InvalidRecommendationResponseError,
     RecommendationServiceUnavailableError,
@@ -203,7 +204,7 @@ class TravelTomAgent:
             ),
         )
         runtime_payload = self._orchestrator.response_from_direct_agent_result(
-            agent_result=agent_result
+            agent_result=AgentRunResult.from_raw(agent_result)
         )
         if runtime_payload.status == "invalid_payload":
             raise InvalidRecommendationResponseError(
