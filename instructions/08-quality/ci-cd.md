@@ -54,6 +54,34 @@ Recommended commands:
 - Monthly scheduled retraining job.
 - For cost control under USD 10/month, heavy jobs may run on-demand locally and upload artifacts manually.
 
+## Dev-first MLOps workflows
+
+Implemented dev-only ML workflow split:
+
+- `ML Train Dev`: manual workflow that trains the ranker and uploads:
+  - model artifact
+  - training manifest
+  - training metrics
+- `ML Evaluate Dev`: manual workflow that evaluates a candidate artifact and
+  applies offline promotion gates
+- `ML Promote Dev`: manual workflow that updates the dev API runtime to point
+  at the promoted artifact in blob storage
+
+Required manifest fields:
+
+- `model_version`
+- `dataset_snapshot_id`
+- `feature_schema_version`
+- `git_sha`
+- `run_timestamp_utc`
+- `training_code_version`
+
+Dev-to-prod policy:
+
+- Prod MLOps rollout is blocked until the dev train/evaluate/promote path is
+  stable and rollback is verified.
+- The current prod deployment flow remains app-image-based until that gate is met.
+
 ## CD (final)
 
 - Build and publish container images.
@@ -78,7 +106,7 @@ Authentication and secret handling:
 Run these before triggering deployment:
 
 Backend (repo root):
-- `python -m pip install -e ".[dev]"`
+- `python -m pip install -e ".[dev,ranking-ml]"`
 - `black --check .`
 - `ruff check .`
 - `mypy apps/api`

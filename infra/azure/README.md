@@ -10,6 +10,7 @@ This folder contains the Azure infrastructure for TravelTom, including a cloud-h
 - Azure Database for PostgreSQL Flexible Server
 - Azure Key Vault
 - Log Analytics + Application Insights
+- Optional Azure ML workspace + blob storage foundation for dev MLOps
 
 ## Safe Git Workflow (No Main Risk)
 
@@ -123,6 +124,32 @@ infra/azure/scripts/deploy-env.sh dev deploy
 infra/azure/scripts/deploy-env.sh prod deploy
 ```
 
+## Dev MLOps Foundation
+
+`main.dev.bicepparam` now enables a dev-only MLOps foundation by default.
+This adds:
+
+- Azure ML workspace for dev experimentation and model metadata
+- Blob storage containers for dataset snapshots, model artifacts, manifests,
+  and evaluation reports
+- User-assigned managed identity for future ML jobs
+- Blob reader access for the API Container App so promoted ranker artifacts can
+  be loaded from private storage
+
+Key parameters:
+
+| Parameter | Purpose |
+|---|---|
+| `enableMlops` | Enables the Azure ML/storage foundation |
+| `mlopsDatasetContainerName` | Dataset snapshot container |
+| `mlopsArtifactContainerName` | Trained model artifact container |
+| `mlopsManifestContainerName` | Training/promotion manifest container |
+| `mlopsEvaluationContainerName` | Offline evaluation report container |
+| `promotedMlModelArtifactUri` | Runtime artifact URI injected into the API |
+| `promotedMlModelVersion` | Runtime promoted model label injected into the API |
+
+Prod keeps `enableMlops=false` until the dev path is stable.
+
 ## Build and Push App Images
 
 After infra deploy, push API and web images to the environment ACR.
@@ -223,10 +250,15 @@ Internet
 | `frontendApiBaseUrl` | Public API URL for frontend |
 | `localAuthTokenSecret` | Local auth token signing secret |
 | `openaiApiKey` | Optional OpenAI API key |
+| `enableMlops` | Enable Azure ML/storage foundation resources |
+| `promotedMlModelArtifactUri` | Blob URL or file URI for the promoted ranker |
+| `promotedMlModelVersion` | Promoted ranker version label |
 
 ## Operational Notes
 
 - API and web Container Apps receive `AcrPull` role assignments automatically via managed identity.
+- When `enableMlops=true`, the API Container App receives blob read access to the
+  MLOps storage account so it can fetch promoted ranker artifacts at startup.
 - Keep `main.dev.bicepparam` and `main.prod.bicepparam` as baseline defaults; override via script env vars when testing alternatives.
 - GPU workload availability depends on Azure region. If `Consumption-GPU-T4` is unavailable, choose a supported region.
 

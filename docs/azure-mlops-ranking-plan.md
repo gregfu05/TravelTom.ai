@@ -1,15 +1,15 @@
-# Azure MLOps Plan for Ranking Model (Future)
+# Azure MLOps Plan for Ranking Model
 
 ## Purpose
 
-Define a future Azure-based MLOps plan for the TravelTom ranking model without
-provisioning or implementing Azure resources yet.
+Define the Azure-based MLOps plan for the TravelTom ranking model with a
+dev-first rollout.
 
 ## Scope and constraints
 
-- This document is planning-only.
-- No infrastructure provisioning or deployment automation is part of this step.
 - Existing deterministic ranking behavior remains the active production path.
+- Ranker inference stays inside the API Container App in this phase.
+- Dev is implemented first; prod follows only after the dev path is stable.
 
 ## Target outcomes
 
@@ -19,7 +19,23 @@ provisioning or implementing Azure resources yet.
 - A staged deployment path from development to production.
 - A strict list of work that should happen only after the ranker is stable.
 
-## Planned architecture (future state)
+## Implemented foundation and next steps
+
+### Current implemented foundation
+
+- Dev Bicep provisions optional Azure ML foundation resources:
+  - Azure ML workspace
+  - blob storage for datasets, artifacts, manifests, and evaluations
+  - managed identity for future ML jobs
+- Dev GitHub Actions workflows exist for:
+  - training
+  - offline evaluation
+  - promotion into the dev API runtime
+- The API runtime can load the promoted ranker artifact from blob-backed config
+  and falls back to the heuristic ranker if loading fails.
+- Prod keeps MLOps disabled until the dev path is verified.
+
+### Planned architecture (next state)
 
 ### Training flow
 
@@ -33,7 +49,9 @@ Planned sequence:
    - Validate feature completeness and null-rate thresholds before training.
 3. Split and train
    - Split by `session_id` to prevent leakage.
-   - Train candidate ranking models on Azure ML compute (future).
+   - Train candidate ranking models via the dev workflow.
+   - Move heavy training to Azure ML compute only after dev workflow stability
+     and cost review.
 4. Offline evaluation
    - Run the shared evaluation harness and generate metrics report artifacts.
 5. Registration decision
@@ -58,7 +76,8 @@ Versioning policy (planned):
 - Model versions
   - Use immutable semantic model identifiers (for example
     `ranker_ml_v1.2.0+build.<short_sha>`).
-  - Store model lineage and metadata in Azure ML Registry (future).
+  - Store model lineage and metadata in blob-backed manifests now.
+  - Azure ML Registry remains a follow-up once the dev workflow is stable.
 - Dataset snapshots
   - Create immutable, timestamped dataset snapshots in blob-backed storage
     (future), referenced by `dataset_snapshot_id`.
@@ -97,15 +116,18 @@ Planned deployment progression (future):
 1. Local + CI validation
    - Unit/integration tests and offline ranking harness pass.
 2. Development environment deployment
-   - Deploy model-serving revision in non-production environment.
+   - Deploy model artifact to managed storage.
+   - Promote the artifact into the dev API runtime.
    - Validate API compatibility with existing recommender interfaces.
-3. Staging shadow/canary
+3. Production follow-up
+   - Enable prod MLOps resources only after dev stability criteria are met.
+4. Staging shadow/canary
    - Run shadow scoring on staging traffic (no user-visible impact).
    - Compare shadow metrics against active baseline.
-4. Production canary
+5. Production canary
    - Route a small traffic slice to new ranker revision.
    - Monitor quality and latency guardrails with automatic rollback triggers.
-5. Full promotion
+6. Full promotion
    - Shift traffic fully when canary is stable and guardrails hold.
 
 Rollback path:
@@ -127,13 +149,13 @@ The following should happen only after the ranker is stable in production
 
 Stability criteria to unlock the above:
 
-- No gate breaches for at least two consecutive release cycles.
-- No severity-1 ranking regressions in production during that window.
-- Online quality proxy does not breach rollback thresholds.
+- Dev Bicep validation and deployment succeed.
+- `ML Train Dev`, `ML Evaluate Dev`, and `ML Promote Dev` complete successfully.
+- Dev rollback to the previous promoted model reference is verified.
+- No severity-1 or severity-2 issues remain open on the dev MLOps path.
 
 ## Open decisions
 
 - Final threshold values for online canary rollback.
-- Preferred Azure serving target for ranker inference
-  (managed online endpoint vs containerized app endpoint).
+- Timing for Azure ML Registry adoption after the dev foundation proves stable.
 - Model explanation payload format for frontend-facing transparency.

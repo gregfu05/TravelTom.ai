@@ -18,6 +18,7 @@
 - Azure Container Registry for image storage.
 - Azure Key Vault for production secrets.
 - Azure Monitor + Log Analytics + Application Insights for observability.
+- Dev-only Azure ML workspace and blob-backed MLOps storage foundation.
 - Azure AI Search remains the planned primary retrieval backend for the final stack.
 - Azure OpenAI for LLM.
 - Azure Event Hub and Azure ML Registry remain deferred runtime-follow-up services.
@@ -46,6 +47,9 @@ GitHub Actions implementation:
 - `Deploy Dev`
 - `Deploy Prod`
 - `Rollback Container Apps`
+- `ML Train Dev`
+- `ML Evaluate Dev`
+- `ML Promote Dev`
 
 ## Pre-deploy validation checks
 
@@ -83,6 +87,9 @@ Backend runtime env vars:
 - `JSON_LOGS_ENABLED`
 - `ORCHESTRATOR_OPENAI_API_KEY`
 - `LOCAL_AUTH_TOKEN_SECRET`
+- `TRAVELTOM_ML_RANKER_ARTIFACT_URI`
+- `TRAVELTOM_ML_RANKER_PROMOTED_VERSION`
+- `TRAVELTOM_ML_RANKER_CACHE_DIR`
 
 Frontend runtime/build vars:
 - `VITE_API_BASE_URL`
@@ -91,6 +98,16 @@ Frontend runtime/build vars:
 ## Rollback
 
 - Roll traffic back to the previous blue revision if smoke checks fail or guardrail alerts trigger.
-- Roll back to the previous model version in Azure ML Registry.
+- Roll back to the previous promoted blob artifact reference in dev, then redeploy
+  or update the API Container App revision.
 - Disable AI Search integration by switching to pgvector retriever.
 - Use `Rollback Container Apps` to reactivate the previous web and API revisions.
+
+## Dev-first MLOps rollout
+
+- Dev is the proving ground for Azure MLOps changes.
+- Do not enable prod MLOps resources or prod model-promotion workflows until:
+  - dev Bicep validation and deploy succeed
+  - `ML Train Dev` and `ML Evaluate Dev` complete successfully
+  - `ML Promote Dev` is verified against the API runtime
+  - rollback to the previous promoted model reference is tested

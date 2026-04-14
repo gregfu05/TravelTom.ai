@@ -43,6 +43,9 @@
 - Dev deployment: `.github/workflows/deploy-dev.yml`
 - Prod deployment: `.github/workflows/deploy-prod.yml`
 - Revision rollback: `.github/workflows/rollback-container-app.yml`
+- Dev ML train: `.github/workflows/ml-train-dev.yml`
+- Dev ML evaluate: `.github/workflows/ml-evaluate-dev.yml`
+- Dev ML promote: `.github/workflows/ml-promote-dev.yml`
 
 ## Smoke checks
 
@@ -63,3 +66,23 @@
   - `/api/v1/chat` P95 latency stays above 2.0s for 15 minutes.
   - `/api/v1/recommendations/query` P95 latency stays above 1.5s for 15 minutes.
   - 7-day CTR proxy drops by more than 20% versus trailing 28-day baseline.
+
+## Dev MLOps promote and rollback
+
+Promotion sequence:
+
+1. Run `ML Train Dev` to publish the candidate artifact, metrics, and manifest.
+2. Run `ML Evaluate Dev` and confirm the offline gate output is `promote=true`.
+3. Run `ML Promote Dev` to update the dev API Container App with:
+   - `TRAVELTOM_ML_RANKER_ARTIFACT_URI`
+   - `TRAVELTOM_ML_RANKER_PROMOTED_VERSION`
+4. Run API smoke checks and a recommendation request against dev.
+
+Rollback sequence:
+
+1. Identify the previous promoted model version and artifact URL in the
+   `ml-artifacts` container.
+2. Re-run `ML Promote Dev` with the previous model version.
+3. If needed, reactivate the previous Container App revision with
+   `Rollback Container Apps`.
+4. Re-run API smoke checks and verify heuristic fallback if artifact loading fails.
