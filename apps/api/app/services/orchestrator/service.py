@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import json
-import logging
 from collections.abc import Mapping
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Callable, Literal, Sequence, cast
 
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
@@ -30,8 +29,6 @@ from app.schemas.tools.recommendations import (
     RecommendationToolResponse,
 )
 from app.services.orchestrator.extraction import (
-    apply_message_state_updates,
-    apply_structured_state_patch,
     build_effective_recommendation_query_text,
     extract_query_filters,
     is_follow_up_refinement,
@@ -45,7 +42,6 @@ from app.services.orchestrator.policies import (
     build_invalid_request_message,
     build_invalid_tool_payload_message,
     build_no_new_results_message,
-    build_planning_prompt_context,
     build_response_prompt_context,
     build_tool_failure_message,
     build_tool_timeout_message,
@@ -56,11 +52,12 @@ from app.services.orchestrator.policies import (
     missing_core_constraint_slots,
     requested_slots_for_clarification,
 )
+from app.services.orchestrator.decision_engine import RecommendationDecisionEngine
 from app.services.orchestrator.runtime_types import (
     AgentRunResult,
-    PreparedTurn,
     RecommendationExecutionResult,
 )
+from app.services.orchestrator.turn_preparer import TurnPreparer
 
 RecommendationExecutor = Callable[[RecommendationQuery], RecommendationToolResponse]
 AgentExecutor = Callable[[list[dict[str, str]]], dict[str, Any]]
@@ -72,8 +69,6 @@ _VALID_ITEM_TYPES = {"destination", "hotel", "flight"}
 _STATE_CONTEXT_PREFIX = "TRAVELTOM_SESSION_STATE_JSON:"
 _DIRECT_QUERY_PREFIX = "TRAVELTOM_DIRECT_RECOMMENDATION_QUERY_JSON:"
 _RECOMMENDATION_CONTEXT_PREFIX = "TRAVELTOM_RECOMMENDATION_CONTEXT_JSON:"
-logger = logging.getLogger(__name__)
-_PLANNER_FAILURE_COOLDOWN_SECONDS = 120
 
 
 class PlannerExecutionError(RuntimeError):
@@ -226,44 +221,8 @@ class OrchestratorService:
         policy_config: OrchestratorPolicyConfig | None = None,
     ) -> None:
         self._policy = policy_config or OrchestratorPolicyConfig()
-        self._planner_cooldowns: dict[str, datetime] = {}
-
-    def _enforce_recommendation_slot_gating(
-        self,
-        *,
-        user_message: str,
-        prepared_turn: PreparedTurn,
-    ) -> PreparedTurn:
-        """Return a clarification turn when required slots are missing."""
-
-        if not prepared_turn.plan.should_call_recommendation_tool:
-            return prepared_turn
-
-        item_type_override = prepared_turn.plan.query_controls.filters.get("item_type")
-        missing_slots = missing_core_constraint_slots(
-            prepared_turn.session_state,
-            item_type_override=str(item_type_override) if item_type_override else None,
-        )
-        if not missing_slots:
-            return prepared_turn
-
-        gated_plan = LLMOrchestrationPlan(
-            intent="clarify",
-            should_call_recommendation_tool=False,
-            clarification_message=build_clarification_message(
-                prepared_turn.session_state,
-                acknowledged_slots=prepared_turn.acknowledged_slots or None,
-                message=user_message,
-            ),
-            state_patch=prepared_turn.plan.state_patch,
-            query_controls=prepared_turn.plan.query_controls,
-        )
-        return PreparedTurn(
-            session_state=prepared_turn.session_state,
-            plan=gated_plan,
-            acknowledged_slots=prepared_turn.acknowledged_slots,
-            planner_used=prepared_turn.planner_used,
-        )
+        self._turn_preparer = TurnPreparer(policy=self._policy)
+        self._decision_engine = RecommendationDecisionEngine()
 
     def build_chat_messages(
         self,
@@ -327,39 +286,26 @@ class OrchestratorService:
                 requested_slots=session_state.conversation.last_requested_slots,
             )
 
-        prepared_turn = self._prepare_chat_turn(
+        prepared_turn = self._turn_preparer.prepare_turn(
             user_message=message,
             previous_state=session_state,
             recent_messages=history,
             planner_executor=planner_executor,
         )
-        prepared_turn = self._enforce_recommendation_slot_gating(
+        prepared_turn = self._turn_preparer.enforce_recommendation_slot_gating(
             user_message=message,
             prepared_turn=prepared_turn,
         )
         prepared_state = prepared_turn.session_state
         acknowledged_slots = prepared_turn.acknowledged_slots
-
-        if not prepared_turn.plan.should_call_recommendation_tool:
-            return self._direct_response_from_plan(
-                user_message=message,
-                session_state=prepared_state,
-                previous_state=session_state,
-                plan=prepared_turn.plan,
-                acknowledged_slots=acknowledged_slots,
-                recent_messages=history,
-                recommendation_executor=recommendation_executor,
-                response_composer=response_composer,
-            )
-        if (
-            prepared_turn.plan.should_call_recommendation_tool
-            and recommendation_executor is not None
-            and self._should_bypass_agent_for_recommendation(
-                user_message=message,
-                previous_state=session_state,
-                session_state=prepared_state,
-            )
-        ):
+        routing_decision = self._decision_engine.decide(
+            user_message=message,
+            previous_state=session_state,
+            session_state=prepared_state,
+            prepared_turn=prepared_turn,
+            recommendation_executor_available=recommendation_executor is not None,
+        )
+        if routing_decision.path == "direct_response":
             return self._direct_response_from_plan(
                 user_message=message,
                 session_state=prepared_state,
@@ -509,7 +455,9 @@ class OrchestratorService:
     ) -> RecommendationQuery | None:
         """Build a normalized recommendation query from state and user text."""
 
-        effective_query = _normalize_text_value(query_text_override)
+        effective_query = self._turn_preparer.normalize_query_override(
+            query_text_override
+        )
         if effective_query is None:
             effective_query = build_effective_recommendation_query_text(
                 message=user_message,
@@ -531,6 +479,19 @@ class OrchestratorService:
             return RecommendationQuery.model_validate(payload)
         except ValidationError:
             return None
+
+    def _merge_query_filters(
+        self,
+        *,
+        user_message: str,
+        session_state: SessionState,
+        filters_override: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self._turn_preparer.merge_query_filters(
+            user_message=user_message,
+            session_state=session_state,
+            filters_override=filters_override,
+        )
 
     def build_results_message(
         self,
@@ -1122,343 +1083,14 @@ class OrchestratorService:
             return False
         return is_follow_up_refinement(user_message)
 
-    def _prepare_chat_turn(
-        self,
-        *,
-        user_message: str,
-        previous_state: SessionState,
-        recent_messages: Sequence[TranscriptMessage],
-        planner_executor: PlannerExecutor | None,
-    ) -> PreparedTurn:
-        deterministic_state = apply_message_state_updates(
-            message=user_message,
-            session_state=previous_state,
-        )
-        acknowledged_slots = self._captured_core_slots(
-            previous_state=previous_state,
-            next_state=deterministic_state,
-        )
-        fallback_turn = PreparedTurn(
-            session_state=deterministic_state,
-            plan=self._normalize_planning_plan(
-                user_message=user_message,
-                previous_state=previous_state,
-                session_state=deterministic_state,
-                plan=build_guardrail_plan(
-                    message=user_message,
-                    session_state=deterministic_state,
-                    max_results=self._policy.max_recommendation_results,
-                ),
-            ),
-            acknowledged_slots=acknowledged_slots,
-            planner_used=False,
-        )
-        if planner_executor is None:
-            return fallback_turn
-
-        if self._planner_is_in_cooldown(previous_state.session_id):
-            return fallback_turn
-
-        if self._should_skip_planner(
-            user_message=user_message,
-            previous_state=previous_state,
-            deterministic_state=deterministic_state,
-            fallback_plan=fallback_turn.plan,
-            acknowledged_slots=acknowledged_slots,
-        ):
-            return fallback_turn
-
-        prompt = build_planning_prompt_context(
-            session_state=previous_state,
-            deterministic_hint_state=deterministic_state,
-            recent_messages=list(recent_messages),
-            user_message=user_message,
-            max_results=self._policy.max_recommendation_results,
-        )
-        try:
-            plan_payload = planner_executor(prompt)
-        except PlannerExecutionError as exc:
-            self._mark_planner_failure(previous_state.session_id)
-            logger.warning(
-                "planner_execution_failed",
-                extra={
-                    "context": {
-                        "session_id": previous_state.session_id,
-                        "error": str(exc),
-                    }
-                },
-            )
-            return fallback_turn
-        except Exception as exc:
-            self._mark_planner_failure(previous_state.session_id)
-            logger.warning(
-                "planner_execution_failed",
-                extra={
-                    "context": {
-                        "session_id": previous_state.session_id,
-                        "error": str(exc),
-                    }
-                },
-            )
-            return fallback_turn
-        if not isinstance(plan_payload, Mapping):
-            self._mark_planner_failure(previous_state.session_id)
-            logger.warning(
-                "planner_output_invalid",
-                extra={
-                    "context": {
-                        "session_id": previous_state.session_id,
-                        "error": "planner output was not a JSON object",
-                    }
-                },
-            )
-            return fallback_turn
-
-        normalized_plan_payload = self._sanitize_plan_payload(plan_payload)
-        try:
-            plan = LLMOrchestrationPlan.model_validate(normalized_plan_payload)
-            planned_state = apply_structured_state_patch(
-                session_state=previous_state,
-                state_patch=plan.state_patch.model_dump(
-                    mode="python",
-                    exclude_unset=True,
-                ),
-            )
-        except ValidationError as exc:
-            self._mark_planner_failure(previous_state.session_id)
-            logger.warning(
-                "planner_output_invalid",
-                extra={
-                    "context": {
-                        "session_id": previous_state.session_id,
-                        "error": str(exc),
-                    }
-                },
-            )
-            return fallback_turn
-
-        self._clear_planner_cooldown(previous_state.session_id)
-
-        return PreparedTurn(
-            session_state=planned_state,
-            plan=self._normalize_planning_plan(
-                user_message=user_message,
-                previous_state=previous_state,
-                session_state=planned_state,
-                plan=plan,
-            ),
-            acknowledged_slots=self._captured_core_slots(
-                previous_state=previous_state,
-                next_state=planned_state,
-            ),
-            planner_used=True,
-        )
-
-    def _should_skip_planner(
-        self,
-        *,
-        user_message: str,
-        previous_state: SessionState,
-        deterministic_state: SessionState,
-        fallback_plan: LLMOrchestrationPlan,
-        acknowledged_slots: Sequence[str],
-    ) -> bool:
-        del user_message
-        del previous_state
-        del deterministic_state
-        del fallback_plan
-        del acknowledged_slots
-        return False
-
-    def _should_bypass_agent_for_recommendation(
-        self,
-        *,
-        user_message: str,
-        previous_state: SessionState,
-        session_state: SessionState,
-    ) -> bool:
-        del user_message
-        if (
-            previous_state.conversation.last_requested_slots
-            and not missing_core_constraint_slots(session_state)
-        ):
-            return True
-        return bool(
-            previous_state.conversation.last_clarification_kind == "search_type"
-            and not missing_core_constraint_slots(session_state)
-        )
-
-    def _planner_is_in_cooldown(self, session_id: str) -> bool:
-        cooldown_until = self._planner_cooldowns.get(session_id)
-        if cooldown_until is None:
-            return False
-        if cooldown_until <= datetime.now(timezone.utc):
-            self._planner_cooldowns.pop(session_id, None)
-            return False
-        return True
-
-    def _mark_planner_failure(self, session_id: str) -> None:
-        self._planner_cooldowns[session_id] = datetime.now(timezone.utc) + timedelta(
-            seconds=_PLANNER_FAILURE_COOLDOWN_SECONDS
-        )
-
-    def _clear_planner_cooldown(self, session_id: str) -> None:
-        self._planner_cooldowns.pop(session_id, None)
-
-    def _sanitize_plan_payload(
-        self,
-        plan_payload: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        normalized_payload = dict(plan_payload)
-        state_patch = normalized_payload.get("state_patch")
-        if isinstance(state_patch, Mapping):
-            normalized_payload["state_patch"] = self._prune_null_patch_values(
-                dict(state_patch)
-            )
-        return normalized_payload
-
-    def _prune_null_patch_values(self, value: Any) -> Any:
-        if isinstance(value, Mapping):
-            cleaned: dict[str, Any] = {}
-            for key, nested_value in value.items():
-                normalized_nested_value = self._prune_null_patch_values(nested_value)
-                if normalized_nested_value is None:
-                    continue
-                if (
-                    isinstance(normalized_nested_value, dict)
-                    and not normalized_nested_value
-                ):
-                    continue
-                cleaned[str(key)] = normalized_nested_value
-            return cleaned
-        if isinstance(value, list):
-            cleaned_list = [self._prune_null_patch_values(item) for item in value]
-            return [
-                item
-                for item in cleaned_list
-                if item is not None and not (isinstance(item, dict) and not item)
-            ]
-        return value
-
-    def _normalize_planning_plan(
-        self,
-        *,
-        user_message: str,
-        previous_state: SessionState,
-        session_state: SessionState,
-        plan: LLMOrchestrationPlan,
-    ) -> LLMOrchestrationPlan:
-        max_results = min(
-            plan.query_controls.max_results or self._policy.max_recommendation_results,
-            self._policy.max_recommendation_results,
-        )
-        effective_query = self._normalize_query_override(plan.query_controls.query)
-        if effective_query is None:
-            effective_query = build_effective_recommendation_query_text(
-                message=user_message,
-                session_state=session_state,
-            )
-
-        filters = self._merge_query_filters(
-            user_message=user_message,
-            session_state=session_state,
-            filters_override=plan.query_controls.filters,
-        )
-        guardrail_plan = build_guardrail_plan(
-            message=user_message,
-            session_state=session_state,
-            max_results=max_results,
-        )
-
-        should_call_recommendation_tool = plan.should_call_recommendation_tool
-        if guardrail_plan.should_call_recommendation_tool:
-            should_call_recommendation_tool = True
-        elif plan.should_call_recommendation_tool:
-            should_call_recommendation_tool = False
-
-        intent = plan.intent
-        if should_call_recommendation_tool and intent == "clarify":
-            if guardrail_plan.intent in {"recommend", "refine"}:
-                intent = guardrail_plan.intent
-            else:
-                intent = "recommend"
-
-        clarification_message = _normalize_text_value(plan.clarification_message)
-        if should_call_recommendation_tool:
-            clarification_message = None
-        elif clarification_message is None:
-            clarification_message = (
-                guardrail_plan.clarification_message
-                or build_clarification_message(
-                    session_state,
-                    acknowledged_slots=self._captured_core_slots(
-                        previous_state=previous_state,
-                        next_state=session_state,
-                    )
-                    or None,
-                    message=user_message,
-                )
-            )
-
-        return LLMOrchestrationPlan(
-            intent=intent,
-            should_call_recommendation_tool=should_call_recommendation_tool,
-            clarification_message=clarification_message,
-            state_patch=plan.state_patch,
-            query_controls=RecommendationQueryControls(
-                query=effective_query,
-                filters=filters,
-                max_results=max_results,
-            ),
-        )
-
-    def _merge_query_filters(
-        self,
-        *,
-        user_message: str,
-        session_state: SessionState,
-        filters_override: Mapping[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        merged_filters: dict[str, Any] = {}
-        if filters_override:
-            for key, value in filters_override.items():
-                if key == "item_type":
-                    normalized_override = self._normalize_item_type(value)
-                    if normalized_override is not None:
-                        merged_filters[key] = normalized_override
-                    continue
-                merged_filters[key] = value
-        if "item_type" in merged_filters:
-            return merged_filters
-
-        item_type = extract_query_filters(user_message).get("item_type")
-        normalized_item_type = self._normalize_item_type(item_type)
-        if normalized_item_type is not None:
-            merged_filters["item_type"] = normalized_item_type
-            return merged_filters
-
-        remembered_item_type = resolve_effective_item_type(
-            message=user_message,
-            session_state=session_state,
-        )
-        normalized_remembered_item_type = self._normalize_item_type(
-            remembered_item_type
-        )
-        if normalized_remembered_item_type is not None:
-            merged_filters["item_type"] = normalized_remembered_item_type
-            return merged_filters
-
-        merged_filters["item_type"] = "destination"
-        return merged_filters
-
     def _normalize_item_type(
         self,
         item_type: Any,
     ) -> RecommendationItemType | None:
-        return _normalize_item_type_value(item_type)
+        return self._turn_preparer.normalize_item_type(item_type)
 
     def _normalize_query_override(self, query: Any) -> str | None:
-        return _normalize_text_value(query)
+        return self._turn_preparer.normalize_query_override(query)
 
     def _recommendation_display_name(self, item: RecommendationResult) -> str:
         name = item.features.get("name")
@@ -1564,19 +1196,10 @@ class OrchestratorService:
         previous_state: SessionState,
         next_state: SessionState,
     ) -> list[str]:
-        captured: list[str] = []
-        if not previous_state.constraints.origin and next_state.constraints.origin:
-            captured.append("origin")
-        if (
-            not previous_state.constraints.destination
-            and next_state.constraints.destination
-        ):
-            captured.append("destination")
-        if not previous_state.constraints.dates and next_state.constraints.dates:
-            captured.append("dates")
-        if not previous_state.constraints.budget and next_state.constraints.budget:
-            captured.append("budget")
-        return captured
+        return self._turn_preparer.captured_core_slots(
+            previous_state=previous_state,
+            next_state=next_state,
+        )
 
     def _conversation_intent(
         self,
