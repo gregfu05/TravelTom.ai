@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 from app.schemas.tools.recommendations import RecommendationQuery
 from app.services.recommendation_runtime import (
     clear_recommendation_catalog_store,
@@ -89,3 +90,26 @@ def test_runtime_recommendation_tool_uses_preloaded_catalog_without_reloading_cs
     assert response.results
     assert response.results[0].item_type == "hotel"
     assert response.results[0].features.get("city") == "Rome"
+
+
+def test_runtime_recommendation_tool_defers_catalog_load_until_execution(
+    tmp_path,
+) -> None:
+    clear_recommendation_catalog_store()
+    missing_dataset_path = tmp_path / "missing-traveltom-clean.csv"
+    settings = _settings_for_dataset(str(missing_dataset_path))
+
+    tool = get_runtime_recommendation_tool(settings=settings)
+    query = RecommendationQuery.model_validate(
+        {
+            "session_id": "sess-runtime",
+            "query": "hotel in Rome",
+            "constraints": {"destination": "Rome"},
+            "filters": {"item_type": "hotel"},
+            "max_results": 3,
+            "ranking_version": "heuristic-v1",
+        }
+    )
+
+    with pytest.raises(FileNotFoundError, match="Recommendation dataset not found"):
+        tool(query)

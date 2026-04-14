@@ -101,10 +101,10 @@ def get_runtime_recommendation_tool(
 ) -> RecommendationTool:
     active_settings = settings or get_settings()
     store = get_recommendation_catalog_store()
-    if not store.is_loaded():
-        store.preload_from_csv(_resolve_dataset_path(active_settings))
+    dataset_path = _resolve_dataset_path(active_settings)
 
     def _tool(query: RecommendationQuery) -> RecommendationToolResponse:
+        store.preload_from_csv(dataset_path)
         return recommendation_tool_v3(
             query=query,
             catalog=store.get_catalog(),

@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.db.models.message import Message
 from app.db.models.recommendation import Recommendation
@@ -267,7 +268,12 @@ def test_chat_endpoint_returns_expected_shape_and_persists_records() -> None:
     )
 
 
-def test_chat_endpoint_rejects_invalid_payload() -> None:
+def test_chat_endpoint_rejects_invalid_payload(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "RECOMMENDER_DATASET_PATH", "traveltom/datasets/does-not-exist.csv"
+    )
+    get_settings.cache_clear()
+    get_travel_tom_agent.cache_clear()
     fake_db = _FakeAsyncSession()
     app.dependency_overrides[get_db] = _override_db(fake_db)
 
@@ -281,6 +287,8 @@ def test_chat_endpoint_rejects_invalid_payload() -> None:
             },
         )
     finally:
+        get_settings.cache_clear()
+        get_travel_tom_agent.cache_clear()
         app.dependency_overrides.clear()
 
     assert response.status_code == 422
