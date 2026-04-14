@@ -1,7 +1,3 @@
-import { ApplicationInsights } from "@microsoft/applicationinsights-web";
-
-let appInsightsInstance: ApplicationInsights | null = null;
-
 function createTraceId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -14,33 +10,10 @@ export function getRequestTraceId(): string {
   return createTraceId();
 }
 
-export function initTelemetry(): ApplicationInsights | null {
-  if (appInsightsInstance !== null) {
-    return appInsightsInstance;
-  }
-
-  const connectionString = import.meta.env.VITE_APPINSIGHTS_CONNECTION_STRING?.trim();
-  if (!connectionString) {
-    appInsightsInstance = null;
-    return appInsightsInstance;
-  }
-
-  appInsightsInstance = new ApplicationInsights({
-    config: {
-      connectionString,
-      enableAutoRouteTracking: true,
-      disableFetchTracking: false,
-      distributedTracingMode: 1,
-    },
-  });
-  appInsightsInstance.loadAppInsights();
-  appInsightsInstance.trackPageView();
-  return appInsightsInstance;
+export function initTelemetry(): void {
+  // Telemetry is currently disabled to keep the frontend startup path stable.
 }
 
-export function trackApiError(message: string, properties?: Record<string, string>) {
-  appInsightsInstance?.trackException({
-    exception: new Error(message),
-    properties,
-  });
+export function trackApiError(_message: string, _properties?: Record<string, string>): void {
+  // No-op while telemetry is disabled.
 }
