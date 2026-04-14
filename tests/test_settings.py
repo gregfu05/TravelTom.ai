@@ -59,3 +59,27 @@ def test_settings_default_to_ollama_for_local_chat(monkeypatch) -> None:
 
     assert settings.orchestrator_llm_provider == "ollama"
     get_settings.cache_clear()
+
+
+def test_settings_read_ml_ranker_runtime_overrides(monkeypatch) -> None:
+    get_settings.cache_clear()
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://traveltom:traveltom@localhost:5432/mlops_db",
+    )
+    monkeypatch.setenv(
+        "TRAVELTOM_ML_RANKER_ARTIFACT_URI",
+        "https://example.blob.core.windows.net/ml-artifacts/ranker.pkl",
+    )
+    monkeypatch.setenv("TRAVELTOM_ML_RANKER_PROMOTED_VERSION", "ranker-v3-dev")
+    monkeypatch.setenv("TRAVELTOM_ML_RANKER_CACHE_DIR", "/tmp/traveltom-ml-cache")
+
+    settings = get_settings()
+
+    assert (
+        settings.traveltom_ml_ranker_artifact_uri
+        == "https://example.blob.core.windows.net/ml-artifacts/ranker.pkl"
+    )
+    assert settings.traveltom_ml_ranker_promoted_version == "ranker-v3-dev"
+    assert settings.traveltom_ml_ranker_cache_dir == "/tmp/traveltom-ml-cache"
+    get_settings.cache_clear()

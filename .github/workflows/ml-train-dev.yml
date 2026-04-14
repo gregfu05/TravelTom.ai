@@ -1,0 +1,111 @@
+name: ML Train Dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_version:
+        description: Optional explicit model version
+        required: false
+      dataset_snapshot_id:
+        description: Dataset snapshot identifier
+        required: false
+        default: weak-supervision-bootstrap
+      judgments_blob_path:
+        description: Optional blob path to judgments CSV inside the dataset container
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  train-dev:
+    runs-on: ubuntu-latest
+    environment: azure-dev
+    env:
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_DEV }}
+      STORAGE_ACCOUNT_NAME: ${{ vars.AZURE_MLOPS_STORAGE_ACCOUNT_NAME }}
+      DATASET_CONTAINER: ${{ vars.AZURE_MLOPS_DATASET_CONTAINER }}
+      ARTIFACT_CONTAINER: ${{ vars.AZURE_MLOPS_ARTIFACT_CONTAINER }}
+      MANIFEST_CONTAINER: ${{ vars.AZURE_MLOPS_MANIFEST_CONTAINER }}
+      EVALUATION_CONTAINER: ${{ vars.AZURE_MLOPS_EVALUATION_CONTAINER }}
+      MODEL_VERSION: ${{ github.event.inputs.model_version || github.sha }}
+      DATASET_SNAPSHOT_ID: ${{ github.event.inputs.dataset_snapshot_id || 'weak-supervision-bootstrap' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,ranking-ml]"
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate workflow inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "$RESOURCE_GROUP" ]] && missing+=("AZURE_RESOURCE_GROUP_DEV")
+          [[ -z "$STORAGE_ACCOUNT_NAME" ]] && missing+=("AZURE_MLOPS_STORAGE_ACCOUNT_NAME")
+          [[ -z "$DATASET_CONTAINER" ]] && missing+=("AZURE_MLOPS_DATASET_CONTAINER")
+          [[ -z "$ARTIFACT_CONTAINER" ]] && missing+=("AZURE_MLOPS_ARTIFACT_CONTAINER")
+          [[ -z "$MANIFEST_CONTAINER" ]] && missing+=("AZURE_MLOPS_MANIFEST_CONTAINER")
+          [[ -z "$EVALUATION_CONTAINER" ]] && missing+=("AZURE_MLOPS_EVALUATION_CONTAINER")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required environment vars: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Download judgments snapshot if provided
+        if: ${{ github.event.inputs.judgments_blob_path != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/mlops/input
+          az storage blob download \
+            --account-name "$STORAGE_ACCOUNT_NAME" \
+            --auth-mode login \
+            --container-name "$DATASET_CONTAINER" \
+            --name "${{ github.event.inputs.judgments_blob_path }}" \
+            --file build/mlops/input/judgments.csv
+
+      - name: Train ranker
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/mlops/output
+          extra_args=()
+          if [[ -f build/mlops/input/judgments.csv ]]; then
+            extra_args+=(--judgments-csv build/mlops/input/judgments.csv)
+          fi
+          python scripts/train_ranker_v3.py \
+            "${extra_args[@]}" \
+            --model-version "$MODEL_VERSION" \
+            --dataset-snapshot-id "$DATASET_SNAPSHOT_ID" \
+            --git-sha "${GITHUB_SHA}" \
+            --training-code-version "${GITHUB_SHA}" \
+            --output-artifact build/mlops/output/ranker.pkl \
+            --output-metrics-json build/mlops/output/train-metrics.json \
+            --output-manifest-json build/mlops/output/train-manifest.json
+
+      - name: Upload artifact and reports
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_prefix="models/${MODEL_VERSION}"
+          az storage blob upload --overwrite --auth-mode login --account-name "$STORAGE_ACCOUNT_NAME" --container-name "$ARTIFACT_CONTAINER" --name "${artifact_prefix}/ranker.pkl" --file build/mlops/output/ranker.pkl
+          az storage blob upload --overwrite --auth-mode login --account-name "$STORAGE_ACCOUNT_NAME" --container-name "$MANIFEST_CONTAINER" --name "${artifact_prefix}/train-manifest.json" --file build/mlops/output/train-manifest.json
+          az storage blob upload --overwrite --auth-mode login --account-name "$STORAGE_ACCOUNT_NAME" --container-name "$EVALUATION_CONTAINER" --name "${artifact_prefix}/train-metrics.json" --file build/mlops/output/train-metrics.json
+
