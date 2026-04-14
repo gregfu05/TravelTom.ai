@@ -140,6 +140,18 @@ class Settings(BaseSettings):
         True,
         validation_alias=AliasChoices("RECOMMENDER_PRELOAD_ON_STARTUP"),
     )
+    traveltom_ml_ranker_artifact_uri: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("TRAVELTOM_ML_RANKER_ARTIFACT_URI"),
+    )
+    traveltom_ml_ranker_promoted_version: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("TRAVELTOM_ML_RANKER_PROMOTED_VERSION"),
+    )
+    traveltom_ml_ranker_cache_dir: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("TRAVELTOM_ML_RANKER_CACHE_DIR"),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

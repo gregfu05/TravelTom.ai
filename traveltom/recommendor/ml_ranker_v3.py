@@ -10,10 +10,12 @@ from __future__ import annotations
 import logging
 import os
 import pickle
+import tempfile
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 import numpy as np
 import pandas as pd
@@ -321,10 +323,56 @@ def _attach_heuristic_components(
 
 
 def _resolved_artifact_path_from_env() -> Path:
+    configured_uri = os.getenv("TRAVELTOM_ML_RANKER_ARTIFACT_URI", "").strip()
+    if configured_uri:
+        return _resolve_artifact_path_from_reference(configured_uri)
+
     configured_path = os.getenv("TRAVELTOM_ML_RANKER_ARTIFACT_PATH", "").strip()
     if configured_path:
         return Path(configured_path).expanduser().resolve()
     return DEFAULT_ML_MODEL_ARTIFACT_PATH
+
+
+def _resolve_artifact_path_from_reference(reference: str) -> Path:
+    parsed = urlparse(reference)
+    if parsed.scheme in {"", "file"}:
+        raw_path = unquote(parsed.path if parsed.scheme == "file" else reference)
+        return Path(raw_path).expanduser().resolve()
+
+    if parsed.scheme in {"http", "https"} and parsed.netloc.endswith(
+        ".blob.core.windows.net"
+    ):
+        return _download_azure_blob_artifact(reference)
+
+    raise ValueError(f"Unsupported ML ranker artifact reference: {reference}")
+
+
+def _download_azure_blob_artifact(reference: str) -> Path:
+    try:
+        from azure.identity import DefaultAzureCredential
+        from azure.storage.blob import BlobClient
+    except ImportError as exc:
+        raise RuntimeError(
+            "Azure blob artifact loading requires azure-identity and azure-storage-blob"
+        ) from exc
+
+    cache_root = Path(
+        os.getenv("TRAVELTOM_ML_RANKER_CACHE_DIR", "").strip()
+        or Path(tempfile.gettempdir()) / "traveltom-ml-cache"
+    )
+    cache_root.mkdir(parents=True, exist_ok=True)
+    parsed = urlparse(reference)
+    blob_name = Path(parsed.path).name or "ranker.pkl"
+    local_path = cache_root / blob_name
+    if local_path.exists():
+        return local_path.resolve()
+
+    credential = DefaultAzureCredential()
+    blob_client = BlobClient.from_blob_url(reference, credential=credential)
+    with local_path.open("wb") as handle:
+        stream = blob_client.download_blob()
+        handle.write(stream.readall())
+    return local_path.resolve()
 
 
 @lru_cache(maxsize=16)

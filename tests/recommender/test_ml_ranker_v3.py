@@ -6,7 +6,9 @@ import pickle
 
 import numpy as np
 import pandas as pd
+import pytest
 
+import traveltom.recommendor.ml_ranker_v3 as ml_ranker_module
 from traveltom.recommendor.ml_ranker_v3 import (
     ML_FEATURE_COLUMNS,
     LightGBMLTRRankerV3,
@@ -154,3 +156,44 @@ def test_load_artifact_metadata(tmp_path) -> None:
 
 def test_clear_ml_ranker_cache_is_callable() -> None:
     clear_ml_ranker_cache()
+
+
+def test_get_ml_ranker_from_file_uri(tmp_path, monkeypatch) -> None:
+    artifact_path = tmp_path / "ranker.pkl"
+    with artifact_path.open("wb") as handle:
+        pickle.dump(
+            {
+                "model": DummyPredictModel(),
+                "feature_columns": ["f_rel_text_overall"],
+                "model_version": "file-uri",
+                "model_family": "lightgbm-ltr",
+                "schema_version": "ranking-features-v3-v1",
+                "label_strategy": "weak-supervision-v1",
+            },
+            handle,
+        )
+
+    monkeypatch.setenv("TRAVELTOM_ML_RANKER_ARTIFACT_URI", artifact_path.as_uri())
+    clear_ml_ranker_cache()
+    ranker = ml_ranker_module.get_ml_ranker_from_env()
+
+    assert ranker.artifact_path == artifact_path.resolve()
+    clear_ml_ranker_cache()
+
+
+def test_blob_artifact_download_requires_supported_dependencies(monkeypatch) -> None:
+    monkeypatch.setattr(
+        ml_ranker_module,
+        "_download_azure_blob_artifact",
+        lambda reference: (_ for _ in ()).throw(
+            RuntimeError(
+                "Azure blob artifact loading requires "
+                "azure-identity and azure-storage-blob"
+            )
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="Azure blob artifact loading requires"):
+        ml_ranker_module._resolve_artifact_path_from_reference(
+            "https://example.blob.core.windows.net/ml-artifacts/ranker.pkl"
+        )

@@ -1,0 +1,111 @@
+name: ML Promote Dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_version:
+        description: Model version to promote in dev
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  promote-dev:
+    runs-on: ubuntu-latest
+    environment: azure-dev
+    concurrency:
+      group: azure-dev-ml-promote
+      cancel-in-progress: false
+    env:
+      STORAGE_ACCOUNT_NAME: ${{ vars.AZURE_MLOPS_STORAGE_ACCOUNT_NAME }}
+      ARTIFACT_CONTAINER: ${{ vars.AZURE_MLOPS_ARTIFACT_CONTAINER }}
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_DEV }}
+      API_APP_NAME: ${{ vars.AZURE_CONTAINER_APP_API_DEV }}
+      EVALUATION_CONTAINER: ${{ vars.AZURE_MLOPS_EVALUATION_CONTAINER }}
+      MODEL_VERSION: ${{ github.event.inputs.model_version }}
+    steps:
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate workflow inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "$STORAGE_ACCOUNT_NAME" ]] && missing+=("AZURE_MLOPS_STORAGE_ACCOUNT_NAME")
+          [[ -z "$ARTIFACT_CONTAINER" ]] && missing+=("AZURE_MLOPS_ARTIFACT_CONTAINER")
+          [[ -z "$EVALUATION_CONTAINER" ]] && missing+=("AZURE_MLOPS_EVALUATION_CONTAINER")
+          [[ -z "$RESOURCE_GROUP" ]] && missing+=("AZURE_RESOURCE_GROUP_DEV")
+          [[ -z "$API_APP_NAME" ]] && missing+=("AZURE_CONTAINER_APP_API_DEV")
+          [[ -z "$MODEL_VERSION" ]] && missing+=("model_version")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required environment vars: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Capture current promoted model config
+        id: current
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_artifact=$(az containerapp show -n "$API_APP_NAME" -g "$RESOURCE_GROUP" --query "properties.template.containers[0].env[?name=='TRAVELTOM_ML_RANKER_ARTIFACT_URI'].value | [0]" -o tsv)
+          current_version=$(az containerapp show -n "$API_APP_NAME" -g "$RESOURCE_GROUP" --query "properties.template.containers[0].env[?name=='TRAVELTOM_ML_RANKER_PROMOTED_VERSION'].value | [0]" -o tsv)
+          echo "current_artifact=$current_artifact" >> "$GITHUB_OUTPUT"
+          echo "current_version=$current_version" >> "$GITHUB_OUTPUT"
+
+      - name: Validate artifact and gate outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/mlops
+          artifact_prefix="models/${MODEL_VERSION}"
+          az storage blob show \
+            --account-name "$STORAGE_ACCOUNT_NAME" \
+            --auth-mode login \
+            --container-name "$ARTIFACT_CONTAINER" \
+            --name "${artifact_prefix}/ranker.pkl" \
+            --output none
+          az storage blob download \
+            --account-name "$STORAGE_ACCOUNT_NAME" \
+            --auth-mode login \
+            --container-name "$EVALUATION_CONTAINER" \
+            --name "${artifact_prefix}/gates.json" \
+            --file build/mlops/promote-gates.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          gates = json.loads(Path("build/mlops/promote-gates.json").read_text(encoding="utf-8"))
+          if not gates.get("promote"):
+              raise SystemExit("Promotion blocked: gates.json does not allow promote=true")
+          PY
+
+      - name: Promote model in dev API config
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_url="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${ARTIFACT_CONTAINER}/models/${MODEL_VERSION}/ranker.pkl"
+          az containerapp update \
+            --name "$API_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --set-env-vars \
+              TRAVELTOM_ML_RANKER_ARTIFACT_URI="$artifact_url" \
+              TRAVELTOM_ML_RANKER_PROMOTED_VERSION="$MODEL_VERSION"
+
+      - name: Roll back promoted model config on failure
+        if: failure() && steps.current.outputs.current_artifact != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          az containerapp update \
+            --name "$API_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --set-env-vars \
+              TRAVELTOM_ML_RANKER_ARTIFACT_URI="${{ steps.current.outputs.current_artifact }}" \
+              TRAVELTOM_ML_RANKER_PROMOTED_VERSION="${{ steps.current.outputs.current_version }}"

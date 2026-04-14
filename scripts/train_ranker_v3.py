@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pickle
 import sys
 from datetime import datetime, timezone
@@ -86,6 +87,21 @@ def main() -> None:
         "validation_queries": len(split.validation.query_ids),
         "evaluation": evaluation,
     }
+    manifest = {
+        "model_version": artifact_payload["model_version"],
+        "dataset_snapshot_id": args.dataset_snapshot_id,
+        "feature_schema_version": MODEL_SCHEMA_VERSION,
+        "git_sha": args.git_sha or os.getenv("GITHUB_SHA", ""),
+        "run_timestamp_utc": artifact_payload["trained_at"],
+        "training_code_version": args.training_code_version
+        or args.git_sha
+        or os.getenv("GITHUB_SHA", ""),
+        "artifact_path": str(args.output_artifact),
+        "metrics_path": (
+            str(args.output_metrics_json) if args.output_metrics_json else ""
+        ),
+        "label_strategy": training_data.label_strategy,
+    }
 
     args.output_artifact.parent.mkdir(parents=True, exist_ok=True)
     with args.output_artifact.open("wb") as handle:
@@ -100,8 +116,16 @@ def main() -> None:
     if args.output_training_frame is not None:
         save_training_dataset(training_data, args.output_training_frame)
 
+    if args.output_manifest_json is not None:
+        args.output_manifest_json.parent.mkdir(parents=True, exist_ok=True)
+        args.output_manifest_json.write_text(
+            json.dumps(manifest, indent=2), encoding="utf-8"
+        )
+
     print("Training complete")
     print(f"artifact: {args.output_artifact}")
+    if args.output_manifest_json is not None:
+        print(f"manifest: {args.output_manifest_json}")
     print(json.dumps(evaluation, indent=2))
 
 
@@ -309,6 +333,12 @@ def _parse_args() -> argparse.Namespace:
         help="Optional CSV/Parquet export of training frame.",
     )
     parser.add_argument(
+        "--output-manifest-json",
+        type=Path,
+        default=None,
+        help="Optional JSON output path for the training manifest.",
+    )
+    parser.add_argument(
         "--max-weak-queries",
         type=int,
         default=300,
@@ -342,6 +372,24 @@ def _parse_args() -> argparse.Namespace:
         type=str,
         default="",
         help="Optional explicit model version string.",
+    )
+    parser.add_argument(
+        "--dataset-snapshot-id",
+        type=str,
+        default="weak-supervision-bootstrap",
+        help="Dataset snapshot identifier used for lineage.",
+    )
+    parser.add_argument(
+        "--git-sha",
+        type=str,
+        default="",
+        help="Optional Git SHA recorded in the training manifest.",
+    )
+    parser.add_argument(
+        "--training-code-version",
+        type=str,
+        default="",
+        help="Optional training code version recorded in the manifest.",
     )
     return parser.parse_args()
 

@@ -72,6 +72,76 @@ param frontendApiBaseUrl string
 @description('Optional Application Insights connection string for frontend telemetry.')
 param frontendAppInsightsConnectionString string = ''
 
+@description('Tag applied to all Azure resources indicating the managing system.')
+param managedByTag string = 'codex'
+
+@description('Optional owner/team tag applied to all Azure resources.')
+param ownerTag string = 'traveltom'
+
+@description('Public network access setting for the container registry.')
+@allowed([
+  'Enabled'
+  'Disabled'
+])
+param acrPublicNetworkAccess string = 'Enabled'
+
+@description('Public network access setting for Key Vault.')
+@allowed([
+  'Enabled'
+  'Disabled'
+])
+param keyVaultPublicNetworkAccess string = 'Enabled'
+
+@description('Public network access setting for Postgres.')
+@allowed([
+  'Enabled'
+  'Disabled'
+])
+param postgresPublicNetworkAccess string = 'Enabled'
+
+@description('Whether to allow Azure services firewall access to Postgres.')
+param postgresAllowAzureServicesFirewall bool = true
+
+@description('Public network access setting for MLOps storage.')
+@allowed([
+  'Enabled'
+  'Disabled'
+])
+param mlopsStoragePublicNetworkAccess string = 'Enabled'
+
+@description('CPU allocation for the API container app.')
+param apiContainerCpu string = '0.5'
+
+@description('Memory allocation for the API container app.')
+param apiContainerMemory string = '1Gi'
+
+@description('CPU allocation for the web container app.')
+param webContainerCpu string = '0.5'
+
+@description('Memory allocation for the web container app.')
+param webContainerMemory string = '1Gi'
+
+@description('Enable Azure MLOps foundation resources for the environment.')
+param enableMlops bool = false
+
+@description('Name of the blob container that stores dataset snapshots.')
+param mlopsDatasetContainerName string = 'ml-datasets'
+
+@description('Name of the blob container that stores trained model artifacts.')
+param mlopsArtifactContainerName string = 'ml-artifacts'
+
+@description('Name of the blob container that stores training and promotion manifests.')
+param mlopsManifestContainerName string = 'ml-manifests'
+
+@description('Name of the blob container that stores evaluation reports.')
+param mlopsEvaluationContainerName string = 'ml-evaluations'
+
+@description('Promoted ranker artifact reference for the current environment.')
+param promotedMlModelArtifactUri string = ''
+
+@description('Promoted ranker model version label for the current environment.')
+param promotedMlModelVersion string = ''
+
 var resourceToken = toLower(uniqueString(resourceGroup().id, environment))
 var resourcePrefix = '${prefix}-${environment}'
 var acrName = take(replace('${prefix}${environment}${resourceToken}', '-', ''), 50)
@@ -85,10 +155,28 @@ var containerEnvName = '${resourcePrefix}-cae'
 var apiAppName = '${resourcePrefix}-api'
 var webAppName = '${resourcePrefix}-web'
 var ollamaAppName = '${resourcePrefix}-ollama'
+var mlopsStorageAccountName = take(replace('${prefix}${environment}ml${resourceToken}', '-', ''), 24)
+var mlopsIdentityName = '${resourcePrefix}-mlops-id'
+var mlWorkspaceName = '${resourcePrefix}-mlw'
 var gpuWorkloadProfileName = 'gpu-t4'
+var commonTags = {
+  app: 'traveltom'
+  environment: environment
+  managedBy: managedByTag
+  owner: ownerTag
+  stack: 'azure-container-apps'
+}
 var acrPullRoleDefinitionId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+)
+var storageBlobDataContributorRoleDefinitionId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+)
+var storageBlobDataReaderRoleDefinitionId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
 )
 
 module monitoring './modules/monitoring.bicep' = {
@@ -97,6 +185,7 @@ module monitoring './modules/monitoring.bicep' = {
     location: location
     logAnalyticsWorkspaceName: lawName
     appInsightsName: appInsightsName
+    tags: commonTags
   }
 }
 
@@ -105,6 +194,8 @@ module acr './modules/acr.bicep' = {
   params: {
     acrName: acrName
     location: location
+    publicNetworkAccess: acrPublicNetworkAccess
+    tags: commonTags
   }
 }
 
@@ -113,6 +204,8 @@ module keyVault './modules/keyvault.bicep' = {
   params: {
     keyVaultName: keyVaultName
     location: location
+    publicNetworkAccess: keyVaultPublicNetworkAccess
+    tags: commonTags
     secrets: {
       OPENAI_API_KEY: openaiApiKey
       LOCAL_AUTH_TOKEN_SECRET: localAuthTokenSecret
@@ -130,12 +223,41 @@ module postgres './modules/postgres.bicep' = {
     administratorPassword: postgresAdminPassword
     databaseName: postgresDatabaseName
     environment: environment
+    publicNetworkAccess: postgresPublicNetworkAccess
+    allowAzureServicesFirewall: postgresAllowAzureServicesFirewall
+    tags: commonTags
+  }
+}
+
+module mlopsStorage './modules/storage-account.bicep' = if (enableMlops) {
+  name: 'mlops-storage'
+  params: {
+    storageAccountName: mlopsStorageAccountName
+    location: location
+    publicNetworkAccess: mlopsStoragePublicNetworkAccess
+    tags: commonTags
+    containers: [
+      mlopsDatasetContainerName
+      mlopsArtifactContainerName
+      mlopsManifestContainerName
+      mlopsEvaluationContainerName
+    ]
+  }
+}
+
+module mlopsIdentity './modules/managed-identity.bicep' = if (enableMlops) {
+  name: 'mlops-identity'
+  params: {
+    identityName: mlopsIdentityName
+    location: location
+    tags: commonTags
   }
 }
 
 resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: containerEnvName
   location: location
+  tags: commonTags
   properties: {
     appLogsConfiguration: {
       destination: 'log-analytics'
@@ -154,6 +276,23 @@ resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
         workloadProfileType: 'Consumption-GPU-T4'
       }
     ]
+  }
+}
+
+resource containerRegistryForMl 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = if (enableMlops) {
+  name: acrName
+}
+
+module mlWorkspace './modules/aml-workspace.bicep' = if (enableMlops) {
+  name: 'ml-workspace'
+  params: {
+    workspaceName: mlWorkspaceName
+    location: location
+    applicationInsightsId: monitoring.outputs.appInsightsId
+    keyVaultId: keyVault.id
+    storageAccountId: mlopsStorage.outputs.id
+    containerRegistryId: containerRegistryForMl.id
+    tags: commonTags
   }
 }
 
@@ -195,7 +334,7 @@ module apiApp './modules/container-app.bicep' = {
       }
       {
         name: 'DATABASE_URL'
-        value: 'postgresql+asyncpg://${postgresAdminLogin}:${postgresAdminPassword}@${postgres.outputs.fqdn}:5432/${postgresDatabaseName}?ssl=require'
+        secretRef: 'database-url'
       }
       {
         name: 'CORS_ALLOWED_ORIGINS'
@@ -241,8 +380,24 @@ module apiApp './modules/container-app.bicep' = {
         name: 'LOCAL_AUTH_TOKEN_SECRET'
         secretRef: 'local-auth-token-secret'
       }
+      {
+        name: 'TRAVELTOM_ML_RANKER_ARTIFACT_URI'
+        value: promotedMlModelArtifactUri
+      }
+      {
+        name: 'TRAVELTOM_ML_RANKER_PROMOTED_VERSION'
+        value: promotedMlModelVersion
+      }
+      {
+        name: 'TRAVELTOM_ML_RANKER_CACHE_DIR'
+        value: '/tmp/traveltom-ml-cache'
+      }
     ]
     secrets: [
+      {
+        name: 'database-url'
+        value: 'postgresql+asyncpg://${postgresAdminLogin}:${postgresAdminPassword}@${postgres.outputs.fqdn}:5432/${postgresDatabaseName}?ssl=require'
+      }
       {
         name: 'openai-api-key'
         value: openaiApiKey
@@ -254,6 +409,11 @@ module apiApp './modules/container-app.bicep' = {
     ]
     ingressExternal: true
     livenessPath: '/api/v1/health'
+    readinessPath: '/api/v1/health'
+    startupPath: '/api/v1/health'
+    cpu: apiContainerCpu
+    memory: apiContainerMemory
+    tags: union(commonTags, { component: 'api' })
   }
 }
 
@@ -281,11 +441,20 @@ module webApp './modules/container-app.bicep' = {
     secrets: []
     ingressExternal: true
     livenessPath: '/'
+    readinessPath: '/'
+    startupPath: '/'
+    cpu: webContainerCpu
+    memory: webContainerMemory
+    tags: union(commonTags, { component: 'web' })
   }
 }
 
 resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: acrName
+}
+
+resource mlopsStorageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' existing = if (enableMlops) {
+  name: mlopsStorage.outputs.name
 }
 
 resource apiAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
@@ -308,6 +477,26 @@ resource webAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-
   }
 }
 
+resource mlopsStorageContributorRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableMlops) {
+  name: guid(mlopsStorage.outputs.id, mlopsIdentity.outputs.principalId, storageBlobDataContributorRoleDefinitionId)
+  scope: mlopsStorageAccount
+  properties: {
+    roleDefinitionId: storageBlobDataContributorRoleDefinitionId
+    principalId: mlopsIdentity.outputs.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource apiMlopsStorageReaderRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableMlops) {
+  name: guid(mlopsStorage.outputs.id, apiApp.outputs.principalId, storageBlobDataReaderRoleDefinitionId)
+  scope: mlopsStorageAccount
+  properties: {
+    roleDefinitionId: storageBlobDataReaderRoleDefinitionId
+    principalId: apiApp.outputs.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 output acrLoginServer string = acr.outputs.loginServer
 output apiAppName string = apiApp.name
 output apiUrl string = apiApp.outputs.latestRevisionFqdn
@@ -318,3 +507,13 @@ output ollamaInternalFqdn string = ollamaApp.outputs.fqdn
 output applicationInsightsConnectionString string = monitoring.outputs.appInsightsConnectionString
 output keyVaultName string = keyVault.name
 output postgresServerFqdn string = postgres.outputs.fqdn
+output mlopsEnabled bool = enableMlops
+output mlopsStorageAccountName string = enableMlops ? mlopsStorage.outputs.name : ''
+output mlopsStorageBlobEndpoint string = enableMlops ? mlopsStorage.outputs.primaryBlobEndpoint : ''
+output mlopsWorkspaceName string = enableMlops ? mlWorkspace.outputs.name : ''
+output mlopsIdentityClientId string = enableMlops ? mlopsIdentity.outputs.clientId : ''
+output mlopsDatasetContainerName string = enableMlops ? mlopsDatasetContainerName : ''
+output mlopsArtifactContainerName string = enableMlops ? mlopsArtifactContainerName : ''
+output mlopsManifestContainerName string = enableMlops ? mlopsManifestContainerName : ''
+output mlopsEvaluationContainerName string = enableMlops ? mlopsEvaluationContainerName : ''
+output commonTags object = commonTags

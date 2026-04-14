@@ -7,6 +7,10 @@
 - For chat 429s, log whether the source is `traveltom` or `provider`.
 - TravelTom limiter logs should include `chat_rate_limit`, caller identity key,
   retry-after, client host, and trace ID.
+- Azure deployment workflows should log:
+  - target image tag
+  - computed revision suffix
+  - previously active revision names
 
 ## Tracing
 
@@ -61,3 +65,12 @@ Current implementation boundary:
 - Latency and error dashboard.
 - Recommender coverage, CTR proxy, and drift dashboard.
 - Azure dashboard seed file: `infra/azure/dashboards.json`.
+
+## Azure infra metadata
+
+- Azure resources should be tagged consistently for filtering and cost review:
+  - `app`
+  - `environment`
+  - `managedBy`
+  - `owner`
+  - `stack`

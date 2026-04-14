@@ -1,0 +1,124 @@
+name: ML Evaluate Dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_version:
+        description: Model version to evaluate
+        required: true
+      baseline_metrics_blob_path:
+        description: Optional baseline metrics blob path inside the evaluation container
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  evaluate-dev:
+    runs-on: ubuntu-latest
+    environment: azure-dev
+    concurrency:
+      group: azure-dev-ml-evaluate
+      cancel-in-progress: false
+    env:
+      STORAGE_ACCOUNT_NAME: ${{ vars.AZURE_MLOPS_STORAGE_ACCOUNT_NAME }}
+      ARTIFACT_CONTAINER: ${{ vars.AZURE_MLOPS_ARTIFACT_CONTAINER }}
+      MANIFEST_CONTAINER: ${{ vars.AZURE_MLOPS_MANIFEST_CONTAINER }}
+      EVALUATION_CONTAINER: ${{ vars.AZURE_MLOPS_EVALUATION_CONTAINER }}
+      MODEL_VERSION: ${{ github.event.inputs.model_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate workflow inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "$STORAGE_ACCOUNT_NAME" ]] && missing+=("AZURE_MLOPS_STORAGE_ACCOUNT_NAME")
+          [[ -z "$ARTIFACT_CONTAINER" ]] && missing+=("AZURE_MLOPS_ARTIFACT_CONTAINER")
+          [[ -z "$EVALUATION_CONTAINER" ]] && missing+=("AZURE_MLOPS_EVALUATION_CONTAINER")
+          [[ -z "$MODEL_VERSION" ]] && missing+=("model_version")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required environment vars: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,ranking-ml]"
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Download candidate artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/mlops/eval
+          artifact_prefix="models/${MODEL_VERSION}"
+          az storage blob download \
+            --account-name "$STORAGE_ACCOUNT_NAME" \
+            --auth-mode login \
+            --container-name "$ARTIFACT_CONTAINER" \
+            --name "${artifact_prefix}/ranker.pkl" \
+            --file build/mlops/eval/ranker.pkl
+
+      - name: Download candidate manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_prefix="models/${MODEL_VERSION}"
+          az storage blob download \
+            --account-name "$STORAGE_ACCOUNT_NAME" \
+            --auth-mode login \
+            --container-name "$MANIFEST_CONTAINER" \
+            --name "${artifact_prefix}/train-manifest.json" \
+            --file build/mlops/eval/train-manifest.json
+
+      - name: Download baseline metrics if provided
+        if: ${{ github.event.inputs.baseline_metrics_blob_path != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          az storage blob download \
+            --account-name "$STORAGE_ACCOUNT_NAME" \
+            --auth-mode login \
+            --container-name "$EVALUATION_CONTAINER" \
+            --name "${{ github.event.inputs.baseline_metrics_blob_path }}" \
+            --file build/mlops/eval/baseline-metrics.json
+
+      - name: Run offline evaluation and gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/evaluate_ranker_v3.py \
+            --artifact-path build/mlops/eval/ranker.pkl \
+            --output-json build/mlops/eval/evaluation.json
+          gate_args=()
+          if [[ -f build/mlops/eval/baseline-metrics.json ]]; then
+            gate_args+=(--baseline-metrics-json build/mlops/eval/baseline-metrics.json)
+          fi
+          python scripts/check_ranker_gates.py \
+            --metrics-json build/mlops/eval/evaluation.json \
+            "${gate_args[@]}" \
+            --output-json build/mlops/eval/gates.json
+
+      - name: Upload evaluation outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_prefix="models/${MODEL_VERSION}"
+          az storage blob upload --overwrite --auth-mode login --account-name "$STORAGE_ACCOUNT_NAME" --container-name "$EVALUATION_CONTAINER" --name "${artifact_prefix}/evaluation.json" --file build/mlops/eval/evaluation.json
+          az storage blob upload --overwrite --auth-mode login --account-name "$STORAGE_ACCOUNT_NAME" --container-name "$EVALUATION_CONTAINER" --name "${artifact_prefix}/gates.json" --file build/mlops/eval/gates.json

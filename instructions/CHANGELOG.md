@@ -2,6 +2,9 @@
 
 ## 2026-04-14
 
+- Hardened Azure deployment modules and workflows with shared resource tags,
+  Container App probe/resource controls, secret-based DB runtime wiring, deploy
+  concurrency, revision capture, stronger smoke checks, and promotion validation.
 - Documented the phased orchestrator refactor while preserving runtime behavior:
   - `04-llm-orchestrator/orchestrator-overview.md` now describes the internal
     `TurnPreparer`, `RecommendationDecisionEngine`,
@@ -165,6 +168,19 @@
     `04-llm-orchestrator/prompts-and-guardrails.md`, and
     `04-llm-orchestrator/session-state-schema.md` now document the stricter
     destination-capture behavior.
+
+# 2026-04-14
+
+- Added dev-first Azure MLOps foundation in `infra/azure/` with optional Azure
+  ML workspace, blob-backed artifact storage, and managed identity wiring.
+- Added dev ML GitHub workflows for training, offline evaluation, and
+  promotion into the API runtime.
+- Updated the ML ranker runtime to resolve promoted artifacts from environment
+  configuration, including private Azure Blob URLs with managed-identity access.
+- Added training-manifest and offline-gate helper scripts for reproducible ML
+  artifact publication and promotion checks.
+- Updated infra, CI/CD, runbook, and MLOps planning docs to make prod rollout
+  explicitly contingent on dev-path stability.
 
 ## 2026-03-18
 

@@ -94,6 +94,9 @@ def main() -> None:
     )
     metrics["ml_queries_with_fallback"] = ml_fallback_count
     metrics["ml_total_queries"] = len(dataset.query_ids)
+    metrics["coverage_gate_passed"] = bool(
+        float(metrics.get("coverage_at_k_rate", 0.0)) >= 0.95
+    )
 
     if args.output_json is not None:
         args.output_json.parent.mkdir(parents=True, exist_ok=True)
