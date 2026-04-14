@@ -11,9 +11,9 @@ import argparse
 import json
 import pickle
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pandas as pd
@@ -81,7 +81,7 @@ def main() -> None:
         "model_family": MODEL_FAMILY,
         "schema_version": MODEL_SCHEMA_VERSION,
         "label_strategy": training_data.label_strategy,
-        "trained_at": datetime.now(UTC).isoformat(),
+        "trained_at": datetime.now(timezone.utc).isoformat(),
         "train_queries": len(split.train.query_ids),
         "validation_queries": len(split.validation.query_ids),
         "evaluation": evaluation,
@@ -211,11 +211,14 @@ def _evaluate_model_against_heuristic(
     )
     eval_frame["score_heuristic"] = _heuristic_scores_for_dataset(validation)
 
-    comparison = compare_grouped_rankers(
+    comparison = cast(
+        dict[str, float | int | str],
+        compare_grouped_rankers(
         frame=eval_frame,
         baseline_score_column="score_heuristic",
         candidate_score_column="score_ml",
         k=k,
+        ),
     )
     comparison["baseline"] = "heuristic-ranker-v3"
     comparison["candidate"] = "ml-ranker-v3-lgbm-ltr"
@@ -276,7 +279,7 @@ def _empty_context() -> RankingFeatureContext:
 
 
 def _default_model_version() -> str:
-    return datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
 
 def _parse_args() -> argparse.Namespace:

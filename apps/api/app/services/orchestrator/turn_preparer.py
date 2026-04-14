@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import ValidationError
 
@@ -44,7 +44,7 @@ def _normalize_item_type_value(item_type: Any) -> RecommendationItemType | None:
     if normalized.endswith("s"):
         normalized = normalized[:-1]
     if normalized in _VALID_ITEM_TYPES:
-        return normalized
+        return cast(RecommendationItemType, normalized)
     return None
 
 

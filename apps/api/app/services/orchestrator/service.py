@@ -502,7 +502,7 @@ class OrchestratorService:
         previous_state: SessionState,
         plan: LLMOrchestrationPlan,
         acknowledged_slots: list[str],
-        agent_result: dict[str, Any],
+        agent_result: AgentRunResult,
         recent_messages: Sequence[TranscriptMessage],
         recommendation_executor: RecommendationExecutor | None,
         response_composer: ResponseComposer | None,

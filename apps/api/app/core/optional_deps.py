@@ -11,7 +11,7 @@ Optional dependencies handled here:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Optional, Protocol, cast, runtime_checkable
 
 
 class OptionalDepsNotInstalledError(RuntimeError):
@@ -112,11 +112,14 @@ def get_azure_b2c_scheme_factory() -> AzureB2CSchemeFactory:
             scopes: Optional[dict[str, str]],
             openid_config_url: str,
         ) -> AzureB2CScheme:
-            return B2CMultiTenantAuthorizationCodeBearer(
+            return cast(
+                AzureB2CScheme,
+                B2CMultiTenantAuthorizationCodeBearer(
                 app_client_id=app_client_id,
                 auto_error=True,
                 scopes=scopes or None,
                 openid_config_url=openid_config_url,
+                ),
             )
 
     return _Factory()
