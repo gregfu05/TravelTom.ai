@@ -17,12 +17,12 @@ import uuid
 from collections.abc import Iterator
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from shutil import copyfile
 from typing import Any, TypeVar
 
 import pandas as pd
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
-from shutil import copyfile
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 API_ROOT = REPO_ROOT / "apps" / "api"
@@ -73,6 +73,7 @@ RESTAURANT_KEYWORDS = (
 
 T = TypeVar("T")
 
+
 def _read_dataframe(file_path: Path) -> pd.DataFrame:
     if file_path.suffix == ".csv":
         return pd.read_csv(file_path)
@@ -96,6 +97,7 @@ def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
         _read_dataframe(dataset_path),
         f"{dataset_path} (copied from raw snapshot)",
     )
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -133,6 +135,7 @@ def _split_tags(value: Any) -> list[str] | None:
     if value is None or pd.isna(value):
         return None
     return [v.strip() for v in str(value).split(",") if v.strip()] or None
+
 
 HOTEL_KEYWORDS = (
     "hotel",
@@ -174,6 +177,7 @@ def _item_type_from_tags(tags: list[str] | None) -> str:
         return "hotel"
 
     return "destination"
+
 
 def _item_type(raw: dict[str, Any]) -> str:
     # Prefer explicit entity_type
