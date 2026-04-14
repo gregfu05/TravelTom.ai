@@ -32,7 +32,10 @@ from app.services.orchestrator.decision_engine import RecommendationDecisionEngi
 from app.services.orchestrator.extraction import (
     build_effective_recommendation_query_text,
     extract_query_filters,
+    has_conversational_recommendation_signal,
     is_follow_up_refinement,
+    is_unsupported_flight_request,
+    is_unsupported_flight_route_reply,
     resolve_effective_item_type,
 )
 from app.services.orchestrator.policies import (
@@ -962,11 +965,7 @@ class OrchestratorService:
         if planned_intent != "clarify":
             return planned_intent
 
-        if (
-            is_greeting(user_message)
-            or is_meta_question(user_message)
-            or is_repair_turn(user_message)
-        ):
+        if is_greeting(user_message) or is_meta_question(user_message):
             return planned_intent
 
         prior_intent = previous_state.conversation.last_user_intent
@@ -987,6 +986,12 @@ class OrchestratorService:
             return prior_intent
         if self._has_trip_setup_context(next_state):
             return "recommend"
+        if has_conversational_recommendation_signal(user_message):
+            return "recommend"
+        if is_unsupported_flight_request(
+            user_message
+        ) and previous_state.conversation.last_user_intent in {"recommend", "refine"}:
+            return cast(Intent, previous_state.conversation.last_user_intent)
         return planned_intent
 
     def _turn_intent(
@@ -1000,6 +1005,12 @@ class OrchestratorService:
             return planned_intent
         if extract_query_filters(user_message):
             return "refine" if previous_state.status == "refine" else "recommend"
+        if has_conversational_recommendation_signal(user_message):
+            return "recommend"
+        if is_unsupported_flight_request(
+            user_message
+        ) and previous_state.conversation.last_user_intent in {"recommend", "refine"}:
+            return cast(Intent, previous_state.conversation.last_user_intent)
         if is_follow_up_refinement(user_message):
             return "refine"
         if planned_intent is not None:
@@ -1062,6 +1073,13 @@ class OrchestratorService:
     ) -> list[str]:
         if is_greeting(user_message):
             return []
+        if is_unsupported_flight_request(
+            user_message
+        ) or is_unsupported_flight_route_reply(
+            message=user_message,
+            session_state=session_state,
+        ):
+            return []
         return requested_slots_for_clarification(session_state)
 
     def _clarification_response(
@@ -1090,12 +1108,20 @@ class OrchestratorService:
             user_message=user_message,
             intent=intent,
         )
-        next_state.conversation.last_requested_slots = (
-            self._requested_slots_for_clarification(
-                session_state=next_state,
-                user_message=user_message,
+        if is_unsupported_flight_request(
+            user_message
+        ) or is_unsupported_flight_route_reply(
+            message=user_message,
+            session_state=previous_state,
+        ):
+            next_state.conversation.last_requested_slots = []
+        else:
+            next_state.conversation.last_requested_slots = (
+                self._requested_slots_for_clarification(
+                    session_state=next_state,
+                    user_message=user_message,
+                )
             )
-        )
         next_state.conversation.last_clarification_kind = clarification_kind_for_state(
             next_state
         )
@@ -1109,6 +1135,11 @@ class OrchestratorService:
             and not is_greeting(user_message)
             and not is_meta_question(user_message)
             and not is_repair_turn(user_message)
+            and not is_unsupported_flight_request(user_message)
+            and not is_unsupported_flight_route_reply(
+                message=user_message,
+                session_state=previous_state,
+            )
         ):
             effective_fallback_message = build_clarification_message(
                 next_state,

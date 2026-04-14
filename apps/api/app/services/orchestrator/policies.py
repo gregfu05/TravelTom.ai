@@ -22,6 +22,7 @@ from app.services.orchestrator.extraction import (
     infer_conversational_item_type,
     is_follow_up_refinement,
     is_unsupported_flight_request,
+    is_unsupported_flight_route_reply,
     is_vague_acceptance_reply,
     resolve_effective_item_type,
 )
@@ -230,6 +231,12 @@ def decide_next_action(message: str, state: SessionState) -> OrchestrationDecisi
             should_call_recommendation_tool=False,
             reason="flight requests are unsupported",
         )
+    if is_unsupported_flight_route_reply(message=message, session_state=state):
+        return OrchestrationDecision(
+            intent="clarify",
+            should_call_recommendation_tool=False,
+            reason="flight route replies are unsupported",
+        )
 
     if is_greeting(message):
         return OrchestrationDecision(
@@ -363,7 +370,9 @@ def build_clarification_message(
 
     clarification_kind = clarification_kind_for_state(session_state)
     if clarification_kind == "search_type":
-        prefix = _build_acknowledgement_prefix(acknowledged_slots or [])
+        prefix = ""
+        if not (message and has_conversational_recommendation_signal(message)):
+            prefix = _build_acknowledgement_prefix(acknowledged_slots or [])
         if not prefix:
             return build_search_type_question(session_state)
         if session_state.constraints.destination:
@@ -387,6 +396,13 @@ def build_clarification_message(
         )
 
     prefix = _build_acknowledgement_prefix(acknowledged_slots or [])
+    if (
+        message is not None
+        and has_conversational_recommendation_signal(message)
+        and session_state.constraints.destination is None
+        and requested_slots_for_clarification(session_state) == ["destination"]
+    ):
+        prefix = ""
     return prefix + _build_contextual_slot_question(
         session_state,
         requested_slots_for_clarification(session_state),
@@ -500,7 +516,12 @@ def build_guardrail_plan(
             clarification_message = build_social_turn_message(message)
         elif is_greeting(message):
             clarification_message = build_greeting_message()
-        elif is_unsupported_flight_request(message):
+        elif is_unsupported_flight_request(
+            message
+        ) or is_unsupported_flight_route_reply(
+            message=message,
+            session_state=session_state,
+        ):
             clarification_message = _UNSUPPORTED_FLIGHT_MESSAGE
         elif is_meta_question(message):
             clarification_message = build_meta_turn_message(
@@ -968,7 +989,19 @@ def is_repair_turn(message: str) -> bool:
     lowered = message.casefold()
     if is_meta_question(message):
         return False
-    if extract_query_filters(message):
+    if has_conversational_recommendation_signal(message):
+        return False
+    if is_unsupported_flight_request(message):
+        return False
+    if re.search(
+        (
+            r"\b(?:under|below|less than|max(?:imum)?|up to|not more than|"
+            r"starting from|at least|around|about|roughly|approximately)\b"
+        ),
+        lowered,
+    ):
+        return False
+    if re.search(r"\b\d[\d,]*(?:\.\d+)?k?\b", lowered) and "budget" in lowered:
         return False
     return any(re.search(pattern, lowered) for pattern in _REPAIR_PATTERNS)
 
