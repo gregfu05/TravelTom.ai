@@ -37,9 +37,13 @@ az login
 az account set --subscription <subscription-id>
 ```
 
-2. Create resource groups (one per environment).
+2. Create resource groups.
 
 ```bash
+# Single shared resource group (LLM-only path)
+az group create --name travel-tom-rg --location westeurope
+
+# Full-stack path (separate dev/prod groups)
 az group create --name traveltom-dev-rg --location westeurope
 az group create --name traveltom-prod-rg --location westeurope
 ```
@@ -53,7 +57,46 @@ export LOCAL_AUTH_TOKEN_SECRET='<random-secret>'
 # export OPENAI_API_KEY='<key>'
 ```
 
-## Validate, Preview, Deploy
+## Quick Path: Deploy Ollama As A Service (Single Resource Group)
+
+Use this path when you want only the LLM service in `travel-tom-rg`.
+
+- `infra/azure/scripts/deploy-ollama-service.sh`
+- Template: `infra/azure/ollama-service.bicep`
+
+Validate:
+
+```bash
+infra/azure/scripts/deploy-ollama-service.sh validate travel-tom-rg
+```
+
+Preview:
+
+```bash
+infra/azure/scripts/deploy-ollama-service.sh what-if travel-tom-rg
+```
+
+Deploy:
+
+```bash
+OLLAMA_MODELS='llama3.1:8b,qwen2.5:14b' \
+OLLAMA_MIN_REPLICAS=1 \
+OLLAMA_MEMORY=8Gi \
+OLLAMA_KEEP_ALIVE=30m \
+OLLAMA_INGRESS_EXTERNAL=true \
+infra/azure/scripts/deploy-ollama-service.sh deploy travel-tom-rg
+```
+
+Verify:
+
+```bash
+infra/azure/scripts/check-ollama.sh shared
+```
+
+If you enable `OLLAMA_INGRESS_EXTERNAL=true`, lock down ingress before production use.
+For `Consumption` profile, Azure enforces fixed CPU/memory pairs (for example `4 CPU` with `8Gi`).
+
+## Full Stack: Validate, Preview, Deploy
 
 Use the helper script to avoid long manual commands:
 
@@ -113,6 +156,7 @@ Use the verification helper:
 
 ```bash
 infra/azure/scripts/check-ollama.sh dev
+infra/azure/scripts/check-ollama.sh shared
 ```
 
 Then verify API health:

@@ -20,7 +20,9 @@ while keeping backend configuration fully env-driven.
 
 ## Recommended remote setup
 
-1. Run Ollama on a dedicated host/VM with GPU access.
+1. Deploy Ollama (Container Apps path in this repo):
+   - `OLLAMA_INGRESS_EXTERNAL=true infra/azure/scripts/deploy-ollama-service.sh deploy travel-tom-rg`
+   - `infra/azure/scripts/check-ollama.sh shared`
 2. Put TLS in front of Ollama (reverse proxy or load balancer).
 3. Restrict ingress to backend network ranges only.
 4. Pre-pull required models on the Ollama host:
