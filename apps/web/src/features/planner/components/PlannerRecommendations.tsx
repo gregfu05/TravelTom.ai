@@ -25,9 +25,6 @@ function RecommendationCards({
               <p className="recommendation-rank">#{item.rank}</p>
               <div className="recommendation-card-badges">
                 <p className="recommendation-type">{item.itemType}</p>
-                <p className="recommendation-score">
-                  Score {item.score.toFixed(2)}
-                </p>
               </div>
             </div>
             <h3>{getRecommendationName(item)}</h3>
@@ -47,10 +44,6 @@ function RecommendationCards({
                 View on map
               </a>
             ) : null}
-            <details className="recommendation-details">
-              <summary>Why this pick</summary>
-              <p>{item.explanation}</p>
-            </details>
           </article>
         </li>
       ))}

@@ -8,7 +8,13 @@ from typing import Any, Callable
 from pydantic import ValidationError
 
 from app.core.telemetry import start_span
-from app.schemas.api.recommendations import RecommendationQuery, RecommendationResponse
+from app.schemas.api.recommendations import (
+    RecommendationQuery,
+    RecommendationResponse,
+)
+from app.schemas.api.recommendations import (
+    RecommendationResult as ApiRecommendationResult,
+)
 from app.schemas.tools.recommendations import (
     RecommendationQuery as RecommendationToolQuery,
 )
@@ -58,6 +64,15 @@ async def execute_recommendation_query(
             "Recommendation service unavailable"
         ) from exc
 
-    return RecommendationResponse.model_validate(
-        validated_output.model_dump(mode="json")
+    return RecommendationResponse(
+        results=[
+            ApiRecommendationResult(
+                item_id=item.item_id,
+                item_type=item.item_type,
+                rank=item.rank,
+                features=dict(item.features or {}),
+            )
+            for item in validated_output.results
+        ],
+        ranking_version=validated_output.ranking_version,
     )

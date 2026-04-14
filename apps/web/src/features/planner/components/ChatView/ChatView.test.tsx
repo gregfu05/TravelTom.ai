@@ -67,9 +67,7 @@ describe("ChatView", () => {
         {
           itemId: "dest-lisbon",
           itemType: "destination",
-          score: 0.94,
           rank: 1,
-          explanation: "Culture and food fit.",
           metadata: {
             name: "Lisbon",
             city: "Lisbon",
@@ -155,9 +153,7 @@ describe("ChatView", () => {
         {
           itemId: "hotel-1",
           itemType: "hotel",
-          score: 0.9,
           rank: 1,
-          explanation: "Hydrated fit",
           metadata: { name: "Hydrated Hotel", city: "Lisbon" },
         },
       ],
@@ -221,9 +217,7 @@ describe("ChatView", () => {
         {
           itemId: "hotel-1",
           itemType: "hotel",
-          score: 0.91,
           rank: 1,
-          explanation: "Great",
           metadata: { name: "Test Hotel", city: "Lisbon" },
         },
       ],
@@ -245,9 +239,7 @@ describe("ChatView", () => {
         {
           itemId: "hotel-1",
           itemType: "hotel",
-          score: 0.91,
           rank: 1,
-          explanation: "Great",
           metadata: { name: "Test Hotel", city: "Lisbon" },
         },
       ],

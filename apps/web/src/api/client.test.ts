@@ -144,9 +144,7 @@ describe("apiClient", () => {
             {
               item_id: "dest-lisbon",
               item_type: "destination",
-              score: 0.93,
               rank: 1,
-              explanation: "Excellent match for culture and food.",
               metadata: { name: "Lisbon" },
             },
           ],
