@@ -14,7 +14,6 @@ from app.schemas.tools.recommendations import (
     RecommendationQuery,
     RecommendationToolResponse,
 )
-from app.services.recommendation_query import RecommendationTool
 from traveltom.recommendor.recommendor_v3 import (
     prepare_catalog_for_v3,
 )
