@@ -75,12 +75,15 @@ T = TypeVar("T")
 
 
 def _read_dataframe(file_path: Path) -> pd.DataFrame:
+    if not file_path.exists():
+        raise FileNotFoundError(file_path)
+
     if file_path.suffix == ".csv":
         return pd.read_csv(file_path)
-    elif file_path.suffix == ".parquet":
+    if file_path.suffix == ".parquet":
         return pd.read_parquet(file_path)
-    else:
-        raise ValueError(f"Unsupported file format: {file_path.suffix}")
+
+    raise ValueError(f"Unsupported format: {file_path}")
 
 
 def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
@@ -372,12 +375,15 @@ def _filter_source(
 
     return working
 def _filter(df: pd.DataFrame, min_review_count: int) -> pd.DataFrame:
-    df = df.drop_duplicates(subset="business_id")
+    working = df.copy()
 
-    if "review_count" in df.columns:
-        df = df[df["review_count"].fillna(0) >= min_review_count]
+    if "business_id" in working.columns:
+        working = working.drop_duplicates(subset="business_id")
 
-    return df
+    if "review_count" in working.columns and min_review_count > 0:
+        working = working[working["review_count"].fillna(0) >= min_review_count]
+
+    return working
 
 
 async def _upsert(rows: list[dict[str, Any]], batch_size: int, truncate: bool) -> int:
