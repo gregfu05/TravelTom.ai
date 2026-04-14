@@ -119,7 +119,7 @@ def test_main_returns_zero_when_dataset_missing(tmp_path: Path, monkeypatch) -> 
     assert seed_catalog.main() == 0
 
 
-def test_main_does_not_swallow_unrelated_file_errors(
+def test_main_does_not_swallow_non_file_not_found_errors(
     monkeypatch, tmp_path: Path
 ) -> None:
     args = argparse.Namespace(
@@ -132,10 +132,10 @@ def test_main_does_not_swallow_unrelated_file_errors(
     )
 
     async def _raising_main_async(_args: argparse.Namespace) -> None:
-        raise FileNotFoundError("some other missing file")
+        raise RuntimeError("unexpected error")
 
     monkeypatch.setattr(seed_catalog, "parse_args", lambda: args)
     monkeypatch.setattr(seed_catalog, "main_async", _raising_main_async)
 
-    with pytest.raises(FileNotFoundError, match="some other missing file"):
+    with pytest.raises(RuntimeError, match="unexpected error"):
         seed_catalog.main()
