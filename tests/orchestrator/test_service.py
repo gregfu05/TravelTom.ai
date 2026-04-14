@@ -220,6 +220,55 @@ def test_orchestrator_planner_patch_updates_state_before_clarification() -> None
     assert "travel dates" in response.assistant_message
 
 
+def test_orchestrator_state_patch_conversation_does_not_block_recommendation() -> None:
+    service = OrchestratorService()
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        captured_query["value"] = query
+        return RecommendationToolResponse.model_validate(
+            {
+                "ranking_version": "heuristic-v1",
+                "results": [
+                    {
+                        "item_id": "hotel-lisbon-2",
+                        "item_type": "hotel",
+                        "score": 0.9,
+                        "rank": 1,
+                        "features": {"name": "Lisbon Harbor Hotel"},
+                        "explanation": "Planner output validated and reached tool.",
+                    }
+                ],
+            }
+        )
+
+    response = service.handle_message(
+        user_message="show me hotels",
+        session_state=_base_state(),
+        planner_executor=lambda _prompt: {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "state_patch": {"conversation": {"last_clarification_kind": "greeting"}},
+            "query_controls": {
+                "filters": {"item_type": "hotel"},
+                "max_results": 3,
+            },
+        },
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="Checking")]},
+        recommendation_executor=recommendation_executor,
+    )
+
+    assert captured_query["value"] is not None
+    query = captured_query["value"]
+    assert query is not None
+    assert query.filters.get("item_type") == "hotel"
+    assert query.max_results == 3
+    assert response.recommendations
+    assert response.recommendations[0].features.get("name") == "Lisbon Harbor Hotel"
+
+
 def test_orchestrator_nested_state_patch_query_controls_reaches_recommendation() -> (
     None
 ):

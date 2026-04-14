@@ -121,6 +121,30 @@ def test_orchestration_plan_accepts_nested_state_patch_query_controls() -> None:
     )
 
 
+def test_orchestration_plan_accepts_state_patch_conversation() -> None:
+    plan = LLMOrchestrationPlan.model_validate(
+        {
+            "intent": "clarify",
+            "should_call_recommendation_tool": False,
+            "clarification_message": "Hi! How can I help with your trip today?",
+            "state_patch": {
+                "conversation": {
+                    "last_clarification_kind": "greeting",
+                    "last_user_intent": "clarify",
+                }
+            },
+        }
+    )
+
+    assert plan.state_patch.conversation is not None
+    assert plan.state_patch.conversation.last_clarification_kind == "greeting"
+    assert plan.state_patch.conversation.last_user_intent == "clarify"
+    assert "conversation" not in plan.state_patch.model_dump(
+        mode="python",
+        exclude_unset=True,
+    )
+
+
 def test_recommendation_tool_response_allows_empty_results() -> None:
     response = RecommendationToolResponse.model_validate(
         {"results": [], "ranking_version": "heuristic-v1"}

@@ -88,6 +88,36 @@ class RecommendationQueryControls(BaseModel):
     max_results: int | None = Field(default=None, ge=1, le=50)
 
 
+class PlannerConversationPatch(BaseModel):
+    """LLM-proposed conversation metadata (transient planner hints)."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    last_requested_slots: list[str] | None = None
+    last_user_intent: Intent | None = None
+    last_clarification_kind: (
+        Literal[
+            "core_slot",
+            "search_type",
+            "refine_preference",
+            "greeting",
+        ]
+        | None
+    ) = None
+    last_search_outcome: (
+        Literal[
+            "results",
+            "empty_results",
+            "no_new_results",
+        ]
+        | None
+    ) = None
+    last_recommendation_item_type: Literal["destination", "hotel", "flight"] | None = (
+        None
+    )
+    last_recommendation_query: str | None = None
+
+
 class OrchestrationStatePatch(BaseModel):
     """LLM state patch merged into the persisted ``SessionState``."""
 
@@ -97,6 +127,10 @@ class OrchestrationStatePatch(BaseModel):
     preferences: PreferencePatch | None = None
     entities: EntityPatch | None = None
     status: SessionStatus | None = None
+    conversation: PlannerConversationPatch | None = Field(
+        default=None,
+        exclude=True,
+    )
     query_controls: RecommendationQueryControls | None = Field(
         default=None,
         exclude=True,
