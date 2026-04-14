@@ -36,6 +36,9 @@ param memory string = '8Gi'
 @description('How long Ollama keeps models loaded in memory after requests (e.g. 30m).')
 param keepAlive string = '30m'
 
+@description('Expose Ollama over external ingress. Keep false for internal-only service access.')
+param ingressExternal bool = false
+
 var startupPullModels = empty(modelNames) ? 'llama3.1:8b' : join(modelNames, ',')
 
 resource app 'Microsoft.App/containerApps@2024-03-01' = {
@@ -47,7 +50,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
     configuration: {
       activeRevisionsMode: 'Single'
       ingress: {
-        external: false
+        external: ingressExternal
         targetPort: 11434
         transport: 'auto'
       }
