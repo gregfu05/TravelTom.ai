@@ -418,9 +418,9 @@ class DeterministicTravelTomChatModel(_DeterministicToolCallingModel):
                 mode="json"
             )
         if session_state.constraints.party_size:
-            constraints[
-                "party_size"
-            ] = session_state.constraints.party_size.model_dump()
+            constraints["party_size"] = (
+                session_state.constraints.party_size.model_dump()
+            )
 
         recommendation_context = extract_runtime_recommendation_context(messages)
         query_text = recommendation_context.get("effective_query")

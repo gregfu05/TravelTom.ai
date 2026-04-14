@@ -10,7 +10,7 @@ const LEGACY_SUGGESTION_CHIPS = [
   "Beach destinations in Europe under 1500 EUR",
   "City break ideas for 4 days in May",
   "Budget under EUR500",
-  "Flights from Madrid to Lisbon next weekend",
+  "Restaurants in Lisbon next weekend",
   "Family-friendly destinations in June under 2000 USD",
   "Romantic weekend in Italy under 1200 EUR",
 ] as const;
@@ -19,7 +19,7 @@ export const SUGGESTION_CHIPS = [
   "Beach destinations in Europe under 1500 EUR",
   "City break ideas for 4 days in May",
   "Hotels in Lisbon next weekend under 1500 EUR",
-  "Flights from Madrid to Lisbon next weekend",
+  "Activities in Lisbon next weekend",
   "Family-friendly destinations in June under 2000 USD",
   "Romantic weekend in Italy under 1200 EUR",
 ] as const;
