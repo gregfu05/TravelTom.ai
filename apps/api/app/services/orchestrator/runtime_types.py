@@ -43,6 +43,7 @@ class RecommendationOutcome:
     fallback_message: str
     outcome: str
     candidate_message: str | None = None
+    retry_with_expanded_results: bool = False
 
 
 @dataclass(frozen=True)
