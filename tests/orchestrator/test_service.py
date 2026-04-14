@@ -220,6 +220,60 @@ def test_orchestrator_planner_patch_updates_state_before_clarification() -> None
     assert "travel dates" in response.assistant_message
 
 
+def test_orchestrator_nested_state_patch_query_controls_reaches_recommendation() -> (
+    None
+):
+    service = OrchestratorService()
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        captured_query["value"] = query
+        return RecommendationToolResponse.model_validate(
+            {
+                "ranking_version": "heuristic-v1",
+                "results": [
+                    {
+                        "item_id": "hotel-kyoto-1",
+                        "item_type": "hotel",
+                        "score": 0.93,
+                        "rank": 1,
+                        "features": {"name": "Kyoto Planner Hotel"},
+                        "explanation": (
+                            "Planner nested query_controls mapped correctly."
+                        ),
+                    }
+                ],
+            }
+        )
+
+    response = service.handle_message(
+        user_message="show me hotel options",
+        session_state=_base_state(),
+        planner_executor=lambda _prompt: {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "state_patch": {
+                "query_controls": {
+                    "filters": {"item_type": "hotel"},
+                    "max_results": 3,
+                }
+            },
+        },
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="Checking")]},
+        recommendation_executor=recommendation_executor,
+    )
+
+    assert captured_query["value"] is not None
+    query = captured_query["value"]
+    assert query is not None
+    assert query.filters.get("item_type") == "hotel"
+    assert query.max_results == 3
+    assert response.recommendations
+    assert response.recommendations[0].features.get("name") == "Kyoto Planner Hotel"
+
+
 def test_orchestrator_invalid_planner_patch_falls_back_to_deterministic_state() -> None:
     service = OrchestratorService()
     state = SessionState.model_validate(

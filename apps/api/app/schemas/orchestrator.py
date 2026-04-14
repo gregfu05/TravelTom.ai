@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.state import BudgetRange, DateRange, PartySize
 from app.schemas.tools.recommendations import (
@@ -97,6 +97,10 @@ class OrchestrationStatePatch(BaseModel):
     preferences: PreferencePatch | None = None
     entities: EntityPatch | None = None
     status: SessionStatus | None = None
+    query_controls: RecommendationQueryControls | None = Field(
+        default=None,
+        exclude=True,
+    )
 
 
 class LLMOrchestrationPlan(BaseModel):
@@ -113,6 +117,32 @@ class LLMOrchestrationPlan(BaseModel):
     query_controls: RecommendationQueryControls = Field(
         default_factory=RecommendationQueryControls
     )
+
+    @model_validator(mode="after")
+    def coerce_query_controls_from_state_patch(self) -> "LLMOrchestrationPlan":
+        """Support planner payloads that nest query_controls inside state_patch."""
+
+        nested = self.state_patch.query_controls
+        if nested is None:
+            return self
+
+        self.query_controls = RecommendationQueryControls(
+            query=(
+                self.query_controls.query
+                if self.query_controls.query is not None
+                else nested.query
+            ),
+            filters={
+                **nested.filters,
+                **self.query_controls.filters,
+            },
+            max_results=(
+                self.query_controls.max_results
+                if self.query_controls.max_results is not None
+                else nested.max_results
+            ),
+        )
+        return self
 
 
 class LLMComposedResponse(BaseModel):
