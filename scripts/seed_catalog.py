@@ -19,7 +19,6 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, TypeVar
 
-import numpy as np
 import pandas as pd
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -29,15 +28,11 @@ API_ROOT = REPO_ROOT / "apps" / "api"
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
-from app.db.models.catalog_item import CatalogItem  # noqa: E402
-from app.db.session import get_engine, get_session_factory  # noqa: E402
+from app.db.models.catalog_item import CatalogItem  # noqa
+from app.db.session import get_engine, get_session_factory  # noqa
 
-DEFAULT_DATASET = (
-    REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean2.csv"
-)
-DEFAULT_RAW_DATASET = (
-    REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean2.csv"
-)
+DEFAULT_DATASET = REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean2.csv"
+
 BUSINESS_ID_NAMESPACE = uuid.UUID("56f6e980-b2c0-4be2-a238-7176bf5a4fa7")
 
 HOTEL_KEYWORDS = (
@@ -74,74 +69,39 @@ T = TypeVar("T")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Seed catalog_items from cleaned Composite CSV."
-    )
-    parser.add_argument(
-        "--dataset",
-        type=Path,
-        default=DEFAULT_DATASET,
-        help="Path to source CSV dataset (defaults to cleaned snapshot).",
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=500,
-        help="Rows per upsert batch.",
-    )
-    parser.add_argument(
-        "--min-review-count",
-        type=int,
-        default=10,
-        help="Drop rows below this review count.",
-    )
-    parser.add_argument(
-        "--include-closed",
-        action="store_true",
-        help="Include businesses with is_open != 1.",
-    )
-    parser.add_argument(
-        "--truncate",
-        action="store_true",
-        help="Delete all existing catalog_items rows before insert/upsert.",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print what would be inserted without writing to the database.",
-    )
-    args = parser.parse_args()
-    if args.batch_size <= 0:
-        parser.error("--batch-size must be > 0")
-    if args.min_review_count < 0:
-        parser.error("--min-review-count must be >= 0")
-    return args
+    parser = argparse.ArgumentParser(description="Seed catalog_items from cleaned dataset.")
+    parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
+    parser.add_argument("--batch-size", type=int, default=500)
+    parser.add_argument("--min-review-count", type=int, default=0)
+    parser.add_argument("--truncate", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    return parser.parse_args()
 
 
 def _chunks(items: list[T], size: int) -> Iterator[list[T]]:
-    for start in range(0, len(items), size):
-        yield items[start : start + size]
+    for i in range(0, len(items), size):
+        yield items[i : i + size]
 
 
 def _as_decimal(value: Any) -> Decimal | None:
-    if value is None or pd.isna(value):
-        return None
     try:
+        if value is None or pd.isna(value):
+            return None
         return Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
 
 
-def _split_tags(categories: Any) -> list[str] | None:
-    if isinstance(categories, (list, tuple, set, np.ndarray, pd.Series)):
-        tags = [str(part).strip() for part in categories if str(part).strip()]
-        return tags or None
-    if categories is None:
+def _safe_str(value: Any) -> str | None:
+    if value is None or pd.isna(value):
         return None
-    if pd.isna(categories):
+    return str(value)
+
+
+def _split_tags(value: Any) -> list[str] | None:
+    if value is None or pd.isna(value):
         return None
-    tags = [part.strip() for part in str(categories).split(",") if part.strip()]
-    return tags or None
+    return [v.strip() for v in str(value).split(",") if v.strip()] or None
 
 
 def _coerce_attributes(value: Any) -> dict[str, Any]:
@@ -258,6 +218,16 @@ def _item_type_from_row(raw: dict[str, Any], tags: list[str] | None) -> str:
     if entity_type in {"restaurant", "attraction", "destination"}:
         return "destination"
     return _item_type_from_tags(tags)
+def _item_type(raw: dict[str, Any]) -> str:
+    # Prefer explicit entity_type
+    et = str(raw.get("entity_type") or "").lower()
+
+    if et in {"hotel", "lodging"}:
+        return "hotel"
+    if et in {"flight", "airport", "airline"}:
+        return "flight"
+
+    return "destination"
 
 
 def _normalize_tag(value: str) -> str:
@@ -356,11 +326,19 @@ def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
                     else None
                 ),
                 "location_country": location_country,
+                "item_type": _item_type(raw),
+                "name": _safe_str(raw.get("name")) or business_id,
+                "description": _safe_str(raw.get("description_clean") or raw.get("description")),
+                "location_city": _safe_str(raw.get("city")),
+                "location_country": _safe_str(raw.get("country")) or "US",
                 "latitude": _as_decimal(raw.get("latitude")),
                 "longitude": _as_decimal(raw.get("longitude")),
                 "price": _price_from_attributes(attributes),
                 "rating": _rating_from_row(raw),
                 "tags": tags,
+                "price": None,  # no price field anymore
+                "rating": _as_decimal(raw.get("stars")),
+                "tags": _split_tags(raw.get("categories_clean")),
                 "metadata_json": {
                     "business_id": business_id,
                     "address": raw.get("address"),
@@ -385,9 +363,18 @@ def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
                     "category_flags": category_flags,
                     "entity_type": entity_type,
                     "source": source,
+                    "source": raw.get("source"),
+                    "entity_type": raw.get("entity_type"),
+                    "review_count": int(raw["review_count"]) if not pd.isna(raw.get("review_count")) else None,
+                    "popularity": float(raw["popularity"]) if not pd.isna(raw.get("popularity")) else None,
+                    "quality_score": raw.get("quality_score"),
+                    "stars_norm": raw.get("stars_norm"),
+                    "review_count_norm": raw.get("review_count_norm"),
+                    "popularity_norm": raw.get("popularity_norm"),
                 },
             }
         )
+
     return rows
 
 
@@ -413,11 +400,16 @@ def _filter_source(
         working = working.drop_duplicates(subset="business_id")
 
     return working
+def _filter(df: pd.DataFrame, min_review_count: int) -> pd.DataFrame:
+    df = df.drop_duplicates(subset="business_id")
+
+    if "review_count" in df.columns:
+        df = df[df["review_count"].fillna(0) >= min_review_count]
+
+    return df
 
 
-async def _upsert_rows(
-    rows: list[dict[str, Any]], batch_size: int, truncate: bool
-) -> int:
+async def _upsert(rows: list[dict[str, Any]], batch_size: int, truncate: bool) -> int:
     session_factory = get_session_factory()
 
     async with session_factory() as session:
@@ -426,7 +418,8 @@ async def _upsert_rows(
 
         for batch in _chunks(rows, batch_size):
             stmt = insert(CatalogItem).values(batch)
-            upsert_stmt = stmt.on_conflict_do_update(
+
+            stmt = stmt.on_conflict_do_update(
                 index_elements=[CatalogItem.id],
                 set_={
                     "item_type": stmt.excluded.item_type,
@@ -443,23 +436,13 @@ async def _upsert_rows(
                     "updated_at": func.now(),
                 },
             )
-            await session.execute(upsert_stmt)
+
+            await session.execute(stmt)
 
         await session.commit()
+
         result = await session.execute(select(func.count()).select_from(CatalogItem))
         return int(result.scalar_one())
-
-
-def _print_summary(rows: list[dict[str, Any]]) -> None:
-    by_type: dict[str, int] = {"destination": 0, "hotel": 0, "flight": 0}
-    for row in rows:
-        by_type[row["item_type"]] = by_type.get(row["item_type"], 0) + 1
-
-    print(f"Prepared rows: {len(rows)}")
-    print("Item types:")
-    print(f"  destination: {by_type.get('destination', 0)}")
-    print(f"  hotel: {by_type.get('hotel', 0)}")
-    print(f"  flight: {by_type.get('flight', 0)}")
 
 
 async def main_async(args: argparse.Namespace) -> None:
@@ -477,21 +460,14 @@ async def main_async(args: argparse.Namespace) -> None:
     )
     rows = _prepare_rows(filtered)
 
-    print(f"Dataset: {source_label}")
-    print(f"Input rows: {len(source)}")
-    print(f"Rows after filters: {len(filtered)}")
-    _print_summary(rows)
+    print(f"Rows to insert: {len(rows)}")
 
     if args.dry_run:
-        print("Dry-run enabled. No database changes made.")
+        print("Dry run complete.")
         return
 
-    final_count = await _upsert_rows(
-        rows=rows,
-        batch_size=args.batch_size,
-        truncate=args.truncate,
-    )
-    print(f"catalog_items row count after load: {final_count}")
+    count = await _upsert(rows, args.batch_size, args.truncate)
+    print(f"Final row count: {count}")
 
     engine = get_engine()
     await engine.dispose()
@@ -500,7 +476,6 @@ async def main_async(args: argparse.Namespace) -> None:
 def main() -> int:
     args = parse_args()
     asyncio.run(main_async(args))
-    return 0
 
 
 def _read_dataframe(file_path: Path) -> pd.DataFrame:
