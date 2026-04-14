@@ -16,6 +16,7 @@ permissions:
   id-token: write
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   REGISTRY_NAME: ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
   API_IMAGE_NAME: traveltom-api
   WEB_IMAGE_NAME: traveltom-web
@@ -26,6 +27,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
+    environment: azure-dev
     outputs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
     steps:
@@ -33,6 +35,29 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.git_ref || github.event.workflow_run.head_sha }}
+
+      - name: Validate Azure workflow inputs
+        shell: bash
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          DEV_API_BASE_URL: ${{ vars.DEV_API_BASE_URL }}
+          DEV_FRONTEND_APPINSIGHTS_CONNECTION_STRING: ${{ secrets.DEV_FRONTEND_APPINSIGHTS_CONNECTION_STRING }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "$AZURE_CLIENT_ID" ]] && missing+=("AZURE_CLIENT_ID")
+          [[ -z "$AZURE_TENANT_ID" ]] && missing+=("AZURE_TENANT_ID")
+          [[ -z "$AZURE_SUBSCRIPTION_ID" ]] && missing+=("AZURE_SUBSCRIPTION_ID")
+          [[ -z "$DEV_API_BASE_URL" ]] && missing+=("DEV_API_BASE_URL")
+          [[ -z "$DEV_FRONTEND_APPINSIGHTS_CONNECTION_STRING" ]] && missing+=("DEV_FRONTEND_APPINSIGHTS_CONNECTION_STRING")
+          [[ -z "$REGISTRY_NAME" ]] && missing+=("AZURE_CONTAINER_REGISTRY_NAME")
+
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required environment secrets/vars: ${missing[*]}"
+            exit 1
+          fi
 
       - name: Azure login
         uses: azure/login@v2
