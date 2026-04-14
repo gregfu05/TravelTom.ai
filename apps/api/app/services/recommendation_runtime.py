@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 from functools import lru_cache
 from pathlib import Path
+from typing import Callable
 
 import pandas as pd
 
@@ -98,7 +99,7 @@ def preload_recommendation_catalog(settings: Settings | None = None) -> pd.DataF
 def get_runtime_recommendation_tool(
     *,
     settings: Settings | None = None,
-) -> RecommendationTool:
+) -> Callable[[RecommendationQuery], RecommendationToolResponse]:
     active_settings = settings or get_settings()
     store = get_recommendation_catalog_store()
     dataset_path = _resolve_dataset_path(active_settings)

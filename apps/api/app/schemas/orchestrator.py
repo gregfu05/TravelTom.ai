@@ -112,9 +112,9 @@ class PlannerConversationPatch(BaseModel):
         ]
         | None
     ) = None
-    last_recommendation_item_type: (
-        Literal["hotel", "restaurant", "activity"] | None
-    ) = None
+    last_recommendation_item_type: Literal["hotel", "restaurant", "activity"] | None = (
+        None
+    )
     last_recommendation_query: str | None = None
 
 
