@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -139,3 +142,28 @@ def test_main_does_not_swallow_non_file_not_found_errors(
 
     with pytest.raises(RuntimeError, match="unexpected error"):
         seed_catalog.main()
+
+
+def test_cli_entrypoint_exits_zero_when_dataset_missing(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "traveltom_clean.csv"
+    env = os.environ.copy()
+    env.setdefault(
+        "DATABASE_URL",
+        "postgresql+asyncpg://traveltom:traveltom@localhost:5432/traveltom",
+    )
+
+    process = subprocess.run(
+        [
+            sys.executable,
+            str(Path(seed_catalog.__file__).resolve()),
+            "--dataset",
+            str(dataset_path),
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+
+    assert process.returncode == 0
+    assert "Dataset not found. Skipping catalog_items seed." in process.stdout

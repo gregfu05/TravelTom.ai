@@ -491,11 +491,7 @@ async def main_async(args: argparse.Namespace) -> None:
 
 def main() -> int:
     args = parse_args()
-    try:
-        asyncio.run(main_async(args))
-    except FileNotFoundError:
-        print("Dataset not found. Skipping catalog_items seed.")
-        return 0
+    asyncio.run(main_async(args))
     return 0
 
 
