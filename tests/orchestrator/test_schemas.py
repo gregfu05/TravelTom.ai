@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from app.schemas.orchestrator import LLMOrchestrationPlan
 from app.schemas.state import SessionState
 from app.schemas.tools.catalog import CatalogSearchQuery
 from app.schemas.tools.events import EventPayload
@@ -91,6 +92,57 @@ def test_recommendation_query_rejects_invalid_max_results() -> None:
         RecommendationQuery.model_validate(
             {"session_id": "sess-1", "query": "trip", "max_results": 1000}
         )
+
+
+def test_orchestration_plan_accepts_nested_state_patch_query_controls() -> None:
+    plan = LLMOrchestrationPlan.model_validate(
+        {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "state_patch": {
+                "constraints": {"destination": "Kyoto"},
+                "query_controls": {
+                    "query": "hotel in kyoto",
+                    "filters": {"item_type": "hotel"},
+                    "max_results": 3,
+                },
+            },
+        }
+    )
+
+    assert plan.state_patch.constraints is not None
+    assert plan.state_patch.constraints.destination == "Kyoto"
+    assert plan.query_controls.query == "hotel in kyoto"
+    assert plan.query_controls.filters["item_type"] == "hotel"
+    assert plan.query_controls.max_results == 3
+    assert "query_controls" not in plan.state_patch.model_dump(
+        mode="python",
+        exclude_unset=True,
+    )
+
+
+def test_orchestration_plan_accepts_state_patch_conversation() -> None:
+    plan = LLMOrchestrationPlan.model_validate(
+        {
+            "intent": "clarify",
+            "should_call_recommendation_tool": False,
+            "clarification_message": "Hi! How can I help with your trip today?",
+            "state_patch": {
+                "conversation": {
+                    "last_clarification_kind": "greeting",
+                    "last_user_intent": "clarify",
+                }
+            },
+        }
+    )
+
+    assert plan.state_patch.conversation is not None
+    assert plan.state_patch.conversation.last_clarification_kind == "greeting"
+    assert plan.state_patch.conversation.last_user_intent == "clarify"
+    assert "conversation" not in plan.state_patch.model_dump(
+        mode="python",
+        exclude_unset=True,
+    )
 
 
 def test_recommendation_tool_response_allows_empty_results() -> None:

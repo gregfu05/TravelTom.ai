@@ -50,7 +50,7 @@ from app.services.recommendation_query import (
     RecommendationServiceUnavailableError,
     RecommendationTool,
 )
-from traveltom.recommendor.recommendor_v3 import recommendation_tool
+from app.services.recommendation_runtime import get_runtime_recommendation_tool
 
 _CHAT_AGENT_SYSTEM_PROMPT = """
 You are TravelTom's backend chat agent.
@@ -104,13 +104,15 @@ class TravelTomAgent:
         chat_model: Any,
         direct_recommendation_model: Any,
         structured_client: Any | None = None,
-        recommendation_tool: RecommendationTool = recommendation_tool,
+        recommendation_tool: RecommendationTool | None = None,
         policy_config: OrchestratorPolicyConfig | None = None,
     ) -> None:
         self._orchestrator = orchestrator_service
         self._provider_name = provider_name
         self._structured_client = structured_client
-        self._recommendation_handler = recommendation_tool
+        self._recommendation_handler = (
+            recommendation_tool or get_runtime_recommendation_tool()
+        )
         self._policy = policy_config or OrchestratorPolicyConfig()
         self._recommendation_tool = self._build_recommendation_tool()
         self._chat_agent = create_agent(
@@ -392,6 +394,6 @@ def get_travel_tom_agent() -> TravelTomAgent:
         chat_model=chat_model,
         direct_recommendation_model=build_direct_recommendation_model(),
         structured_client=structured_client,
-        recommendation_tool=recommendation_tool,
+        recommendation_tool=get_runtime_recommendation_tool(settings=settings),
         policy_config=policy,
     )

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.state import BudgetRange, DateRange, PartySize
 from app.schemas.tools.recommendations import (
@@ -88,6 +88,36 @@ class RecommendationQueryControls(BaseModel):
     max_results: int | None = Field(default=None, ge=1, le=50)
 
 
+class PlannerConversationPatch(BaseModel):
+    """LLM-proposed conversation metadata (transient planner hints)."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    last_requested_slots: list[str] | None = None
+    last_user_intent: Intent | None = None
+    last_clarification_kind: (
+        Literal[
+            "core_slot",
+            "search_type",
+            "refine_preference",
+            "greeting",
+        ]
+        | None
+    ) = None
+    last_search_outcome: (
+        Literal[
+            "results",
+            "empty_results",
+            "no_new_results",
+        ]
+        | None
+    ) = None
+    last_recommendation_item_type: Literal["destination", "hotel", "flight"] | None = (
+        None
+    )
+    last_recommendation_query: str | None = None
+
+
 class OrchestrationStatePatch(BaseModel):
     """LLM state patch merged into the persisted ``SessionState``."""
 
@@ -97,6 +127,14 @@ class OrchestrationStatePatch(BaseModel):
     preferences: PreferencePatch | None = None
     entities: EntityPatch | None = None
     status: SessionStatus | None = None
+    conversation: PlannerConversationPatch | None = Field(
+        default=None,
+        exclude=True,
+    )
+    query_controls: RecommendationQueryControls | None = Field(
+        default=None,
+        exclude=True,
+    )
 
 
 class LLMOrchestrationPlan(BaseModel):
@@ -113,6 +151,32 @@ class LLMOrchestrationPlan(BaseModel):
     query_controls: RecommendationQueryControls = Field(
         default_factory=RecommendationQueryControls
     )
+
+    @model_validator(mode="after")
+    def coerce_query_controls_from_state_patch(self) -> "LLMOrchestrationPlan":
+        """Support planner payloads that nest query_controls inside state_patch."""
+
+        nested = self.state_patch.query_controls
+        if nested is None:
+            return self
+
+        self.query_controls = RecommendationQueryControls(
+            query=(
+                self.query_controls.query
+                if self.query_controls.query is not None
+                else nested.query
+            ),
+            filters={
+                **nested.filters,
+                **self.query_controls.filters,
+            },
+            max_results=(
+                self.query_controls.max_results
+                if self.query_controls.max_results is not None
+                else nested.max_results
+            ),
+        )
+        return self
 
 
 class LLMComposedResponse(BaseModel):

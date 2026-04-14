@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
-
 from fastapi import APIRouter, Depends
 
+from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.core.security import require_authenticated_principal
 from app.schemas.api.recommendations import (
@@ -19,16 +18,16 @@ from app.services.recommendation_query import (
     RecommendationTool,
     execute_recommendation_query,
 )
-from traveltom.recommendor.recommendor_v3 import recommendation_tool
+from app.services.recommendation_runtime import get_runtime_recommendation_tool
 
 router = APIRouter()
 
 
-@lru_cache()
 def get_recommendation_tool() -> RecommendationTool:
     """Return the active recommendation tool implementation."""
 
-    return recommendation_tool
+    settings: Settings = get_settings()
+    return get_runtime_recommendation_tool(settings=settings)
 
 
 @router.post("/recommendations/query", response_model=RecommendationResponse)

@@ -1,10 +1,16 @@
-"""Unit tests for seed catalog item-type classification."""
+"""Unit tests for seed catalog helpers."""
 
 from __future__ import annotations
 
+import argparse
+import asyncio
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 import scripts.seed_catalog as seed_catalog
 from scripts.seed_catalog import _item_type_from_tags
@@ -25,31 +31,139 @@ def test_item_type_detects_flight_tags() -> None:
     assert _item_type_from_tags(tags) == "flight"
 
 
-def test_load_source_dataset_copies_raw_when_cleaned_missing(
-    tmp_path: Path, monkeypatch
-) -> None:
-    raw_path = tmp_path / "business_SB.parquet"
-    clean_path = tmp_path / "business_SB_Cleaned.parquet"
-
+def test_load_source_dataset_reads_csv(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "traveltom_clean.csv"
     source = pd.DataFrame(
         [
             {
-                "business_id": "abc",
                 "name": "Test Hotel",
                 "city": "Santa Barbara",
-                "is_open": 1,
-                "review_count": 42,
-                "stars": 4.5,
+                "country": "US",
             }
         ]
     )
-    source.to_parquet(raw_path, index=False)
+    source.to_csv(dataset_path, index=False)
 
-    monkeypatch.setattr(seed_catalog, "DEFAULT_RAW_DATASET", raw_path)
-    monkeypatch.setattr(seed_catalog, "DEFAULT_DATASET", clean_path)
+    loaded, source_label = seed_catalog._load_source_dataset(dataset_path)
 
-    loaded, source_label = seed_catalog._load_source_dataset(clean_path)
-
-    assert clean_path.exists()
-    assert "copied from raw snapshot" in source_label
+    assert source_label == str(dataset_path)
     pd.testing.assert_frame_equal(loaded, source)
+
+
+def test_load_source_dataset_rejects_non_csv(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "business_SB_Cleaned.parquet"
+    dataset_path.write_text("legacy", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Only CSV datasets"):
+        seed_catalog._load_source_dataset(dataset_path)
+
+
+def test_main_async_skips_when_dataset_missing(capsys, tmp_path: Path) -> None:
+    args = argparse.Namespace(
+        dataset=tmp_path / "traveltom_clean.csv",
+        batch_size=500,
+        min_review_count=10,
+        include_closed=False,
+        truncate=False,
+        dry_run=False,
+    )
+
+    asyncio.run(seed_catalog.main_async(args))
+    captured = capsys.readouterr().out
+
+    assert "Dataset not found. Skipping catalog_items seed." in captured
+
+
+def test_main_async_dry_run_with_present_dataset(capsys, tmp_path: Path) -> None:
+    dataset_path = tmp_path / "traveltom_clean.csv"
+    pd.DataFrame(
+        [
+            {
+                "business_id": "hotel-1",
+                "name": "Test Hotel",
+                "city": "Santa Barbara",
+                "country": "US",
+                "review_count": 25,
+                "is_open": 1,
+                "categories": "Hotels, Travel",
+                "entity_type": "hotel",
+            }
+        ]
+    ).to_csv(dataset_path, index=False)
+
+    args = argparse.Namespace(
+        dataset=dataset_path,
+        batch_size=500,
+        min_review_count=10,
+        include_closed=False,
+        truncate=False,
+        dry_run=True,
+    )
+
+    asyncio.run(seed_catalog.main_async(args))
+    captured = capsys.readouterr().out
+
+    assert f"Dataset: {dataset_path}" in captured
+    assert "Dry-run enabled. No database changes made." in captured
+
+
+def test_main_returns_zero_when_dataset_missing(tmp_path: Path, monkeypatch) -> None:
+    args = argparse.Namespace(
+        dataset=tmp_path / "traveltom_clean.csv",
+        batch_size=500,
+        min_review_count=10,
+        include_closed=False,
+        truncate=False,
+        dry_run=False,
+    )
+
+    monkeypatch.setattr(seed_catalog, "parse_args", lambda: args)
+
+    assert seed_catalog.main() == 0
+
+
+def test_main_does_not_swallow_non_file_not_found_errors(
+    monkeypatch, tmp_path: Path
+) -> None:
+    args = argparse.Namespace(
+        dataset=tmp_path / "traveltom_clean.csv",
+        batch_size=500,
+        min_review_count=10,
+        include_closed=False,
+        truncate=False,
+        dry_run=False,
+    )
+
+    async def _raising_main_async(_args: argparse.Namespace) -> None:
+        raise RuntimeError("unexpected error")
+
+    monkeypatch.setattr(seed_catalog, "parse_args", lambda: args)
+    monkeypatch.setattr(seed_catalog, "main_async", _raising_main_async)
+
+    with pytest.raises(RuntimeError, match="unexpected error"):
+        seed_catalog.main()
+
+
+def test_cli_entrypoint_exits_zero_when_dataset_missing(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "traveltom_clean.csv"
+    env = os.environ.copy()
+    env.setdefault(
+        "DATABASE_URL",
+        "postgresql+asyncpg://traveltom:traveltom@localhost:5432/traveltom",
+    )
+
+    process = subprocess.run(
+        [
+            sys.executable,
+            str(Path(seed_catalog.__file__).resolve()),
+            "--dataset",
+            str(dataset_path),
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+
+    assert process.returncode == 0
+    assert "Dataset not found. Skipping catalog_items seed." in process.stdout

@@ -132,6 +132,14 @@ class Settings(BaseSettings):
         le=2.0,
         validation_alias=AliasChoices("OPENAI_TEMPERATURE"),
     )
+    recommender_dataset_path: str = Field(
+        "traveltom/datasets/traveltom_clean.csv",
+        validation_alias=AliasChoices("RECOMMENDER_DATASET_PATH"),
+    )
+    recommender_preload_on_startup: bool = Field(
+        True,
+        validation_alias=AliasChoices("RECOMMENDER_PRELOAD_ON_STARTUP"),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

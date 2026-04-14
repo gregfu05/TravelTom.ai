@@ -78,9 +78,7 @@ describe("shouldDiscardHydratedSession", () => {
           {
             itemId: "hotel-1",
             itemType: "hotel",
-            score: 0.95,
             rank: 1,
-            explanation: "Great fit.",
           },
         ],
         state: {},

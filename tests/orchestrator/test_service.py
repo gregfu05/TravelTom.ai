@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any
 
 from app.schemas.orchestrator import (
@@ -163,7 +164,7 @@ def test_orchestrator_planner_prompt_truncates_long_transcript_messages() -> Non
     assert "..." in captured_prompt["value"]
 
 
-def test_orchestrator_greeting_uses_planner_when_available() -> None:
+def test_orchestrator_greeting_bypasses_planner_for_fast_path() -> None:
     service = OrchestratorService()
     planner_called = {"value": False}
 
@@ -187,7 +188,7 @@ def test_orchestrator_greeting_uses_planner_when_available() -> None:
         ),
     )
 
-    assert planner_called["value"] is True
+    assert planner_called["value"] is False
     assert response.assistant_message.startswith("Hi, I'm Tom.")
     assert response.state["constraints"].get("destination") is None
     assert response.state["entities"]["destinations"] == []
@@ -218,6 +219,109 @@ def test_orchestrator_planner_patch_updates_state_before_clarification() -> None
     assert "travel dates" in response.assistant_message
     assert response.state["conversation"]["last_user_intent"] == "recommend"
     assert "travel dates" in response.assistant_message
+
+
+def test_orchestrator_state_patch_conversation_does_not_block_recommendation() -> None:
+    service = OrchestratorService()
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        captured_query["value"] = query
+        return RecommendationToolResponse.model_validate(
+            {
+                "ranking_version": "heuristic-v1",
+                "results": [
+                    {
+                        "item_id": "hotel-lisbon-2",
+                        "item_type": "hotel",
+                        "score": 0.9,
+                        "rank": 1,
+                        "features": {"name": "Lisbon Harbor Hotel"},
+                        "explanation": "Planner output validated and reached tool.",
+                    }
+                ],
+            }
+        )
+
+    response = service.handle_message(
+        user_message="show me hotels",
+        session_state=_base_state(),
+        planner_executor=lambda _prompt: {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "state_patch": {"conversation": {"last_clarification_kind": "greeting"}},
+            "query_controls": {
+                "filters": {"item_type": "hotel"},
+                "max_results": 3,
+            },
+        },
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="Checking")]},
+        recommendation_executor=recommendation_executor,
+    )
+
+    assert captured_query["value"] is not None
+    query = captured_query["value"]
+    assert query is not None
+    assert query.filters.get("item_type") == "hotel"
+    assert query.max_results == 3
+    assert response.recommendations
+    assert response.recommendations[0].features.get("name") == "Lisbon Harbor Hotel"
+
+
+def test_orchestrator_nested_state_patch_query_controls_reaches_recommendation() -> (
+    None
+):
+    service = OrchestratorService()
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        captured_query["value"] = query
+        return RecommendationToolResponse.model_validate(
+            {
+                "ranking_version": "heuristic-v1",
+                "results": [
+                    {
+                        "item_id": "hotel-kyoto-1",
+                        "item_type": "hotel",
+                        "score": 0.93,
+                        "rank": 1,
+                        "features": {"name": "Kyoto Planner Hotel"},
+                        "explanation": (
+                            "Planner nested query_controls mapped correctly."
+                        ),
+                    }
+                ],
+            }
+        )
+
+    response = service.handle_message(
+        user_message="show me hotel options",
+        session_state=_base_state(),
+        planner_executor=lambda _prompt: {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "state_patch": {
+                "query_controls": {
+                    "filters": {"item_type": "hotel"},
+                    "max_results": 3,
+                }
+            },
+        },
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="Checking")]},
+        recommendation_executor=recommendation_executor,
+    )
+
+    assert captured_query["value"] is not None
+    query = captured_query["value"]
+    assert query is not None
+    assert query.filters.get("item_type") == "hotel"
+    assert query.max_results == 3
+    assert response.recommendations
+    assert response.recommendations[0].features.get("name") == "Kyoto Planner Hotel"
 
 
 def test_orchestrator_invalid_planner_patch_falls_back_to_deterministic_state() -> None:
@@ -279,7 +383,7 @@ def test_orchestrator_logs_planner_failure_and_falls_back_safely(caplog: Any) ->
 
     assert response.assistant_message
     assert any(
-        record.message == "planner_execution_failed" for record in caplog.records
+        record.getMessage() == "planner_execution_failed" for record in caplog.records
     )
 
 
@@ -1750,6 +1854,30 @@ def test_orchestrator_handles_invalid_tool_payload_with_safe_copy() -> None:
     )
 
     assert "invalid recommendation payload" in response.assistant_message
+    assert response.recommendations == []
+
+
+def test_orchestrator_recommendation_fallback_timeout_returns_timeout_copy() -> None:
+    service = OrchestratorService()
+
+    def recommendation_executor(
+        _query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        raise FuturesTimeoutError()
+
+    response = service.handle_message(
+        user_message="show me hotels",
+        session_state=_base_state(),
+        planner_executor=lambda _prompt: {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "query_controls": {"filters": {"item_type": "hotel"}},
+        },
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="Checking")]},
+        recommendation_executor=recommendation_executor,
+    )
+
+    assert "could not finish the search in time" in response.assistant_message
     assert response.recommendations == []
 
 

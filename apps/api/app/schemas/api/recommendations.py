@@ -44,10 +44,8 @@ class RecommendationResult(BaseModel):
 
     item_id: str = Field(min_length=1)
     item_type: Literal["destination", "hotel", "flight"]
-    score: float
     rank: int = Field(ge=1)
     features: dict[str, Any] = Field(default_factory=dict)
-    explanation: str = Field(min_length=1)
 
 
 class RecommendationResponse(BaseModel):

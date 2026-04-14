@@ -21,6 +21,7 @@ os.environ.setdefault(
 )
 os.environ.setdefault("AUTH_ENABLED", "false")
 os.environ.setdefault("CHAT_RATE_LIMIT", "30/minute")
+os.environ.setdefault("RECOMMENDER_PRELOAD_ON_STARTUP", "false")
 
 from app.core.config import get_settings  # noqa: E402
 from app.core.security import get_azure_b2c_scheme, get_chat_rate_limiter  # noqa: E402

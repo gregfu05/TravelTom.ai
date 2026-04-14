@@ -338,17 +338,6 @@
   color: var(--primary);
 }
 
-.recommendation-score {
-  margin: 0;
-  border-radius: 999px;
-  border: none;
-  background: rgba(255, 255, 255, 0.06);
-  padding: 0.12rem 0.42rem;
-  font-size: 0.62rem;
-  font-weight: 600;
-  color: var(--muted);
-}
-
 .recommendation-card h3 {
   margin: 0.1rem 0 0;
   font-size: 1.02rem;
@@ -366,21 +355,6 @@
 
 .recommendation-map-link {
   color: var(--accent-sand);
-}
-
-.recommendation-details summary {
-  cursor: pointer;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--primary);
-  user-select: none;
-}
-
-.recommendation-details p {
-  margin: 0.36rem 0 0;
-  font-size: 0.78rem;
-  line-height: 1.45;
-  color: var(--muted);
 }
 
 .chat-input-form {

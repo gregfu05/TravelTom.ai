@@ -264,9 +264,7 @@ def _to_chat_response(
         ChatRecommendation(
             item_id=item.item_id,
             item_type=item.item_type,
-            score=item.score,
             rank=item.rank,
-            explanation=item.explanation,
             metadata=item.features or None,
         )
         for item in orchestration.recommendations
@@ -305,9 +303,7 @@ def _to_chat_session_response(
         ChatRecommendation(
             item_id=str(item["item_id"]),
             item_type=item["item_type"],
-            score=float(item["score"]),
             rank=int(item["rank"]),
-            explanation=str(item["explanation"]),
             metadata=(
                 item.get("features") if isinstance(item.get("features"), dict) else None
             ),

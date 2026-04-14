@@ -248,6 +248,11 @@ def test_chat_ignores_body_user_id_and_persists_authenticated_owner(
 
 def test_chat_rejects_other_users_session(monkeypatch) -> None:
     _enable_auth(monkeypatch)
+    monkeypatch.setenv(
+        "RECOMMENDER_DATASET_PATH", "traveltom/datasets/does-not-exist.csv"
+    )
+    get_settings.cache_clear()
+    get_travel_tom_agent.cache_clear()
     existing_owner_id = uuid.uuid4()
     fake_db = _FakeAsyncSession(
         existing_session=Session(
@@ -266,6 +271,8 @@ def test_chat_rejects_other_users_session(monkeypatch) -> None:
         client = TestClient(app)
         response = client.post("/api/v1/chat", json=_chat_payload())
     finally:
+        get_settings.cache_clear()
+        get_travel_tom_agent.cache_clear()
         app.dependency_overrides.clear()
 
     assert response.status_code == 403

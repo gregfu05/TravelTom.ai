@@ -39,9 +39,7 @@ describe("useSessionStore", () => {
         {
           itemId: "dest-lisbon",
           itemType: "destination",
-          score: 0.93,
           rank: 1,
-          explanation: "Excellent match for culture and food.",
           metadata: { name: "Lisbon" },
         },
       ],

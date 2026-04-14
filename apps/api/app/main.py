@@ -1,6 +1,10 @@
 """FastAPI application entrypoint."""
 
+# ruff: noqa: E402
+
+import asyncio
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,11 +15,22 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.api.v1 import api_router  # noqa: E402
-from app.core.config import get_settings  # noqa: E402
-from app.core.errors import register_error_handlers  # noqa: E402
-from app.core.logging import configure_logging  # noqa: E402
-from app.core.telemetry import configure_telemetry  # noqa: E402
+from app.api.v1 import api_router
+from app.core.config import get_settings
+from app.core.errors import register_error_handlers
+from app.core.logging import configure_logging
+from app.core.telemetry import configure_telemetry
+from app.services.recommendation_runtime import preload_recommendation_catalog
+
+
+@asynccontextmanager
+async def app_lifespan(_application: FastAPI):
+    """Preload deterministic runtime artifacts before serving requests."""
+
+    settings = get_settings()
+    if settings.recommender_preload_on_startup:
+        await asyncio.to_thread(preload_recommendation_catalog, settings)
+    yield
 
 
 def create_app() -> FastAPI:
@@ -25,7 +40,7 @@ def create_app() -> FastAPI:
         service_name=settings.telemetry_service_name,
         json_logs=settings.json_logs_enabled,
     )
-    application = FastAPI(title=settings.app_name)
+    application = FastAPI(title=settings.app_name, lifespan=app_lifespan)
     if settings.cors_allowed_origins_list:
         application.add_middleware(
             CORSMiddleware,

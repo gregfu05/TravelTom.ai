@@ -153,6 +153,50 @@ def _catalog() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _clean_csv_style_catalog() -> pd.DataFrame:
+    rows = [
+        {
+            "name": "Rome Central Hotel",
+            "city": "Rome",
+            "country": "IT",
+            "country_name": "Italy",
+            "continent": "Europe",
+            "latitude": 41.9028,
+            "longitude": 12.4964,
+            "categories_clean": "hotel,city center",
+            "description_clean": "Central stay in Rome.",
+            "stars_norm": 1.1,
+            "review_count_norm": 0.9,
+            "popularity_norm": 1.4,
+            "source_tbo_hotels": 1,
+            "source_tripadvisor": 0,
+            "source_openstreetmap": 0,
+            "entity_type_hotel": 1,
+            "entity_type_restaurant": 0,
+        },
+        {
+            "name": "Rome Pasta House",
+            "city": "Rome",
+            "country": "IT",
+            "country_name": "Italy",
+            "continent": "Europe",
+            "latitude": 41.91,
+            "longitude": 12.5,
+            "categories_clean": "restaurant,italian",
+            "description_clean": "Homemade pasta and wine.",
+            "stars_norm": 0.6,
+            "review_count_norm": 0.4,
+            "popularity_norm": 0.7,
+            "source_tbo_hotels": 0,
+            "source_tripadvisor": 1,
+            "source_openstreetmap": 0,
+            "entity_type_hotel": 0,
+            "entity_type_restaurant": 1,
+        },
+    ]
+    return pd.DataFrame(rows)
+
+
 def test_multiword_destination_filter_from_constraints() -> None:
     response = recommendor_v3.recommendation_tool(
         _query("recommend places", constraints={"destination": "Santa Barbara"}),
@@ -248,3 +292,19 @@ def test_ml_mode_falls_back_to_heuristic_when_artifact_missing(
     assert (
         "ml-ranker-v3-lgbm-ltr-fallback-heuristic-ranker-v3" in response.ranking_version
     )
+
+
+def test_csv_style_catalog_without_business_id_and_entity_type_is_supported() -> None:
+    response = recommendor_v3.recommendation_tool(
+        _query(
+            "hotel in Rome",
+            filters={"item_type": "hotel", "city": "Rome"},
+            max_results=3,
+        ),
+        catalog=_clean_csv_style_catalog(),
+    )
+
+    assert response.results
+    assert response.results[0].item_type == "hotel"
+    assert response.results[0].item_id
+    assert response.results[0].features.get("city") == "Rome"

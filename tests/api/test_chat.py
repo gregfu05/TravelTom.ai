@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.db.models.message import Message
 from app.db.models.recommendation import Recommendation
@@ -244,6 +245,8 @@ def test_chat_endpoint_returns_expected_shape_and_persists_records() -> None:
     assert body["assistant_message"] == "I found 1 strong option for Lisbon."
     assert len(body["recommendations"]) == 1
     assert body["recommendations"][0]["metadata"] == {"interest_match": 0.9}
+    assert "score" not in body["recommendations"][0]
+    assert "explanation" not in body["recommendations"][0]
     assert fake_agent.recent_messages_seen is not None
     assert [message.content for message in fake_agent.recent_messages_seen] == [
         "I want a city break.",
@@ -265,7 +268,12 @@ def test_chat_endpoint_returns_expected_shape_and_persists_records() -> None:
     )
 
 
-def test_chat_endpoint_rejects_invalid_payload() -> None:
+def test_chat_endpoint_rejects_invalid_payload(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "RECOMMENDER_DATASET_PATH", "traveltom/datasets/does-not-exist.csv"
+    )
+    get_settings.cache_clear()
+    get_travel_tom_agent.cache_clear()
     fake_db = _FakeAsyncSession()
     app.dependency_overrides[get_db] = _override_db(fake_db)
 
@@ -279,6 +287,8 @@ def test_chat_endpoint_rejects_invalid_payload() -> None:
             },
         )
     finally:
+        get_settings.cache_clear()
+        get_travel_tom_agent.cache_clear()
         app.dependency_overrides.clear()
 
     assert response.status_code == 422
@@ -464,6 +474,8 @@ def test_get_chat_session_returns_persisted_transcript_and_recommendations() -> 
     assert body["messages"][1]["role"] == "assistant"
     assert body["recommendations"][0]["item_id"] == "dest-lisbon"
     assert body["recommendations"][0]["metadata"] == {"name": "Lisbon"}
+    assert "score" not in body["recommendations"][0]
+    assert "explanation" not in body["recommendations"][0]
 
 
 def test_get_chat_session_returns_not_found_for_unknown_session() -> None:

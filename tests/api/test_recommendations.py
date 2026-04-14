@@ -55,6 +55,8 @@ def test_recommendations_query_returns_placeholder_response() -> None:
     assert isinstance(body["results"], list)
     assert len(body["results"]) <= _base_payload()["max_results"]
     assert body["ranking_version"] == "heuristic-v1"
+    assert "score" not in body["results"][0]
+    assert "explanation" not in body["results"][0]
 
 
 def test_recommendations_query_rejects_invalid_payload() -> None:

@@ -38,9 +38,7 @@ class ChatRecommendation(BaseModel):
 
     item_id: str
     item_type: Literal["destination", "hotel", "flight"]
-    score: float
     rank: int
-    explanation: str
     metadata: dict[str, Any] | None = None
 
 
