@@ -29,5 +29,6 @@ resource workspaceSharedKeys 'Microsoft.OperationalInsights/workspaces/sharedKey
 }
 
 output appInsightsConnectionString string = appInsights.properties.ConnectionString
+output appInsightsId string = appInsights.id
 output logAnalyticsCustomerId string = workspace.properties.customerId
 output logAnalyticsSharedKey string = listKeys(workspace.id, workspace.apiVersion).primarySharedKey

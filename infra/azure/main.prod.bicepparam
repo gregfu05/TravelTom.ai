@@ -16,3 +16,6 @@ param postgresAdminLogin = 'traveltomadmin'
 param postgresAdminPassword = 'replace-me'
 param corsAllowedOrigins = 'https://traveltom.example.com'
 param frontendApiBaseUrl = 'https://traveltom-api.example.com/api/v1'
+param enableMlops = false
+param promotedMlModelArtifactUri = ''
+param promotedMlModelVersion = ''
