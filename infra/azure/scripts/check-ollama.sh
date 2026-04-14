@@ -4,11 +4,12 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  check-ollama.sh <dev|prod> [resource-group] [ollama-app-name]
+  check-ollama.sh <dev|prod|shared> [resource-group] [ollama-app-name]
 
 Examples:
   infra/azure/scripts/check-ollama.sh dev
   infra/azure/scripts/check-ollama.sh prod traveltom-prod-rg
+  infra/azure/scripts/check-ollama.sh shared travel-tom-rg travel-tom-ollama
 EOF
 }
 
@@ -29,19 +30,30 @@ if [[ -z "$ENVIRONMENT" ]]; then
 fi
 
 case "$ENVIRONMENT" in
-  dev|prod) ;;
+  dev)
+    DEFAULT_RESOURCE_GROUP="traveltom-dev-rg"
+    DEFAULT_OLLAMA_APP_NAME="traveltom-dev-ollama"
+    ;;
+  prod)
+    DEFAULT_RESOURCE_GROUP="traveltom-prod-rg"
+    DEFAULT_OLLAMA_APP_NAME="traveltom-prod-ollama"
+    ;;
+  shared)
+    DEFAULT_RESOURCE_GROUP="travel-tom-rg"
+    DEFAULT_OLLAMA_APP_NAME="travel-tom-ollama"
+    ;;
   *)
-    echo "Invalid environment: $ENVIRONMENT (expected dev or prod)" >&2
+    echo "Invalid environment: $ENVIRONMENT (expected dev, prod, or shared)" >&2
     exit 1
     ;;
 esac
 
 if [[ -z "$RESOURCE_GROUP" ]]; then
-  RESOURCE_GROUP="traveltom-${ENVIRONMENT}-rg"
+  RESOURCE_GROUP="$DEFAULT_RESOURCE_GROUP"
 fi
 
 if [[ -z "$OLLAMA_APP_NAME" ]]; then
-  OLLAMA_APP_NAME="traveltom-${ENVIRONMENT}-ollama"
+  OLLAMA_APP_NAME="$DEFAULT_OLLAMA_APP_NAME"
 fi
 
 require_cmd az
