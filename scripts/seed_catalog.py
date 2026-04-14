@@ -241,7 +241,7 @@ def _compute_popularity(raw: dict[str, Any]) -> float | None:
 def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
     if "business_id" not in df.columns:
         raise ValueError("Missing required column: business_id")
-    
+
     rows: list[dict[str, Any]] = []
 
     for raw in df.to_dict(orient="records"):
@@ -324,7 +324,6 @@ def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
         )
 
     print(df.columns)
-    print(df.head(3))
     return rows
 
 
