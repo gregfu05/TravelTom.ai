@@ -1,0 +1,49 @@
+2026-04-13 11:49:21,352 │ ════════════════════════════════════════════════════════════
+2026-04-13 11:49:21,352 │   TravelTom Super Dataset Builder v3
+2026-04-13 11:49:21,352 │   Yelp-compatible schema │ 62 cities │ 11 sources
+2026-04-13 11:49:21,352 │ ════════════════════════════════════════════════════════════
+2026-04-13 11:49:21,353 │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-04-13 11:49:21,353 │ STAGE 1 │ Downloading Kaggle datasets
+2026-04-13 11:49:21,353 │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-04-13 11:51:25,360 │ ════════════════════════════════════════════════════════════
+2026-04-13 11:51:25,361 │   TravelTom Super Dataset Builder v3
+2026-04-13 11:51:25,361 │   Yelp-compatible schema │ 62 cities │ 11 sources
+2026-04-13 11:51:25,361 │ ════════════════════════════════════════════════════════════
+2026-04-13 11:51:25,361 │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-04-13 11:51:25,361 │ STAGE 1 │ Downloading Kaggle datasets
+2026-04-13 11:51:25,361 │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-04-13 11:51:25,945 │   ↓ cosmox23/popular-tourist-destinations-and-their-features
+2026-04-13 11:51:26,634 │     OK → 1 files, ~2,000 rows
+2026-04-13 11:51:26,634 │   ↓ raj713335/tbo-hotels-dataset
+2026-04-13 11:52:18,653 │     OK → 1 files, ~4,679,440 rows
+2026-04-13 11:52:18,654 │   ↓ juanmah/world-cities
+2026-04-13 11:52:19,812 │     OK → 1 files, ~48,059 rows
+2026-04-13 11:52:19,813 │   ↓ ramjasmaurya/global-tourist-attractions
+2026-04-13 11:52:20,022 │     FAIL: 403 Client Error: Forbidden for url: https://api.kaggle.com/v1/datasets.DatasetApiService/DownloadDataset
+2026-04-13 11:52:20,025 │   ↓ koki25ando/european-cities-tourist-information
+2026-04-13 11:52:20,239 │     FAIL: 403 Client Error: Forbidden for url: https://api.kaggle.com/v1/datasets.DatasetApiService/DownloadDataset
+2026-04-13 11:52:20,248 │   ↓ inigolopezrioboo/a-tripadvisor-dataset-for-nlp-tasks
+2026-04-13 11:54:01,781 │     OK → 6 files, ~2,756,912 rows
+2026-04-13 11:54:01,784 │   ↓ ngshiheng/michelin-guide-restaurants-2021
+2026-04-13 11:54:03,774 │     OK → 1 files, ~18,908 rows
+2026-04-13 11:54:03,774 │   ↓ shaistashahid/world-famous-places
+2026-04-13 11:54:04,356 │     OK → 1 files, ~30 rows
+2026-04-13 11:54:04,356 │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-04-13 11:54:04,356 │ STAGE 2 │ Extracting & normalizing Kaggle data
+2026-04-13 11:54:04,356 │ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-04-13 11:54:04,356 │   Processing TBO Hotels (this takes a few minutes for 1M+ rows)...
+2026-04-13 11:54:07,405 │     chunk: 100,000 hotels
+2026-04-13 11:54:09,839 │     chunk: 100,000 hotels
+2026-04-13 11:54:12,693 │     chunk: 100,000 hotels
+2026-04-13 11:54:15,439 │     chunk: 100,000 hotels
+2026-04-13 11:54:18,392 │     chunk: 100,000 hotels
+2026-04-13 11:54:21,556 │     chunk: 100,000 hotels
+2026-04-13 11:54:24,537 │     chunk: 100,000 hotels
+2026-04-13 11:54:27,358 │     chunk: 100,000 hotels
+2026-04-13 11:54:30,121 │     chunk: 100,000 hotels
+2026-04-13 11:54:33,371 │     chunk: 100,000 hotels
+2026-04-13 11:54:33,697 │     chunk: 10,033 hotels
+2026-04-13 11:54:33,739 │     -> 1,010,033 hotels total
+2026-04-13 11:54:44,946 │   Processing Michelin Guide...
+2026-04-13 11:54:46,021 │     → 18,908 restaurants
+2026-04-13 11:54:46,023 │   Processing TripAdvisor restaurants...
