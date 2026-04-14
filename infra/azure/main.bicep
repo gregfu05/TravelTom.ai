@@ -19,6 +19,33 @@ param apiImage string
 @description('Container image for the web app.')
 param webImage string
 
+@description('Container image for Ollama (e.g. ollama/ollama:latest).')
+param ollamaImage string
+
+@description('Ollama planning model name.')
+param ollamaPlanningModel string = 'llama3.1:8b'
+
+@description('Ollama response model name.')
+param ollamaResponseModel string = 'llama3.1:8b'
+
+@minValue(0)
+@description('Minimum Ollama replicas to keep warm.')
+param ollamaMinReplicas int = environment == 'prod' ? 1 : 0
+
+@minValue(1)
+@description('Maximum Ollama replicas.')
+param ollamaMaxReplicas int = 1
+
+@minValue(1)
+@description('CPU cores for the Ollama container.')
+param ollamaCpu int = 4
+
+@description('Memory for the Ollama container (e.g. 8Gi, 16Gi).')
+param ollamaMemory string = environment == 'prod' ? '16Gi' : '8Gi'
+
+@description('How long Ollama keeps models in memory after requests.')
+param ollamaKeepAlive string = environment == 'prod' ? '30m' : '10m'
+
 @description('PostgreSQL admin username.')
 param postgresAdminLogin string
 
@@ -57,6 +84,12 @@ var postgresDatabaseName = 'traveltom'
 var containerEnvName = '${resourcePrefix}-cae'
 var apiAppName = '${resourcePrefix}-api'
 var webAppName = '${resourcePrefix}-web'
+var ollamaAppName = '${resourcePrefix}-ollama'
+var gpuWorkloadProfileName = 'gpu-t4'
+var acrPullRoleDefinitionId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+)
 
 module monitoring './modules/monitoring.bicep' = {
   name: 'monitoring'
@@ -111,6 +144,36 @@ resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
         sharedKey: monitoring.outputs.logAnalyticsSharedKey
       }
     }
+    workloadProfiles: [
+      {
+        name: 'Consumption'
+        workloadProfileType: 'Consumption'
+      }
+      {
+        name: gpuWorkloadProfileName
+        workloadProfileType: 'Consumption-GPU-T4'
+      }
+    ]
+  }
+}
+
+module ollamaApp './modules/ollama-app.bicep' = {
+  name: 'ollama-app'
+  params: {
+    appName: ollamaAppName
+    location: location
+    containerAppEnvironmentId: containerEnv.id
+    image: ollamaImage
+    workloadProfileName: gpuWorkloadProfileName
+    modelNames: [
+      ollamaPlanningModel
+      ollamaResponseModel
+    ]
+    minReplicas: ollamaMinReplicas
+    maxReplicas: ollamaMaxReplicas
+    cpu: ollamaCpu
+    memory: ollamaMemory
+    keepAlive: ollamaKeepAlive
   }
 }
 
@@ -149,6 +212,22 @@ module apiApp './modules/container-app.bicep' = {
       {
         name: 'JSON_LOGS_ENABLED'
         value: 'true'
+      }
+      {
+        name: 'ORCHESTRATOR_LLM_PROVIDER'
+        value: 'ollama'
+      }
+      {
+        name: 'OLLAMA_BASE_URL'
+        value: 'http://${ollamaApp.outputs.fqdn}'
+      }
+      {
+        name: 'OLLAMA_PLANNING_MODEL'
+        value: ollamaPlanningModel
+      }
+      {
+        name: 'OLLAMA_RESPONSE_MODEL'
+        value: ollamaResponseModel
       }
       {
         name: 'OPENAI_BASE_URL'
@@ -205,11 +284,37 @@ module webApp './modules/container-app.bicep' = {
   }
 }
 
+resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
+  name: acrName
+}
+
+resource apiAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(containerRegistry.id, apiApp.outputs.principalId, acrPullRoleDefinitionId)
+  scope: containerRegistry
+  properties: {
+    roleDefinitionId: acrPullRoleDefinitionId
+    principalId: apiApp.outputs.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource webAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(containerRegistry.id, webApp.outputs.principalId, acrPullRoleDefinitionId)
+  scope: containerRegistry
+  properties: {
+    roleDefinitionId: acrPullRoleDefinitionId
+    principalId: webApp.outputs.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 output acrLoginServer string = acr.outputs.loginServer
 output apiAppName string = apiApp.name
 output apiUrl string = apiApp.outputs.latestRevisionFqdn
 output webAppName string = webApp.name
 output webUrl string = webApp.outputs.latestRevisionFqdn
+output ollamaAppName string = ollamaApp.name
+output ollamaInternalFqdn string = ollamaApp.outputs.fqdn
 output applicationInsightsConnectionString string = monitoring.outputs.appInsightsConnectionString
 output keyVaultName string = keyVault.name
 output postgresServerFqdn string = postgres.outputs.fqdn

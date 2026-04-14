@@ -80,3 +80,4 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
 
 output latestRevisionName string = app.properties.latestRevisionName
 output latestRevisionFqdn string = 'https://${app.properties.configuration.ingress.fqdn}'
+output principalId string = app.identity.principalId
