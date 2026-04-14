@@ -666,6 +666,9 @@ def build_effective_recommendation_query_text(
         else:
             base = normalized_message
 
+        if base != normalized_message:
+            return base
+
         fragments: list[str] = [base]
         if session_state.constraints.destination:
             fragments.append(session_state.constraints.destination)

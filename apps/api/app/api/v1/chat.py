@@ -190,6 +190,7 @@ async def get_chat_session(
         async with uow:
             owner_user_id = None
             state_user_id = None
+            user_row = None
             if principal is not None:
                 user_row = await uow.user_repository.get_or_create_from_principal(
                     principal
