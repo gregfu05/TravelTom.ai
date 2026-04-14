@@ -456,6 +456,11 @@ def _print_summary(rows: list[dict[str, Any]]) -> None:
 
 async def main_async(args: argparse.Namespace) -> None:
     dataset_path = args.dataset.resolve()
+    if not dataset_path.exists():
+        print(f"Dataset: {dataset_path}")
+        print("Dataset not found. Skipping catalog_items seed.")
+        return
+
     source, source_label = _load_source_dataset(dataset_path)
     filtered = _filter_source(
         source,

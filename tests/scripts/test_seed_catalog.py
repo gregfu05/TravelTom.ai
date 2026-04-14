@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import argparse
+import asyncio
 from pathlib import Path
 
 import pandas as pd
@@ -51,3 +53,52 @@ def test_load_source_dataset_rejects_non_csv(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Only CSV datasets"):
         seed_catalog._load_source_dataset(dataset_path)
+
+
+def test_main_async_skips_when_dataset_missing(capsys, tmp_path: Path) -> None:
+    args = argparse.Namespace(
+        dataset=tmp_path / "traveltom_clean.csv",
+        batch_size=500,
+        min_review_count=10,
+        include_closed=False,
+        truncate=False,
+        dry_run=False,
+    )
+
+    asyncio.run(seed_catalog.main_async(args))
+    captured = capsys.readouterr().out
+
+    assert "Dataset not found. Skipping catalog_items seed." in captured
+
+
+def test_main_async_dry_run_with_present_dataset(capsys, tmp_path: Path) -> None:
+    dataset_path = tmp_path / "traveltom_clean.csv"
+    pd.DataFrame(
+        [
+            {
+                "business_id": "hotel-1",
+                "name": "Test Hotel",
+                "city": "Santa Barbara",
+                "country": "US",
+                "review_count": 25,
+                "is_open": 1,
+                "categories": "Hotels, Travel",
+                "entity_type": "hotel",
+            }
+        ]
+    ).to_csv(dataset_path, index=False)
+
+    args = argparse.Namespace(
+        dataset=dataset_path,
+        batch_size=500,
+        min_review_count=10,
+        include_closed=False,
+        truncate=False,
+        dry_run=True,
+    )
+
+    asyncio.run(seed_catalog.main_async(args))
+    captured = capsys.readouterr().out
+
+    assert f"Dataset: {dataset_path}" in captured
+    assert "Dry-run enabled. No database changes made." in captured
