@@ -31,7 +31,9 @@ if str(API_ROOT) not in sys.path:
 from app.db.models.catalog_item import CatalogItem  # noqa
 from app.db.session import get_engine, get_session_factory  # noqa
 
-DEFAULT_DATASET = REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean2.csv"
+DEFAULT_DATASET = (
+    REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean2.csv"
+)
 
 BUSINESS_ID_NAMESPACE = uuid.UUID("56f6e980-b2c0-4be2-a238-7176bf5a4fa7")
 
@@ -69,7 +71,9 @@ T = TypeVar("T")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Seed catalog_items from cleaned dataset.")
+    parser = argparse.ArgumentParser(
+        description="Seed catalog_items from cleaned dataset."
+    )
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--batch-size", type=int, default=500)
     parser.add_argument("--min-review-count", type=int, default=0)
@@ -328,7 +332,9 @@ def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
                 "location_country": location_country,
                 "item_type": _item_type(raw),
                 "name": _safe_str(raw.get("name")) or business_id,
-                "description": _safe_str(raw.get("description_clean") or raw.get("description")),
+                "description": _safe_str(
+                    raw.get("description_clean") or raw.get("description")
+                ),
                 "location_city": _safe_str(raw.get("city")),
                 "location_country": _safe_str(raw.get("country")) or "US",
                 "latitude": _as_decimal(raw.get("latitude")),
@@ -365,8 +371,16 @@ def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
                     "source": source,
                     "source": raw.get("source"),
                     "entity_type": raw.get("entity_type"),
-                    "review_count": int(raw["review_count"]) if not pd.isna(raw.get("review_count")) else None,
-                    "popularity": float(raw["popularity"]) if not pd.isna(raw.get("popularity")) else None,
+                    "review_count": (
+                        int(raw["review_count"])
+                        if not pd.isna(raw.get("review_count"))
+                        else None
+                    ),
+                    "popularity": (
+                        float(raw["popularity"])
+                        if not pd.isna(raw.get("popularity"))
+                        else None
+                    ),
                     "quality_score": raw.get("quality_score"),
                     "stars_norm": raw.get("stars_norm"),
                     "review_count_norm": raw.get("review_count_norm"),
