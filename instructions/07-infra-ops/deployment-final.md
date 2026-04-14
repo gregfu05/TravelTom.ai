@@ -66,11 +66,15 @@ Frontend checks (`apps/web`):
 
 Required smoke checks after green deploy:
 - API health: `GET /api/v1/health` returns `{"status":"ok"}`.
+- Recommendation query: `POST /api/v1/recommendations/query` returns a valid
+  `ranking_version` and `results` array.
 - Frontend routes load without runtime errors:
   - `/`
   - `/planner`
   - `/why-traveltom`
   - `/how-it-works`
+  - `/login`
+  - `/signup`
 
 Smoke commands:
 - `pwsh ./scripts/smoke-api.ps1 -BaseUrl https://<api-url>`
@@ -91,6 +95,13 @@ Backend runtime env vars:
 - `TRAVELTOM_ML_RANKER_PROMOTED_VERSION`
 - `TRAVELTOM_ML_RANKER_CACHE_DIR`
 
+Runtime handling notes:
+
+- `DATABASE_URL` is injected through a Container App secret reference rather
+  than a plain-value env var.
+- Promoted model references remain normal env vars because they identify
+  runtime state rather than secret material.
+
 Frontend runtime/build vars:
 - `VITE_API_BASE_URL`
 - `VITE_APPINSIGHTS_CONNECTION_STRING`
@@ -102,6 +113,13 @@ Frontend runtime/build vars:
   or update the API Container App revision.
 - Disable AI Search integration by switching to pgvector retriever.
 - Use `Rollback Container Apps` to reactivate the previous web and API revisions.
+
+Workflow behavior:
+
+- `Deploy Dev` and `Deploy Prod` capture the active API and web revisions before
+  mutation and reactivate them automatically if the deploy job fails after image update.
+- `ML Promote Dev` captures the current promoted-model env values before mutation
+  and restores them on failure when possible.
 
 ## Dev-first MLOps rollout
 

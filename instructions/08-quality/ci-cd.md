@@ -66,6 +66,8 @@ Implemented dev-only ML workflow split:
   applies offline promotion gates
 - `ML Promote Dev`: manual workflow that updates the dev API runtime to point
   at the promoted artifact in blob storage
+  - promotion is blocked unless the artifact exists and `gates.json` reports
+    `promote=true`
 
 Required manifest fields:
 
@@ -81,6 +83,14 @@ Dev-to-prod policy:
 - Prod MLOps rollout is blocked until the dev train/evaluate/promote path is
   stable and rollback is verified.
 - The current prod deployment flow remains app-image-based until that gate is met.
+
+Azure workflow safety expectations:
+
+- All Azure deploy and ML promotion jobs use environment-scoped concurrency.
+- Deploy workflows must capture the current active revisions before image updates.
+- Deploy workflows must stamp revision suffixes from the target image tag.
+- Smoke checks must run after deploy and after manual rollback.
+- Failed deploys must reactivate the previously active revisions.
 
 ## CD (final)
 

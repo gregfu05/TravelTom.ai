@@ -5,6 +5,7 @@
 - Database connection failure
   - Check `DATABASE_URL`.
   - Verify Postgres service health.
+  - Verify the Container App secret named `database-url` still resolves correctly.
 - Chat 429
   - Capture HTTP status, `error.code`, `details.retry_after_seconds`,
     `X-Trace-ID`, and `Retry-After`.
@@ -52,6 +53,19 @@
 - API: `pwsh ./scripts/smoke-api.ps1 -BaseUrl https://<api-url>`
 - Web: `pwsh ./scripts/smoke-web.ps1 -BaseUrl https://<web-url>`
 
+Expected checks:
+
+- API smoke:
+  - `/api/v1/health`
+  - `/api/v1/recommendations/query`
+- Web smoke:
+  - `/`
+  - `/planner`
+  - `/why-traveltom`
+  - `/how-it-works`
+  - `/login`
+  - `/signup`
+
 ## Revision rollback procedure
 
 1. Find the previous known-good revision names for `api` and `web`.
@@ -77,6 +91,7 @@ Promotion sequence:
    - `TRAVELTOM_ML_RANKER_ARTIFACT_URI`
    - `TRAVELTOM_ML_RANKER_PROMOTED_VERSION`
 4. Run API smoke checks and a recommendation request against dev.
+5. Confirm the promotion step used a `gates.json` with `promote=true`.
 
 Rollback sequence:
 
@@ -86,3 +101,16 @@ Rollback sequence:
 3. If needed, reactivate the previous Container App revision with
    `Rollback Container Apps`.
 4. Re-run API smoke checks and verify heuristic fallback if artifact loading fails.
+
+## Workflow preflight checklist
+
+- `Deploy Dev` / `Deploy Prod`
+  - confirm required GitHub environment vars are populated
+  - confirm target image tag exists in ACR
+  - confirm the previous active revision names were captured in workflow logs
+- `ML Evaluate Dev`
+  - confirm candidate artifact and manifest exist
+  - confirm uploaded `gates.json` is present after evaluation
+- `ML Promote Dev`
+  - confirm candidate artifact exists
+  - confirm `gates.json` has `promote=true`

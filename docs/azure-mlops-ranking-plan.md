@@ -31,6 +31,8 @@ dev-first rollout.
   - training
   - offline evaluation
   - promotion into the dev API runtime
+- Dev promotion validates both artifact existence and `gates.json` before
+  mutating API runtime config.
 - The API runtime can load the promoted ranker artifact from blob-backed config
   and falls back to the heuristic ranker if loading fails.
 - Prod keeps MLOps disabled until the dev path is verified.

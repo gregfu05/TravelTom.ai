@@ -2,6 +2,9 @@
 
 ## 2026-04-14
 
+- Hardened Azure deployment modules and workflows with shared resource tags,
+  Container App probe/resource controls, secret-based DB runtime wiring, deploy
+  concurrency, revision capture, stronger smoke checks, and promotion validation.
 - Documented the phased orchestrator refactor while preserving runtime behavior:
   - `04-llm-orchestrator/orchestrator-overview.md` now describes the internal
     `TurnPreparer`, `RecommendationDecisionEngine`,

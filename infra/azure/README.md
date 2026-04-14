@@ -147,6 +147,11 @@ Key parameters:
 | `mlopsEvaluationContainerName` | Offline evaluation report container |
 | `promotedMlModelArtifactUri` | Runtime artifact URI injected into the API |
 | `promotedMlModelVersion` | Runtime promoted model label injected into the API |
+| `apiContainerCpu` | API CPU allocation for initial IaC deploys |
+| `apiContainerMemory` | API memory allocation for initial IaC deploys |
+| `webContainerCpu` | Web CPU allocation for initial IaC deploys |
+| `webContainerMemory` | Web memory allocation for initial IaC deploys |
+| `postgresAllowAzureServicesFirewall` | Enables the Azure-services firewall rule for Postgres |
 
 Prod keeps `enableMlops=false` until the dev path is stable.
 
@@ -253,14 +258,33 @@ Internet
 | `enableMlops` | Enable Azure ML/storage foundation resources |
 | `promotedMlModelArtifactUri` | Blob URL or file URI for the promoted ranker |
 | `promotedMlModelVersion` | Promoted ranker version label |
+| `apiContainerCpu` | API container CPU |
+| `apiContainerMemory` | API container memory |
+| `webContainerCpu` | Web container CPU |
+| `webContainerMemory` | Web container memory |
 
 ## Operational Notes
 
 - API and web Container Apps receive `AcrPull` role assignments automatically via managed identity.
+- API runtime now receives `DATABASE_URL` via Container App secret reference instead of a plain env value.
 - When `enableMlops=true`, the API Container App receives blob read access to the
   MLOps storage account so it can fetch promoted ranker artifacts at startup.
 - Keep `main.dev.bicepparam` and `main.prod.bicepparam` as baseline defaults; override via script env vars when testing alternatives.
 - GPU workload availability depends on Azure region. If `Consumption-GPU-T4` is unavailable, choose a supported region.
+- Shared Azure resources are tagged with `app`, `environment`, `managedBy`, `owner`, and `stack`.
+
+## Workflow Expectations
+
+- `Deploy Dev` and `Deploy Prod` now:
+  - validate required environment variables before mutation
+  - capture the currently active revisions before deploy
+  - stamp revision suffixes from the image tag
+  - run stronger smoke checks after deploy
+  - reactivate the previous revisions on failure
+- `ML Promote Dev` now validates:
+  - the target artifact exists in blob storage
+  - the latest gate decision for the model has `promote=true`
+  - the previous promoted model config can be restored on failure
 
 ## Destroy Environment
 
