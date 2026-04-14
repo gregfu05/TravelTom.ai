@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any, Callable, Literal, Sequence, cast
 
-from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from pydantic import ValidationError
 
 from app.schemas.api.recommendations import (
@@ -28,6 +28,7 @@ from app.schemas.tools.recommendations import (
     RecommendationResult,
     RecommendationToolResponse,
 )
+from app.services.orchestrator.decision_engine import RecommendationDecisionEngine
 from app.services.orchestrator.extraction import (
     build_effective_recommendation_query_text,
     extract_query_filters,
@@ -50,7 +51,6 @@ from app.services.orchestrator.policies import (
     missing_core_constraint_slots,
     requested_slots_for_clarification,
 )
-from app.services.orchestrator.decision_engine import RecommendationDecisionEngine
 from app.services.orchestrator.recommendation_runner import RecommendationRunner
 from app.services.orchestrator.response_assembler import ResponseAssembler
 from app.services.orchestrator.runtime_types import (
@@ -325,12 +325,12 @@ class OrchestratorService:
         try:
             agent_result = AgentRunResult.from_raw(
                 agent_executor(
-                self.build_chat_messages(
-                    user_message=message,
-                    session_state=prepared_state,
-                    recent_messages=history,
-                    query_controls=prepared_turn.plan.query_controls,
-                )
+                    self.build_chat_messages(
+                        user_message=message,
+                        session_state=prepared_state,
+                        recent_messages=history,
+                        query_controls=prepared_turn.plan.query_controls,
+                    )
                 )
             )
         except Exception:
@@ -507,7 +507,6 @@ class OrchestratorService:
         recommendation_executor: RecommendationExecutor | None,
         response_composer: ResponseComposer | None,
     ) -> OrchestratorResponse:
-        messages = agent_result.messages
         final_ai_message = agent_result.last_final_ai_message()
         tool_message = agent_result.last_recommendation_tool_message()
         conversation_intent = self._turn_intent(
@@ -738,10 +737,12 @@ class OrchestratorService:
         response_composer: ResponseComposer | None,
         intent: Intent | None = None,
     ) -> OrchestratorResponse:
-        effective_max_results = self._recommendation_runner.expanded_follow_up_max_results(
-            requested_max_results=max_results,
-            previous_state=previous_state,
-            user_message=user_message,
+        effective_max_results = (
+            self._recommendation_runner.expanded_follow_up_max_results(
+                requested_max_results=max_results,
+                previous_state=previous_state,
+                user_message=user_message,
+            )
         )
         query = self.build_recommendation_query(
             user_message=user_message,

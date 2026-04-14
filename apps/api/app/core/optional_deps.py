@@ -20,11 +20,9 @@ class OptionalDepsNotInstalledError(RuntimeError):
 
 @runtime_checkable
 class ChatRateLimiterBackend(Protocol):
-    def reset(self) -> None:
-        ...
+    def reset(self) -> None: ...
 
-    def check(self, *, rate_limit: str, key: str) -> int | None:
-        ...
+    def check(self, *, rate_limit: str, key: str) -> int | None: ...
 
 
 class _NoopChatRateLimiterBackend:
@@ -80,8 +78,7 @@ def get_chat_rate_limiter_backend() -> ChatRateLimiterBackend:
 
 
 class AzureB2CScheme(Protocol):
-    async def __call__(self, request: Any, scopes: Any) -> Any:
-        ...
+    async def __call__(self, request: Any, scopes: Any) -> Any: ...
 
 
 class AzureB2CSchemeFactory(Protocol):
@@ -91,8 +88,7 @@ class AzureB2CSchemeFactory(Protocol):
         app_client_id: str,
         scopes: Optional[dict[str, str]],
         openid_config_url: str,
-    ) -> AzureB2CScheme:
-        ...
+    ) -> AzureB2CScheme: ...
 
 
 def get_azure_b2c_scheme_factory() -> AzureB2CSchemeFactory:

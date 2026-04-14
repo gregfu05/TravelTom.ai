@@ -39,12 +39,12 @@ from app.services.orchestrator.providers import (
     OllamaStructuredClient,
     OpenAIStructuredClient,
 )
+from app.services.orchestrator.runtime_types import AgentRunResult
 from app.services.orchestrator.service import (
     OrchestratorService,
     PlannerExecutionError,
     build_direct_query_message,
 )
-from app.services.orchestrator.runtime_types import AgentRunResult
 from app.services.recommendation_query import (
     InvalidRecommendationResponseError,
     RecommendationServiceUnavailableError,

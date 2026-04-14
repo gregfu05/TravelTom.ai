@@ -241,9 +241,7 @@ class TurnPreparer:
             message=user_message,
             session_state=session_state,
         )
-        normalized_remembered_item_type = self.normalize_item_type(
-            remembered_item_type
-        )
+        normalized_remembered_item_type = self.normalize_item_type(remembered_item_type)
         if normalized_remembered_item_type is not None:
             merged_filters["item_type"] = normalized_remembered_item_type
             return merged_filters

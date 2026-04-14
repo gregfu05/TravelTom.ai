@@ -9,8 +9,13 @@ from pydantic import ValidationError
 
 from app.schemas.orchestrator import OrchestratorPolicyConfig
 from app.schemas.state import SessionState
-from app.schemas.tools.recommendations import RecommendationQuery, RecommendationToolResponse
-from app.services.orchestrator.extraction import build_effective_recommendation_query_text
+from app.schemas.tools.recommendations import (
+    RecommendationQuery,
+    RecommendationToolResponse,
+)
+from app.services.orchestrator.extraction import (
+    build_effective_recommendation_query_text,
+)
 from app.services.orchestrator.policies import is_follow_up_refinement
 from app.services.orchestrator.runtime_types import RecommendationExecutionResult
 from app.services.orchestrator.turn_preparer import TurnPreparer
@@ -126,5 +131,7 @@ class RecommendationRunner:
                 mode="json"
             )
         if session_state.constraints.party_size:
-            constraints["party_size"] = session_state.constraints.party_size.model_dump()
+            constraints["party_size"] = (
+                session_state.constraints.party_size.model_dump()
+            )
         return constraints

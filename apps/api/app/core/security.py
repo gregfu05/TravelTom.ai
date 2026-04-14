@@ -312,14 +312,14 @@ async def enforce_chat_rate_limit(
             "context": {
                 "auth_enabled": settings.auth_enabled,
                 "chat_rate_limit": settings.chat_rate_limit,
-                "client_host": request.client.host
-                if request.client is not None
-                else None,
+                "client_host": (
+                    request.client.host if request.client is not None else None
+                ),
                 "identifier": identifier,
                 "path": str(request.url.path),
-                "principal_subject": principal.subject
-                if principal is not None
-                else None,
+                "principal_subject": (
+                    principal.subject if principal is not None else None
+                ),
                 "retry_after_seconds": retry_after_seconds,
             },
         },
