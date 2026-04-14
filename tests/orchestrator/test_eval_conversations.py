@@ -156,6 +156,8 @@ def test_eval_personalization_follow_up_query_includes_interests() -> None:
 
     assert captured_query["value"] is None
     assert response.assistant_message.casefold().startswith("which destination")
-    normalized_query = response.state["conversation"]["last_recommendation_query"].casefold()
+    normalized_query = response.state["conversation"][
+        "last_recommendation_query"
+    ].casefold()
     assert "nightlife" in normalized_query
     assert "food" in normalized_query
