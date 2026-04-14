@@ -72,6 +72,55 @@ param frontendApiBaseUrl string
 @description('Optional Application Insights connection string for frontend telemetry.')
 param frontendAppInsightsConnectionString string = ''
 
+@description('Tag applied to all Azure resources indicating the managing system.')
+param managedByTag string = 'codex'
+
+@description('Optional owner/team tag applied to all Azure resources.')
+param ownerTag string = 'traveltom'
+
+@description('Public network access setting for the container registry.')
+@allowed([
+  'Enabled'
+  'Disabled'
+])
+param acrPublicNetworkAccess string = 'Enabled'
+
+@description('Public network access setting for Key Vault.')
+@allowed([
+  'Enabled'
+  'Disabled'
+])
+param keyVaultPublicNetworkAccess string = 'Enabled'
+
+@description('Public network access setting for Postgres.')
+@allowed([
+  'Enabled'
+  'Disabled'
+])
+param postgresPublicNetworkAccess string = 'Enabled'
+
+@description('Whether to allow Azure services firewall access to Postgres.')
+param postgresAllowAzureServicesFirewall bool = true
+
+@description('Public network access setting for MLOps storage.')
+@allowed([
+  'Enabled'
+  'Disabled'
+])
+param mlopsStoragePublicNetworkAccess string = 'Enabled'
+
+@description('CPU allocation for the API container app.')
+param apiContainerCpu string = '0.5'
+
+@description('Memory allocation for the API container app.')
+param apiContainerMemory string = '1Gi'
+
+@description('CPU allocation for the web container app.')
+param webContainerCpu string = '0.5'
+
+@description('Memory allocation for the web container app.')
+param webContainerMemory string = '1Gi'
+
 @description('Enable Azure MLOps foundation resources for the environment.')
 param enableMlops bool = false
 
@@ -110,6 +159,13 @@ var mlopsStorageAccountName = take(replace('${prefix}${environment}ml${resourceT
 var mlopsIdentityName = '${resourcePrefix}-mlops-id'
 var mlWorkspaceName = '${resourcePrefix}-mlw'
 var gpuWorkloadProfileName = 'gpu-t4'
+var commonTags = {
+  app: 'traveltom'
+  environment: environment
+  managedBy: managedByTag
+  owner: ownerTag
+  stack: 'azure-container-apps'
+}
 var acrPullRoleDefinitionId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '7f951dda-4ed3-4680-a7ca-43fe172d538d'
@@ -129,6 +185,7 @@ module monitoring './modules/monitoring.bicep' = {
     location: location
     logAnalyticsWorkspaceName: lawName
     appInsightsName: appInsightsName
+    tags: commonTags
   }
 }
 
@@ -137,6 +194,8 @@ module acr './modules/acr.bicep' = {
   params: {
     acrName: acrName
     location: location
+    publicNetworkAccess: acrPublicNetworkAccess
+    tags: commonTags
   }
 }
 
@@ -145,6 +204,8 @@ module keyVault './modules/keyvault.bicep' = {
   params: {
     keyVaultName: keyVaultName
     location: location
+    publicNetworkAccess: keyVaultPublicNetworkAccess
+    tags: commonTags
     secrets: {
       OPENAI_API_KEY: openaiApiKey
       LOCAL_AUTH_TOKEN_SECRET: localAuthTokenSecret
@@ -162,6 +223,9 @@ module postgres './modules/postgres.bicep' = {
     administratorPassword: postgresAdminPassword
     databaseName: postgresDatabaseName
     environment: environment
+    publicNetworkAccess: postgresPublicNetworkAccess
+    allowAzureServicesFirewall: postgresAllowAzureServicesFirewall
+    tags: commonTags
   }
 }
 
@@ -170,6 +234,8 @@ module mlopsStorage './modules/storage-account.bicep' = if (enableMlops) {
   params: {
     storageAccountName: mlopsStorageAccountName
     location: location
+    publicNetworkAccess: mlopsStoragePublicNetworkAccess
+    tags: commonTags
     containers: [
       mlopsDatasetContainerName
       mlopsArtifactContainerName
@@ -184,12 +250,14 @@ module mlopsIdentity './modules/managed-identity.bicep' = if (enableMlops) {
   params: {
     identityName: mlopsIdentityName
     location: location
+    tags: commonTags
   }
 }
 
 resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: containerEnvName
   location: location
+  tags: commonTags
   properties: {
     appLogsConfiguration: {
       destination: 'log-analytics'
@@ -224,6 +292,7 @@ module mlWorkspace './modules/aml-workspace.bicep' = if (enableMlops) {
     keyVaultId: keyVault.id
     storageAccountId: mlopsStorage.outputs.id
     containerRegistryId: containerRegistryForMl.id
+    tags: commonTags
   }
 }
 
@@ -265,7 +334,7 @@ module apiApp './modules/container-app.bicep' = {
       }
       {
         name: 'DATABASE_URL'
-        value: 'postgresql+asyncpg://${postgresAdminLogin}:${postgresAdminPassword}@${postgres.outputs.fqdn}:5432/${postgresDatabaseName}?ssl=require'
+        secretRef: 'database-url'
       }
       {
         name: 'CORS_ALLOWED_ORIGINS'
@@ -326,6 +395,10 @@ module apiApp './modules/container-app.bicep' = {
     ]
     secrets: [
       {
+        name: 'database-url'
+        value: 'postgresql+asyncpg://${postgresAdminLogin}:${postgresAdminPassword}@${postgres.outputs.fqdn}:5432/${postgresDatabaseName}?ssl=require'
+      }
+      {
         name: 'openai-api-key'
         value: openaiApiKey
       }
@@ -336,6 +409,11 @@ module apiApp './modules/container-app.bicep' = {
     ]
     ingressExternal: true
     livenessPath: '/api/v1/health'
+    readinessPath: '/api/v1/health'
+    startupPath: '/api/v1/health'
+    cpu: apiContainerCpu
+    memory: apiContainerMemory
+    tags: union(commonTags, { component: 'api' })
   }
 }
 
@@ -363,6 +441,11 @@ module webApp './modules/container-app.bicep' = {
     secrets: []
     ingressExternal: true
     livenessPath: '/'
+    readinessPath: '/'
+    startupPath: '/'
+    cpu: webContainerCpu
+    memory: webContainerMemory
+    tags: union(commonTags, { component: 'web' })
   }
 }
 
@@ -433,3 +516,4 @@ output mlopsDatasetContainerName string = enableMlops ? mlopsDatasetContainerNam
 output mlopsArtifactContainerName string = enableMlops ? mlopsArtifactContainerName : ''
 output mlopsManifestContainerName string = enableMlops ? mlopsManifestContainerName : ''
 output mlopsEvaluationContainerName string = enableMlops ? mlopsEvaluationContainerName : ''
+output commonTags object = commonTags

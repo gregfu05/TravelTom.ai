@@ -19,3 +19,6 @@ param frontendApiBaseUrl = 'https://traveltom-dev-api.example.com/api/v1'
 param enableMlops = true
 param promotedMlModelArtifactUri = ''
 param promotedMlModelVersion = ''
+param managedByTag = 'codex'
+param ownerTag = 'traveltom'
+param postgresAllowAzureServicesFirewall = true

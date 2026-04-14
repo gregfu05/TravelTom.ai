@@ -10,14 +10,65 @@ param envVars array
 param secrets array
 param ingressExternal bool
 param livenessPath string
+param cpu string = '0.5'
+param memory string = '1Gi'
+param readinessPath string = ''
+param startupPath string = ''
+param revisionSuffix string = ''
+param tags object = {}
+
+var probes = concat(
+  [
+    {
+      type: 'Liveness'
+      httpGet: {
+        path: livenessPath
+        port: targetPort
+      }
+      initialDelaySeconds: 10
+      periodSeconds: 30
+      failureThreshold: 3
+    }
+  ],
+  empty(readinessPath)
+    ? []
+    : [
+        {
+          type: 'Readiness'
+          httpGet: {
+            path: readinessPath
+            port: targetPort
+          }
+          initialDelaySeconds: 5
+          periodSeconds: 15
+          failureThreshold: 4
+        }
+      ],
+  empty(startupPath)
+    ? []
+    : [
+        {
+          type: 'Startup'
+          httpGet: {
+            path: startupPath
+            port: targetPort
+          }
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 30
+        }
+      ]
+)
 
 resource app 'Microsoft.App/containerApps@2024-03-01' = {
   name: appName
   location: location
+  tags: tags
   properties: {
     managedEnvironmentId: containerAppEnvironmentId
     configuration: {
       activeRevisionsMode: 'Multiple'
+      revisionSuffix: empty(revisionSuffix) ? null : revisionSuffix
       ingress: {
         external: ingressExternal
         targetPort: targetPort
@@ -50,20 +101,10 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             value: contains(envVar, 'value') ? envVar.value : null
             secretRef: contains(envVar, 'secretRef') ? envVar.secretRef : null
           }]
-          probes: [
-            {
-              type: 'Liveness'
-              httpGet: {
-                path: livenessPath
-                port: targetPort
-              }
-              initialDelaySeconds: 10
-              periodSeconds: 30
-            }
-          ]
+          probes: probes
           resources: {
-            cpu: 0.5
-            memory: '1Gi'
+            cpu: json(cpu)
+            memory: memory
           }
         }
       ]

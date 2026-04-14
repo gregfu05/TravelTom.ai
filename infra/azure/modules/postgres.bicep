@@ -5,10 +5,14 @@ param administratorLogin string
 param administratorPassword string
 param databaseName string
 param environment string
+param publicNetworkAccess string = 'Enabled'
+param allowAzureServicesFirewall bool = true
+param tags object = {}
 
 resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2023-06-01-preview' = {
   name: serverName
   location: location
+  tags: tags
   sku: {
     name: environment == 'prod' ? 'Standard_B1ms' : 'Standard_B1ms'
     tier: 'Burstable'
@@ -25,7 +29,7 @@ resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2023-06-01-preview' =
       geoRedundantBackup: 'Disabled'
     }
     network: {
-      publicNetworkAccess: 'Enabled'
+      publicNetworkAccess: publicNetworkAccess
     }
     highAvailability: {
       mode: 'Disabled'
@@ -38,7 +42,7 @@ resource database 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2023-06-0
   name: databaseName
 }
 
-resource firewallRule 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2023-06-01-preview' = {
+resource firewallRule 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2023-06-01-preview' = if (allowAzureServicesFirewall) {
   parent: server
   name: 'allow-azure-services'
   properties: {

@@ -1,10 +1,13 @@
 param storageAccountName string
 param location string
 param containers array = []
+param publicNetworkAccess string = 'Enabled'
+param tags object = {}
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: storageAccountName
   location: location
+  tags: tags
   kind: 'StorageV2'
   sku: {
     name: 'Standard_LRS'
@@ -29,7 +32,7 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
       defaultAction: 'Allow'
       bypass: 'AzureServices'
     }
-    publicNetworkAccess: 'Enabled'
+    publicNetworkAccess: publicNetworkAccess
     supportsHttpsTrafficOnly: true
   }
 }

@@ -5,10 +5,12 @@ param keyVaultId string
 param storageAccountId string
 param containerRegistryId string
 param publicNetworkAccess string = 'Enabled'
+param tags object = {}
 
 resource workspace 'Microsoft.MachineLearningServices/workspaces@2022-05-01' = {
   name: workspaceName
   location: location
+  tags: tags
   identity: {
     type: 'SystemAssigned'
   }

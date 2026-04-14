@@ -22,6 +22,18 @@ Optional environment variables:
   OLLAMA_CPU
   OLLAMA_MEMORY
   OLLAMA_KEEP_ALIVE
+  ENABLE_MLOPS
+  PROMOTED_ML_MODEL_ARTIFACT_URI
+  PROMOTED_ML_MODEL_VERSION
+  ACR_PUBLIC_NETWORK_ACCESS
+  KEYVAULT_PUBLIC_NETWORK_ACCESS
+  POSTGRES_PUBLIC_NETWORK_ACCESS
+  POSTGRES_ALLOW_AZURE_SERVICES_FIREWALL
+  MLOPS_STORAGE_PUBLIC_NETWORK_ACCESS
+  API_CONTAINER_CPU
+  API_CONTAINER_MEMORY
+  WEB_CONTAINER_CPU
+  WEB_CONTAINER_MEMORY
 
 Examples:
   POSTGRES_ADMIN_PASSWORD='...' LOCAL_AUTH_TOKEN_SECRET='...' \
@@ -127,6 +139,42 @@ if [[ -n "${OLLAMA_MEMORY:-}" ]]; then
 fi
 if [[ -n "${OLLAMA_KEEP_ALIVE:-}" ]]; then
   DEPLOYMENT_ARGS+=("--parameters" "ollamaKeepAlive=${OLLAMA_KEEP_ALIVE}")
+fi
+if [[ -n "${ENABLE_MLOPS:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "enableMlops=${ENABLE_MLOPS}")
+fi
+if [[ -n "${PROMOTED_ML_MODEL_ARTIFACT_URI:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "promotedMlModelArtifactUri=${PROMOTED_ML_MODEL_ARTIFACT_URI}")
+fi
+if [[ -n "${PROMOTED_ML_MODEL_VERSION:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "promotedMlModelVersion=${PROMOTED_ML_MODEL_VERSION}")
+fi
+if [[ -n "${ACR_PUBLIC_NETWORK_ACCESS:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "acrPublicNetworkAccess=${ACR_PUBLIC_NETWORK_ACCESS}")
+fi
+if [[ -n "${KEYVAULT_PUBLIC_NETWORK_ACCESS:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "keyVaultPublicNetworkAccess=${KEYVAULT_PUBLIC_NETWORK_ACCESS}")
+fi
+if [[ -n "${POSTGRES_PUBLIC_NETWORK_ACCESS:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "postgresPublicNetworkAccess=${POSTGRES_PUBLIC_NETWORK_ACCESS}")
+fi
+if [[ -n "${POSTGRES_ALLOW_AZURE_SERVICES_FIREWALL:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "postgresAllowAzureServicesFirewall=${POSTGRES_ALLOW_AZURE_SERVICES_FIREWALL}")
+fi
+if [[ -n "${MLOPS_STORAGE_PUBLIC_NETWORK_ACCESS:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "mlopsStoragePublicNetworkAccess=${MLOPS_STORAGE_PUBLIC_NETWORK_ACCESS}")
+fi
+if [[ -n "${API_CONTAINER_CPU:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "apiContainerCpu=${API_CONTAINER_CPU}")
+fi
+if [[ -n "${API_CONTAINER_MEMORY:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "apiContainerMemory=${API_CONTAINER_MEMORY}")
+fi
+if [[ -n "${WEB_CONTAINER_CPU:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "webContainerCpu=${WEB_CONTAINER_CPU}")
+fi
+if [[ -n "${WEB_CONTAINER_MEMORY:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "webContainerMemory=${WEB_CONTAINER_MEMORY}")
 fi
 
 case "$ACTION" in
