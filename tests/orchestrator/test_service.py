@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from app.schemas.orchestrator import (
     OrchestratorPolicyConfig,
     RecommendationToolRuntimePayload,
@@ -724,7 +725,7 @@ def test_orchestrator_generic_trip_flow_asks_for_search_type_after_budget() -> N
     assert response.state["conversation"]["last_clarification_kind"] == "search_type"
     assert response.state["conversation"]["last_recommendation_item_type"] is None
     assert response.state["conversation"]["last_requested_slots"] == []
-    assert "hotels, restaurants, or activities" in response.assistant_message
+    assert "hotel, a restaurant, or an activity" in response.assistant_message
 
 
 def test_orchestrator_one_shot_trip_message_asks_for_search_type() -> None:
@@ -748,7 +749,7 @@ def test_orchestrator_one_shot_trip_message_asks_for_search_type() -> None:
     }
     assert response.state["conversation"]["last_user_intent"] == "recommend"
     assert response.state["conversation"]["last_clarification_kind"] == "search_type"
-    assert "hotels, restaurants, or activities" in response.assistant_message
+    assert "hotel, a restaurant, or an activity" in response.assistant_message
 
 
 def test_orchestrator_search_type_reply_uses_planner_when_available() -> None:
@@ -812,8 +813,8 @@ def test_orchestrator_search_type_reply_uses_planner_when_available() -> None:
             TranscriptMessage(
                 role="assistant",
                 content=(
-                    "For that destination, would you like hotel, restaurant, "
-                    "or activity recommendations?"
+                    "Sure - for that destination, do you want a hotel, a "
+                    "restaurant, or an activity?"
                 ),
             )
         ],
@@ -879,8 +880,8 @@ def test_orchestrator_vague_search_type_reply_stays_in_clarification() -> None:
             TranscriptMessage(
                 role="assistant",
                 content=(
-                    "For that destination, would you like hotel, restaurant, "
-                    "or activity recommendations?"
+                    "Sure - for that destination, do you want a hotel, a "
+                    "restaurant, or an activity?"
                 ),
             )
         ],
@@ -892,7 +893,79 @@ def test_orchestrator_vague_search_type_reply_stays_in_clarification() -> None:
     assert query is None
     assert response.state["conversation"]["last_recommendation_item_type"] is None
     assert response.state["conversation"]["last_clarification_kind"] == "search_type"
-    assert "hotels, restaurants, or activities" in response.assistant_message
+    assert "hotel, a restaurant, or an activity" in response.assistant_message
+
+
+def test_orchestrator_foody_vague_request_infers_restaurant_and_asks_for_city() -> None:
+    service = OrchestratorService()
+
+    response = service.handle_message(
+        user_message="I want chicken",
+        session_state=SessionState(session_id="sess-food-vague"),
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+    )
+
+    assert response.assistant_message == (
+        "Sure - that sounds like food. What city should I look in?"
+    )
+    assert response.state["conversation"]["last_user_intent"] == "recommend"
+    assert response.state["conversation"]["last_recommendation_item_type"] == (
+        "restaurant"
+    )
+
+
+def test_orchestrator_fun_tonight_request_infers_activity_and_asks_for_city() -> None:
+    service = OrchestratorService()
+
+    response = service.handle_message(
+        user_message="something fun tonight",
+        session_state=SessionState(session_id="sess-fun-tonight"),
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+    )
+
+    assert (
+        response.assistant_message == "Sounds fun - what city should I look in tonight?"
+    )
+    assert response.state["conversation"]["last_user_intent"] == "recommend"
+    assert response.state["conversation"]["last_recommendation_item_type"] == (
+        "activity"
+    )
+
+
+def test_orchestrator_nice_but_unclear_request_asks_natural_type_question() -> None:
+    service = OrchestratorService()
+
+    response = service.handle_message(
+        user_message="I want somewhere nice",
+        session_state=SessionState(session_id="sess-somewhere-nice"),
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+    )
+
+    assert response.assistant_message == (
+        "Sure - do you mean a hotel, a restaurant, or an activity?"
+    )
+    assert response.state["conversation"]["last_user_intent"] == "recommend"
+    assert response.state["conversation"]["last_recommendation_item_type"] is None
+
+
+def test_orchestrator_budget_preference_gets_natural_clarification() -> None:
+    service = OrchestratorService()
+
+    response = service.handle_message(
+        user_message="not too expensive",
+        session_state=SessionState(session_id="sess-not-expensive"),
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+    )
+
+    assert response.assistant_message == (
+        "Sure - do you mean a hotel, a restaurant, or an activity?"
+    )
+    assert response.state["conversation"]["last_user_intent"] == "recommend"
+    assert response.state["constraints"]["budget"] == {
+        "min": 0.0,
+        "max": 1500.0,
+        "currency": "USD",
+    }
 
 
 def test_orchestrator_planner_first_trip_flow_reaches_hotel_recommendation() -> None:
@@ -925,8 +998,8 @@ def test_orchestrator_planner_first_trip_flow_reaches_hotel_recommendation() -> 
                 "intent": "recommend",
                 "should_call_recommendation_tool": False,
                 "clarification_message": (
-                    "For that destination, would you like hotel, restaurant, "
-                    "or activity recommendations?"
+                    "Sure - for that destination, do you want a hotel, a "
+                    "restaurant, or an activity?"
                 ),
                 "state_patch": {
                     "constraints": {
@@ -1181,8 +1254,8 @@ def test_orchestrator_search_type_reply_for_flights_returns_unsupported_message(
             TranscriptMessage(
                 role="assistant",
                 content=(
-                    "For that destination, would you like hotel, restaurant, "
-                    "or activity recommendations?"
+                    "Sure - for that destination, do you want a hotel, a "
+                    "restaurant, or an activity?"
                 ),
             )
         ],
@@ -1240,7 +1313,7 @@ def test_orchestrator_vague_reply_after_empty_results_gives_stronger_guidance() 
                 content=(
                     "I am not seeing strong matches with those constraints yet. "
                     "I can help narrow this down. Tell me what you want to optimize "
-                    "for, like lower cost, fewer layovers, or a different vibe."
+                    "for, like lower cost, a different neighborhood, cuisine, or vibe."
                 ),
             )
         ],
@@ -1427,6 +1500,82 @@ def test_orchestrator_bare_budget_reply_executes_recommendation_after_budget_slo
     assert query.constraints.budget.currency == "EUR"
     assert response.recommendations[0].item_id == "hotel-sb-1"
     assert response.state["conversation"]["last_requested_slots"] == []
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_min", "expected_max", "expected_currency"),
+    [
+        ("starting from 700 euros", 700.0, 10000.0, "EUR"),
+        ("not more than 700", 0.0, 700.0, "USD"),
+    ],
+)
+def test_orchestrator_partial_budget_reply_executes_without_reasking_budget(
+    message: str,
+    expected_min: float,
+    expected_max: float,
+    expected_currency: str,
+) -> None:
+    service = OrchestratorService()
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-budget-partial-reply",
+            "constraints": {
+                "destination": "Santa Barbara",
+                "dates": {"start": "2026-05-10", "end": "2026-05-20"},
+            },
+            "conversation": {
+                "last_requested_slots": ["budget"],
+                "last_user_intent": "recommend",
+                "last_recommendation_item_type": "hotel",
+                "last_recommendation_query": "recommend hotels",
+            },
+        }
+    )
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        captured_query["value"] = query
+        return RecommendationToolResponse.model_validate(
+            {
+                "ranking_version": "heuristic-v1",
+                "results": [
+                    {
+                        "item_id": "hotel-sb-budget-partial",
+                        "item_type": "hotel",
+                        "score": 0.92,
+                        "rank": 1,
+                        "features": {"name": "Partial Budget Hotel"},
+                        "explanation": "Grounded hotel after a partial budget reply.",
+                    }
+                ],
+            }
+        )
+
+    response = service.handle_message(
+        user_message=message,
+        session_state=state,
+        recent_messages=[
+            TranscriptMessage(
+                role="assistant",
+                content=(
+                    "What budget range should I use for these hotel " "recommendations?"
+                ),
+            )
+        ],
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+        recommendation_executor=recommendation_executor,
+    )
+
+    query = captured_query["value"]
+    assert query is not None
+    assert query.constraints.budget is not None
+    assert query.constraints.budget.min == expected_min
+    assert query.constraints.budget.max == expected_max
+    assert query.constraints.budget.currency == expected_currency
+    assert response.state["conversation"]["last_requested_slots"] == []
+    assert response.recommendations[0].item_id == "hotel-sb-budget-partial"
 
 
 def test_orchestrator_greeting_and_meta_turns_do_not_persist_destination() -> None:
