@@ -42,11 +42,11 @@ def test_eval_missing_core_slots() -> None:
     assert captured_query["value"] is None
     message = response.assistant_message.casefold()
     assert "destination" in message
-    assert "date" in message
-    assert "budget" in message
+    assert "hotel" in message
+    assert response.state["conversation"]["last_requested_slots"] == ["destination"]
 
 
-def test_eval_complete_request_calls_tool_immediately_and_no_clarification() -> None:
+def test_eval_complete_request_progressively_asks_for_budget_when_missing() -> None:
     service = OrchestratorService()
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
 
@@ -71,19 +71,16 @@ def test_eval_complete_request_calls_tool_immediately_and_no_clarification() -> 
         )
 
     response = service.handle_message(
-        user_message="Santa Barbara May 10–20, 2000 EUR, hotels",
+        user_message="Santa Barbara May 10-20, 2000 EUR, hotels",
         session_state=SessionState(session_id="sess-eval-complete"),
         agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
         recommendation_executor=recommendation_executor,
     )
 
-    assert captured_query["value"] is not None
-    assert response.recommendations
-
+    assert captured_query["value"] is None
     assistant = response.assistant_message.casefold()
-    assert "destination" not in assistant
-    assert "travel dates" not in assistant
-    assert "budget" not in assistant
+    assert "budget" in assistant
+    assert response.state["conversation"]["last_requested_slots"] == ["budget"]
 
 
 def test_eval_empty_results_fallback_no_hallucinations_and_suggests_adjustments() -> (
@@ -150,16 +147,15 @@ def test_eval_personalization_follow_up_query_includes_interests() -> None:
             {"ranking_version": "heuristic-v1", "results": []}
         )
 
-    service.handle_message(
+    response = service.handle_message(
         user_message="show me options",
         session_state=next_state,
         agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
         recommendation_executor=recommendation_executor,
     )
 
-    query = captured_query["value"]
-    assert query is not None
-
-    normalized_query = query.query.casefold()
+    assert captured_query["value"] is None
+    assert response.assistant_message.casefold().startswith("which destination")
+    normalized_query = response.state["conversation"]["last_recommendation_query"].casefold()
     assert "nightlife" in normalized_query
     assert "food" in normalized_query

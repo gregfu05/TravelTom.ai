@@ -315,6 +315,12 @@ _MONTH_NAME_DATE_PATTERN = re.compile(
     rf"(?:(?:,\s*|\s+)(?P<year>\d{{4}})(?!\s*(?:{_CURRENCY_WORD_GROUP})\b))?\b",
     flags=re.IGNORECASE,
 )
+_MONTH_NAME_DATE_RANGE_PATTERN = re.compile(
+    rf"\b(?P<month>{_MONTH_WORD})\.?\s+(?P<start_day>\d{{1,2}})(?:st|nd|rd|th)?\s*"
+    rf"(?:-|to|through|until)\s*(?P<end_day>\d{{1,2}})(?:st|nd|rd|th)?"
+    rf"(?:(?:,\s*|\s+)(?P<year>\d{{4}})(?!\s*(?:{_CURRENCY_WORD_GROUP})\b))?\b",
+    flags=re.IGNORECASE,
+)
 _DAY_FIRST_MONTH_NAME_DATE_PATTERN = re.compile(
     rf"\b(?P<day>\d{{1,2}})(?:st|nd|rd|th)?(?:\s+of)?\s+(?P<month>{_MONTH_WORD})\.?"
     rf"(?:(?:,\s*|\s+)(?P<year>\d{{4}})(?!\s*(?:{_CURRENCY_WORD_GROUP})\b))?\b",
@@ -926,6 +932,30 @@ def _collect_explicit_dates(message: str, *, today: date) -> list[date]:
         )
         if parsed_date is not None:
             candidates.append((match.start(), parsed_date))
+
+    for match in _MONTH_NAME_DATE_RANGE_PATTERN.finditer(message):
+        month_key = match.group("month").casefold().rstrip(".")
+        month = _MONTH_NAME_TO_NUMBER.get(month_key)
+        if month is None:
+            continue
+
+        parsed_year_text = match.group("year")
+        year = int(parsed_year_text) if parsed_year_text else today.year
+        start_day = int(match.group("start_day"))
+        end_day = int(match.group("end_day"))
+        start_date = _safe_date(year, month, start_day)
+        end_date = _safe_date(year, month, end_day)
+        if start_date is None or end_date is None:
+            continue
+
+        if parsed_year_text is None and end_date < today:
+            start_date = _safe_date(year + 1, month, start_day)
+            end_date = _safe_date(year + 1, month, end_day)
+            if start_date is None or end_date is None:
+                continue
+
+        candidates.append((match.start(), start_date))
+        candidates.append((match.start() + 1, end_date))
 
     for pattern in (_MONTH_NAME_DATE_PATTERN, _DAY_FIRST_MONTH_NAME_DATE_PATTERN):
         for match in pattern.finditer(message):
