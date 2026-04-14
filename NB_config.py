@@ -1,20 +1,8 @@
 import warnings
 from pathlib import Path
 
-import folium  
-import geopandas as gpd  
 import matplotlib.pyplot as plt
-import numpy as np 
-import pandas as pd  
-import plotly.express as px
-import plotly.graph_objects as go  
 import seaborn as sns
-from folium.plugins import HeatMap  
-from scipy.stats import pearsonr  
-from shapely.geometry import Point  
-from sklearn.cluster import KMeans 
-from sklearn.linear_model import LinearRegression  
-from sklearn.preprocessing import StandardScaler 
 
 warnings.filterwarnings("ignore")
 
@@ -74,12 +62,12 @@ CATEGORY_COLS = [
 ]
 
 # ── Clustering Config (NB2) ───────────────────────────────────────────────────
-KMEANS_CLUSTERS = 10  
+KMEANS_CLUSTERS = 10
 KMEANS_SEED = 42
 
 # ── Plotting Defaults ─────────────────────────────────────────────────────────
-PLOTLY_TEMPLATE = "plotly_white"  
+PLOTLY_TEMPLATE = "plotly_white"
 FOLIUM_TILES = "CartoDB positron"
-MAP_CENTER = {"lat": 20.0, "lon": 0.0}  
+MAP_CENTER = {"lat": 20.0, "lon": 0.0}
 SCATTER_ALPHA = 0.4
 FIG_SIZE = (14, 5)
