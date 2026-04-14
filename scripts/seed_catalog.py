@@ -489,9 +489,24 @@ async def main_async(args: argparse.Namespace) -> None:
     await engine.dispose()
 
 
-def main() -> None:
+def main() -> int:
     args = parse_args()
-    asyncio.run(main_async(args))
+    resolved_dataset_path = args.dataset.resolve()
+    try:
+        asyncio.run(main_async(args))
+    except FileNotFoundError as exc:
+        error_text = str(exc)
+        missing_path = Path(exc.filename).resolve() if exc.filename else None
+        is_missing_dataset_error = (
+            missing_path == resolved_dataset_path
+            or str(resolved_dataset_path) in error_text
+        )
+        if is_missing_dataset_error:
+            print(f"Dataset: {resolved_dataset_path}")
+            print("Dataset not found. Skipping catalog_items seed.")
+            return 0
+        raise
+    return 0
 
 
 def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
@@ -507,4 +522,4 @@ def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

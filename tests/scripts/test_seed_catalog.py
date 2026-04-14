@@ -102,3 +102,40 @@ def test_main_async_dry_run_with_present_dataset(capsys, tmp_path: Path) -> None
 
     assert f"Dataset: {dataset_path}" in captured
     assert "Dry-run enabled. No database changes made." in captured
+
+
+def test_main_returns_zero_when_dataset_missing(tmp_path: Path, monkeypatch) -> None:
+    args = argparse.Namespace(
+        dataset=tmp_path / "traveltom_clean.csv",
+        batch_size=500,
+        min_review_count=10,
+        include_closed=False,
+        truncate=False,
+        dry_run=False,
+    )
+
+    monkeypatch.setattr(seed_catalog, "parse_args", lambda: args)
+
+    assert seed_catalog.main() == 0
+
+
+def test_main_does_not_swallow_unrelated_file_errors(
+    monkeypatch, tmp_path: Path
+) -> None:
+    args = argparse.Namespace(
+        dataset=tmp_path / "traveltom_clean.csv",
+        batch_size=500,
+        min_review_count=10,
+        include_closed=False,
+        truncate=False,
+        dry_run=False,
+    )
+
+    async def _raising_main_async(_args: argparse.Namespace) -> None:
+        raise FileNotFoundError("some other missing file")
+
+    monkeypatch.setattr(seed_catalog, "parse_args", lambda: args)
+    monkeypatch.setattr(seed_catalog, "main_async", _raising_main_async)
+
+    with pytest.raises(FileNotFoundError, match="some other missing file"):
+        seed_catalog.main()
