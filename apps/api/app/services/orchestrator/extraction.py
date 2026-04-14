@@ -319,6 +319,7 @@ _TRIP_WEEKS_PATTERN = re.compile(
 )
 
 _CURRENCY_SYMBOL_CLASS = r"$\u20ac\u00a3"
+_DEFAULT_BUDGET_MAX_CEILING = 10000.0
 
 _BUDGET_RANGE_PATTERN = re.compile(
     rf"\b(?:budget\s*(?:between|from)|(?:between|from)\s*[{_CURRENCY_SYMBOL_CLASS}])\s*"
@@ -334,8 +335,23 @@ _BUDGET_DASH_RANGE_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 _BUDGET_MAX_PATTERN = re.compile(
-    rf"\b(?:under|below|less than|max(?:imum)?|up to)\s*[{_CURRENCY_SYMBOL_CLASS}]?\s*"
+    r"\b(?:under|below|less than|max(?:imum)?|up to|not more than)\s*"
+    rf"[{_CURRENCY_SYMBOL_CLASS}]?\s*"
     r"(?P<maximum>\d[\d,]*(?:\.\d+)?k?)\s*(?P<currency>usd|eur|gbp|cad|aud|jpy|inr)?\b",
+    flags=re.IGNORECASE,
+)
+_BUDGET_MIN_PATTERN = re.compile(
+    rf"\b(?:starting from|from|at least)\s*[{_CURRENCY_SYMBOL_CLASS}]?\s*"
+    r"(?P<minimum>\d[\d,]*(?:\.\d+)?k?)\s*(?P<currency>usd|eur|gbp|cad|aud|jpy|inr)?\b",
+    flags=re.IGNORECASE,
+)
+_BUDGET_AND_UP_PATTERN = re.compile(
+    r"\b(?P<minimum>\d[\d,]*(?:\.\d+)?k?)\s*(?P<currency>usd|eur|gbp|cad|aud|jpy|inr)?\s+and\s+up\b",
+    flags=re.IGNORECASE,
+)
+_BUDGET_APPROX_PATTERN = re.compile(
+    rf"\b(?:around|about|roughly|approximately)\s*[{_CURRENCY_SYMBOL_CLASS}]?\s*"
+    r"(?P<amount>\d[\d,]*(?:\.\d+)?k?)\s*(?P<currency>usd|eur|gbp|cad|aud|jpy|inr)?\b",
     flags=re.IGNORECASE,
 )
 _BUDGET_SINGLE_PATTERN = re.compile(
@@ -414,6 +430,49 @@ _ITEM_TYPE_PATTERNS: dict[str, tuple[str, ...]] = {
         r"\battractions\b",
     ),
 }
+_CONVERSATIONAL_ITEM_TYPE_PATTERNS: dict[str, tuple[str, ...]] = {
+    "restaurant": (
+        r"\bchicken\b",
+        r"\bpizza\b",
+        r"\bburger\b",
+        r"\bburgers\b",
+        r"\bsushi\b",
+        r"\bsteak\b",
+        r"\bramen\b",
+        r"\btacos?\b",
+        r"\bpasta\b",
+        r"\bbrunch\b",
+        r"\bcoffee\b",
+        r"\bhungry\b",
+        r"\bsomething to eat\b",
+        r"\bgrab a bite\b",
+        r"\beat\b",
+    ),
+    "activity": (
+        r"\bsomething fun\b",
+        r"\bfun tonight\b",
+        r"\btonight\b",
+        r"\bthis evening\b",
+        r"\bdate night\b",
+        r"\blive music\b",
+        r"\bconcert\b",
+        r"\bshow\b",
+        r"\bnight out\b",
+        r"\badventure\b",
+        r"\bexplore\b",
+    ),
+    "hotel": (
+        r"\broom\b",
+        r"\brooms\b",
+        r"\bsuite\b",
+        r"\bsuites\b",
+        r"\bcheck in\b",
+        r"\bcheck-in\b",
+        r"\bovernight\b",
+        r"\bsomewhere to stay\b",
+        r"\bneed a place to stay\b",
+    ),
+}
 _UNSUPPORTED_FLIGHT_PATTERNS = (
     r"\bflight\b",
     r"\bflights\b",
@@ -461,6 +520,18 @@ _VAGUE_ACCEPTANCE_PATTERNS = (
     r"\bno preference\b",
     r"\bwhatever\b",
     r"\bany(?:thing)? is okay\b",
+)
+_CONVERSATIONAL_RECOMMENDATION_PATTERNS = (
+    r"\bi want somewhere nice\b",
+    r"\bi want something nice\b",
+    r"\bsomewhere nice\b",
+    r"\bsomething nice\b",
+    r"\bsomewhere good\b",
+    r"\bsomething good\b",
+    r"\bnot too expensive\b",
+    r"\bnot expensive\b",
+    r"\bnot too pricey\b",
+    r"\baffordable\b",
 )
 
 
@@ -569,6 +640,29 @@ def extract_query_filters(message: str) -> dict[str, str]:
     return {}
 
 
+def infer_conversational_item_type(message: str) -> str | None:
+    """Infer likely recommendation type from lightweight conversational cues."""
+
+    lowered = message.casefold()
+    for item_type, patterns in _CONVERSATIONAL_ITEM_TYPE_PATTERNS.items():
+        if any(re.search(pattern, lowered) for pattern in patterns):
+            return item_type
+    return None
+
+
+def has_conversational_recommendation_signal(message: str) -> bool:
+    """Return whether the message sounds like a lightweight recommendation ask."""
+
+    if infer_conversational_item_type(message) is not None:
+        return True
+
+    lowered = message.casefold()
+    return any(
+        re.search(pattern, lowered)
+        for pattern in _CONVERSATIONAL_RECOMMENDATION_PATTERNS
+    )
+
+
 def is_unsupported_flight_request(message: str) -> bool:
     """Return whether the user is asking for flight help, which is unsupported."""
 
@@ -601,6 +695,10 @@ def resolve_search_type_reply(
     if explicit_item_type is not None:
         return explicit_item_type
 
+    inferred_item_type = infer_conversational_item_type(message)
+    if inferred_item_type is not None:
+        return inferred_item_type
+
     if is_unsupported_flight_request(message):
         return None
 
@@ -621,6 +719,10 @@ def resolve_effective_item_type(
     explicit_item_type = extract_query_filters(message).get("item_type")
     if explicit_item_type is not None:
         return explicit_item_type
+
+    inferred_item_type = infer_conversational_item_type(message)
+    if inferred_item_type is not None:
+        return inferred_item_type
 
     if session_state.conversation.last_clarification_kind == "search_type":
         resolved_search_type = resolve_search_type_reply(
@@ -1035,6 +1137,32 @@ def _extract_budget(
         if maximum is not None:
             return BudgetRange(min=0.0, max=maximum, currency=currency.upper())
 
+    min_match = _BUDGET_MIN_PATTERN.search(message)
+    if min_match is not None:
+        minimum = _parse_amount(min_match.group("minimum"))
+        if minimum is not None:
+            return BudgetRange(
+                min=minimum,
+                max=max(minimum, _DEFAULT_BUDGET_MAX_CEILING),
+                currency=currency.upper(),
+            )
+
+    and_up_match = _BUDGET_AND_UP_PATTERN.search(message)
+    if and_up_match is not None:
+        minimum = _parse_amount(and_up_match.group("minimum"))
+        if minimum is not None:
+            return BudgetRange(
+                min=minimum,
+                max=max(minimum, _DEFAULT_BUDGET_MAX_CEILING),
+                currency=currency.upper(),
+            )
+
+    approx_match = _BUDGET_APPROX_PATTERN.search(message)
+    if approx_match is not None:
+        amount = _parse_amount(approx_match.group("amount"))
+        if amount is not None:
+            return BudgetRange(min=0.0, max=amount, currency=currency.upper())
+
     single_amount_match = _BUDGET_SINGLE_PATTERN.search(message)
     if single_amount_match is not None:
         amount = _parse_amount(single_amount_match.group("amount"))
@@ -1055,7 +1183,18 @@ def _extract_budget(
                 return BudgetRange(min=0.0, max=amount, currency=bare_currency)
 
     lowered = message.casefold()
-    if any(token in lowered for token in ("cheap", "budget-friendly", "low budget")):
+    if any(
+        token in lowered
+        for token in (
+            "cheap",
+            "budget-friendly",
+            "low budget",
+            "affordable",
+            "not too expensive",
+            "not expensive",
+            "not too pricey",
+        )
+    ):
         return BudgetRange(min=0.0, max=1500.0, currency=currency.upper())
     if any(token in lowered for token in ("mid-range", "medium budget", "moderate")):
         return BudgetRange(min=1500.0, max=3500.0, currency=currency.upper())

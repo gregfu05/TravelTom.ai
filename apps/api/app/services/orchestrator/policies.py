@@ -18,6 +18,8 @@ from app.schemas.tools.recommendations import RecommendationResult
 from app.services.orchestrator.extraction import (
     build_effective_recommendation_query_text,
     extract_query_filters,
+    has_conversational_recommendation_signal,
+    infer_conversational_item_type,
     is_follow_up_refinement,
     is_unsupported_flight_request,
     is_vague_acceptance_reply,
@@ -92,19 +94,15 @@ _ITEM_TYPE_LABELS = {
     "restaurant": "restaurant recommendations",
     "activity": "activity recommendations",
 }
-_SEARCH_TYPE_QUESTION = (
-    "What would you like help with: hotels, restaurants, or activities?"
-)
+_SEARCH_TYPE_QUESTION = "Sure - do you mean a hotel, a restaurant, or an activity?"
 _SEARCH_TYPE_QUESTION_WITH_DESTINATION = (
-    "For that destination, would you like hotel, restaurant, "
-    "or activity recommendations?"
+    "Sure - for that destination, do you want a hotel, a restaurant, or an activity?"
 )
 _SEARCH_TYPE_FOLLOW_UP_QUESTION = (
-    "What would you like help with: hotels, restaurants, or activities?"
+    "Sure - do you mean a hotel, a restaurant, or an activity?"
 )
 _SEARCH_TYPE_FOLLOW_UP_QUESTION_WITH_DESTINATION = (
-    "For that destination, would you like hotel, restaurant, "
-    "or activity recommendations?"
+    "Sure - for that destination, do you want a hotel, a restaurant, or an activity?"
 )
 _TRANSCRIPT_MESSAGE_MAX_CHARS = 240
 _UNSUPPORTED_FLIGHT_MESSAGE = (
@@ -385,13 +383,14 @@ def build_clarification_message(
             return build_no_preference_after_empty_results_message(session_state)
         return (
             "I can help narrow this down. Tell me what you want to optimize for, "
-            "like lower cost, fewer layovers, or a different vibe."
+            "like lower cost, a different neighborhood, cuisine, or vibe."
         )
 
     prefix = _build_acknowledgement_prefix(acknowledged_slots or [])
     return prefix + _build_contextual_slot_question(
         session_state,
         requested_slots_for_clarification(session_state),
+        message=message,
     )
 
 
@@ -657,11 +656,45 @@ def _build_acknowledgement_prefix(acknowledged_slots: list[str]) -> str:
 def _build_contextual_slot_question(
     session_state: SessionState,
     requested_slots: list[str],
+    *,
+    message: str | None = None,
 ) -> str:
     if not requested_slots:
         return ""
 
     next_slot = requested_slots[0]
+    lowered = message.casefold() if message is not None else ""
+    inferred_item_type = (
+        infer_conversational_item_type(message) if message is not None else None
+    )
+    if (
+        next_slot == "destination"
+        and session_state.constraints.destination is None
+        and inferred_item_type == "restaurant"
+    ):
+        return "Sure - that sounds like food. What city should I look in?"
+    if (
+        next_slot == "destination"
+        and session_state.constraints.destination is None
+        and inferred_item_type == "activity"
+    ):
+        if "tonight" in lowered or "this evening" in lowered:
+            return "Sounds fun - what city should I look in tonight?"
+        return "Sounds fun - what city should I look in?"
+    if (
+        next_slot == "destination"
+        and session_state.constraints.destination is None
+        and inferred_item_type == "hotel"
+    ):
+        return "Sure - what city do you need a place to stay in?"
+    if (
+        next_slot == "destination"
+        and session_state.constraints.destination is None
+        and message is not None
+        and has_conversational_recommendation_signal(message)
+    ):
+        return build_search_type_question(session_state)
+
     question = _CORE_SLOT_QUESTIONS[next_slot]
     item_type = session_state.conversation.last_recommendation_item_type
     if (
@@ -780,6 +813,8 @@ def _active_recommendation_intent(
         return intent
     if is_follow_up_refinement(message):
         return "refine"
+    if has_conversational_recommendation_signal(message):
+        return "recommend"
 
     remembered_intent = state.conversation.last_user_intent
     if remembered_intent in {"recommend", "refine"}:
