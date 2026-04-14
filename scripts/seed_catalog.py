@@ -22,6 +22,7 @@ from typing import Any, TypeVar
 import pandas as pd
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
+from shutil import copyfile
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 API_ROOT = REPO_ROOT / "apps" / "api"
@@ -34,6 +35,9 @@ from app.db.session import get_engine, get_session_factory  # noqa
 DEFAULT_DATASET = (
     REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean2.csv"
 )
+
+
+DEFAULT_RAW_DATASET = DEFAULT_DATASET
 
 BUSINESS_ID_NAMESPACE = uuid.UUID("56f6e980-b2c0-4be2-a238-7176bf5a4fa7")
 
@@ -69,6 +73,29 @@ RESTAURANT_KEYWORDS = (
 
 T = TypeVar("T")
 
+def _read_dataframe(file_path: Path) -> pd.DataFrame:
+    if file_path.suffix == ".csv":
+        return pd.read_csv(file_path)
+    elif file_path.suffix == ".parquet":
+        return pd.read_parquet(file_path)
+    else:
+        raise ValueError(f"Unsupported file format: {file_path.suffix}")
+
+
+def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
+    if dataset_path.exists():
+        return _read_dataframe(dataset_path), str(dataset_path)
+
+    if not DEFAULT_RAW_DATASET.exists():
+        raise FileNotFoundError("Raw dataset missing")
+
+    dataset_path.parent.mkdir(parents=True, exist_ok=True)
+    copyfile(DEFAULT_RAW_DATASET, dataset_path)
+
+    return (
+        _read_dataframe(dataset_path),
+        f"{dataset_path} (copied from raw snapshot)",
+    )
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -107,121 +134,47 @@ def _split_tags(value: Any) -> list[str] | None:
         return None
     return [v.strip() for v in str(value).split(",") if v.strip()] or None
 
+HOTEL_KEYWORDS = (
+    "hotel",
+    "hostel",
+    "resort",
+    "lodging",
+    "inn",
+    "motel",
+)
 
-def _coerce_attributes(value: Any) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return value
-    return {}
-
-
-def _coerce_hours(value: Any) -> dict[str, Any] | None:
-    if isinstance(value, dict):
-        return value
-    return None
-
-
-def _coerce_flag(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)) and not pd.isna(value):
-        return float(value) > 0
-    if isinstance(value, str):
-        lowered = value.strip().casefold()
-        return lowered in {"1", "true", "yes", "y"}
-    return False
+FLIGHT_KEYWORDS = (
+    "airline",
+    "airport",
+    "flight",
+)
 
 
-def _synthetic_business_id(raw: dict[str, Any], index: int) -> str:
-    name = str(raw.get("name") or "").strip().casefold()
-    city = str(raw.get("city") or "").strip().casefold()
-    country = str(raw.get("country") or "").strip().casefold()
-    latitude = str(raw.get("latitude") or "").strip()
-    longitude = str(raw.get("longitude") or "").strip()
-    return "|".join((name, city, country, latitude, longitude, str(index)))
-
-
-def _entity_type_from_row(raw: dict[str, Any]) -> str:
-    entity_type = str(raw.get("entity_type") or "").strip().casefold()
-    if entity_type:
-        if entity_type.endswith("s"):
-            entity_type = entity_type[:-1]
-        return entity_type
-    if _coerce_flag(raw.get("entity_type_flight")):
-        return "flight"
-    if _coerce_flag(raw.get("entity_type_hotel")):
-        return "hotel"
-    if _coerce_flag(raw.get("entity_type_restaurant")):
-        return "restaurant"
-    if _coerce_flag(raw.get("entity_type_attraction")):
-        return "attraction"
-    return "destination"
-
-
-def _source_from_row(raw: dict[str, Any]) -> str | None:
-    source = str(raw.get("source") or "").strip()
-    if source:
-        return source
-    if _coerce_flag(raw.get("source_tbo_hotels")):
-        return "tbo_hotels"
-    if _coerce_flag(raw.get("source_tripadvisor")):
-        return "tripadvisor"
-    if _coerce_flag(raw.get("source_openstreetmap")):
-        return "openstreetmap"
-    return None
-
-
-def _description_from_row(raw: dict[str, Any]) -> str | None:
-    for key in ("description", "description_clean"):
-        value = raw.get(key)
-        if value is None or pd.isna(value):
-            continue
-        text = str(value).strip()
-        if text:
-            return text
-    return None
-
-
-def _rating_from_row(raw: dict[str, Any]) -> Decimal | None:
-    rating = _as_decimal(raw.get("stars"))
-    if rating is not None:
-        return rating
-
-    stars_norm = raw.get("stars_norm")
-    if stars_norm is None or pd.isna(stars_norm):
-        return None
-    try:
-        # TravelTom clean snapshots may provide normalized z-scores only.
-        value = float(stars_norm)
-    except (TypeError, ValueError):
-        return None
-
-    # Map common z-score range to a rough [0, 5] star scale.
-    clipped = min(max(value, -2.5), 2.5)
-    scaled = ((clipped + 2.5) / 5.0) * 5.0
-    return _as_decimal(round(scaled, 2))
+def _normalize_tag(value: str) -> str:
+    return " ".join(value.lower().replace("&", " and ").split())
 
 
 def _item_type_from_tags(tags: list[str] | None) -> str:
     if not tags:
-        return "activity"
-
-    normalized_tags = {_normalize_tag(tag) for tag in tags}
-    if any(tag in HOTEL_KEYWORDS for tag in normalized_tags):
-        return "hotel"
-    if any(tag in RESTAURANT_KEYWORDS for tag in normalized_tags):
-        return "restaurant"
-    return "activity"
-
-
-def _item_type_from_row(raw: dict[str, Any], tags: list[str] | None) -> str:
-    entity_type = _entity_type_from_row(raw)
-    if entity_type in {"hotel", "flight"}:
-        return entity_type
-    if entity_type in {"restaurant", "attraction", "destination"}:
         return "destination"
-    return _item_type_from_tags(tags)
+
+    normalized = [_normalize_tag(tag) for tag in tags]
+
+    GENERIC_BUCKETS = {
+        "hotels and travel",
+        "travel",
+    }
+
+    filtered = [tag for tag in normalized if tag not in GENERIC_BUCKETS]
+
+    if any(any(k in tag for k in FLIGHT_KEYWORDS) for tag in filtered):
+        return "flight"
+
+    if any(any(k in tag for k in HOTEL_KEYWORDS) for tag in filtered):
+        return "hotel"
+
+    return "destination"
+
 def _item_type(raw: dict[str, Any]) -> str:
     # Prefer explicit entity_type
     et = str(raw.get("entity_type") or "").lower()
@@ -460,19 +413,11 @@ async def _upsert(rows: list[dict[str, Any]], batch_size: int, truncate: bool) -
 
 
 async def main_async(args: argparse.Namespace) -> None:
-    dataset_path = args.dataset.resolve()
-    if not dataset_path.exists():
-        print(f"Dataset: {dataset_path}")
-        print("Dataset not found. Skipping catalog_items seed.")
-        return
+    df, label = _load_source_dataset(args.dataset)
+    print(f"Dataset: {label}")
 
-    source, source_label = _load_source_dataset(dataset_path)
-    filtered = _filter_source(
-        source,
-        include_closed=args.include_closed,
-        min_review_count=args.min_review_count,
-    )
-    rows = _prepare_rows(filtered)
+    df = _filter(df, args.min_review_count)
+    rows = _prepare_rows(df)
 
     print(f"Rows to insert: {len(rows)}")
 
