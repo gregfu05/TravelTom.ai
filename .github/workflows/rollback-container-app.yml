@@ -28,6 +28,9 @@ jobs:
   rollback:
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment == 'prod' && 'azure-prod' || 'azure-dev' }}
+    concurrency:
+      group: rollback-${{ github.event.inputs.environment }}
+      cancel-in-progress: false
     env:
       RESOURCE_GROUP: ${{ github.event.inputs.environment == 'prod' && vars.AZURE_RESOURCE_GROUP_PROD || vars.AZURE_RESOURCE_GROUP_DEV }}
       API_APP_NAME: ${{ github.event.inputs.environment == 'prod' && vars.AZURE_CONTAINER_APP_API_PROD || vars.AZURE_CONTAINER_APP_API_DEV }}
@@ -53,3 +56,21 @@ jobs:
             --name "$WEB_APP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
             --revision "${{ github.event.inputs.web_revision }}"
+
+      - name: Resolve rollback URLs
+        id: urls
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_fqdn=$(az containerapp show -n "$API_APP_NAME" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)
+          web_fqdn=$(az containerapp show -n "$WEB_APP_NAME" -g "$RESOURCE_GROUP" --query properties.configuration.ingress.fqdn -o tsv)
+          echo "api_url=https://${api_fqdn}" >> "$GITHUB_OUTPUT"
+          echo "web_url=https://${web_fqdn}" >> "$GITHUB_OUTPUT"
+
+      - name: Run API smoke after rollback
+        shell: pwsh
+        run: ./scripts/smoke-api.ps1 -BaseUrl '${{ steps.urls.outputs.api_url }}'
+
+      - name: Run web smoke after rollback
+        shell: pwsh
+        run: ./scripts/smoke-web.ps1 -BaseUrl '${{ steps.urls.outputs.web_url }}'

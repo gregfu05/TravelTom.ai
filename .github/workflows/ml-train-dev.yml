@@ -22,6 +22,9 @@ jobs:
   train-dev:
     runs-on: ubuntu-latest
     environment: azure-dev
+    concurrency:
+      group: azure-dev-ml-train
+      cancel-in-progress: false
     env:
       RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_DEV }}
       STORAGE_ACCOUNT_NAME: ${{ vars.AZURE_MLOPS_STORAGE_ACCOUNT_NAME }}
@@ -108,4 +111,3 @@ jobs:
           az storage blob upload --overwrite --auth-mode login --account-name "$STORAGE_ACCOUNT_NAME" --container-name "$ARTIFACT_CONTAINER" --name "${artifact_prefix}/ranker.pkl" --file build/mlops/output/ranker.pkl
           az storage blob upload --overwrite --auth-mode login --account-name "$STORAGE_ACCOUNT_NAME" --container-name "$MANIFEST_CONTAINER" --name "${artifact_prefix}/train-manifest.json" --file build/mlops/output/train-manifest.json
           az storage blob upload --overwrite --auth-mode login --account-name "$STORAGE_ACCOUNT_NAME" --container-name "$EVALUATION_CONTAINER" --name "${artifact_prefix}/train-metrics.json" --file build/mlops/output/train-metrics.json
-

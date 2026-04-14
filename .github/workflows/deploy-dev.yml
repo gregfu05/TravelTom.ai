@@ -24,6 +24,9 @@ jobs:
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     environment: azure-dev
+    concurrency:
+      group: azure-dev-deploy
+      cancel-in-progress: false
     env:
       IMAGE_TAG: ${{ github.event.inputs.image_tag || github.event.workflow_run.head_sha }}
       REGISTRY_NAME: ${{ vars.AZURE_CONTAINER_REGISTRY_NAME }}
@@ -36,6 +39,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate Azure workflow inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "$REGISTRY_NAME" ]] && missing+=("AZURE_CONTAINER_REGISTRY_NAME")
+          [[ -z "$RESOURCE_GROUP" ]] && missing+=("AZURE_RESOURCE_GROUP_DEV")
+          [[ -z "$API_APP_NAME" ]] && missing+=("AZURE_CONTAINER_APP_API_DEV")
+          [[ -z "$WEB_APP_NAME" ]] && missing+=("AZURE_CONTAINER_APP_WEB_DEV")
+          [[ -z "$IMAGE_TAG" ]] && missing+=("image_tag")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required environment vars: ${missing[*]}"
+            exit 1
+          fi
+
       - name: Azure login
         uses: azure/login@v2
         with:
@@ -43,19 +61,44 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy API revision
+      - name: Capture current active revisions
+        id: current
+        shell: bash
         run: |
+          set -euo pipefail
+          api_revision=$(az containerapp show -n "$API_APP_NAME" -g "$RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)
+          web_revision=$(az containerapp show -n "$WEB_APP_NAME" -g "$RESOURCE_GROUP" --query properties.latestRevisionName -o tsv)
+          echo "api_revision=$api_revision" >> "$GITHUB_OUTPUT"
+          echo "web_revision=$web_revision" >> "$GITHUB_OUTPUT"
+
+      - name: Compute revision suffix
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_sha=$(echo "$IMAGE_TAG" | cut -c1-7 | tr '[:upper:]' '[:lower:]')
+          revision_suffix="dev-${short_sha}"
+          echo "revision_suffix=$revision_suffix" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy API revision
+        shell: bash
+        run: |
+          set -euo pipefail
           az containerapp update \
             --name "$API_APP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
-            --image "$REGISTRY_NAME.azurecr.io/$API_IMAGE_NAME:$IMAGE_TAG"
+            --image "$REGISTRY_NAME.azurecr.io/$API_IMAGE_NAME:$IMAGE_TAG" \
+            --revision-suffix "${{ steps.meta.outputs.revision_suffix }}-api"
 
       - name: Deploy web revision
+        shell: bash
         run: |
+          set -euo pipefail
           az containerapp update \
             --name "$WEB_APP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
-            --image "$REGISTRY_NAME.azurecr.io/$WEB_IMAGE_NAME:$IMAGE_TAG"
+            --image "$REGISTRY_NAME.azurecr.io/$WEB_IMAGE_NAME:$IMAGE_TAG" \
+            --revision-suffix "${{ steps.meta.outputs.revision_suffix }}-web"
 
       - name: Resolve dev URLs
         id: urls
@@ -73,3 +116,23 @@ jobs:
       - name: Run web smoke
         shell: pwsh
         run: ./scripts/smoke-web.ps1 -BaseUrl '${{ steps.urls.outputs.web_url }}'
+
+      - name: Roll back API revision on failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          az containerapp revision activate \
+            --name "$API_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --revision "${{ steps.current.outputs.api_revision }}"
+
+      - name: Roll back web revision on failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          az containerapp revision activate \
+            --name "$WEB_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --revision "${{ steps.current.outputs.web_revision }}"

@@ -18,6 +18,9 @@ jobs:
   evaluate-dev:
     runs-on: ubuntu-latest
     environment: azure-dev
+    concurrency:
+      group: azure-dev-ml-evaluate
+      cancel-in-progress: false
     env:
       STORAGE_ACCOUNT_NAME: ${{ vars.AZURE_MLOPS_STORAGE_ACCOUNT_NAME }}
       ARTIFACT_CONTAINER: ${{ vars.AZURE_MLOPS_ARTIFACT_CONTAINER }}
@@ -27,6 +30,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate workflow inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "$STORAGE_ACCOUNT_NAME" ]] && missing+=("AZURE_MLOPS_STORAGE_ACCOUNT_NAME")
+          [[ -z "$ARTIFACT_CONTAINER" ]] && missing+=("AZURE_MLOPS_ARTIFACT_CONTAINER")
+          [[ -z "$EVALUATION_CONTAINER" ]] && missing+=("AZURE_MLOPS_EVALUATION_CONTAINER")
+          [[ -z "$MODEL_VERSION" ]] && missing+=("model_version")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required environment vars: ${missing[*]}"
+            exit 1
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -57,6 +74,18 @@ jobs:
             --container-name "$ARTIFACT_CONTAINER" \
             --name "${artifact_prefix}/ranker.pkl" \
             --file build/mlops/eval/ranker.pkl
+
+      - name: Download candidate manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_prefix="models/${MODEL_VERSION}"
+          az storage blob download \
+            --account-name "$STORAGE_ACCOUNT_NAME" \
+            --auth-mode login \
+            --container-name "$MANIFEST_CONTAINER" \
+            --name "${artifact_prefix}/train-manifest.json" \
+            --file build/mlops/eval/train-manifest.json
 
       - name: Download baseline metrics if provided
         if: ${{ github.event.inputs.baseline_metrics_blob_path != '' }}
