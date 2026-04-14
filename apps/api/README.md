@@ -45,7 +45,7 @@ See `instructions/02-backend/` for design and API contracts.
 - The orchestrator deterministically extracts constraints from user messages and
   persists them in session state before invoking the recommender.
 - The orchestrator also extracts request-level `filters.item_type` from user
-  text (for example hotel, flight, destination) for recommendation queries.
+  text (for example hotel, restaurant, activity) for recommendation queries.
 - The recommender applies structured retrieval filters from request-level
   `constraints` and `filters` (for example destination/city/country/continent,
   entity type, and coarse text/category signals).

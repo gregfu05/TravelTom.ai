@@ -19,6 +19,7 @@ from app.services.orchestrator.extraction import (
     build_effective_recommendation_query_text,
     extract_query_filters,
     is_follow_up_refinement,
+    is_unsupported_flight_request,
     is_vague_acceptance_reply,
     resolve_effective_item_type,
 )
@@ -40,18 +41,6 @@ _REFINE_KEYWORDS = (
     "filter",
     "compare",
     "another option",
-)
-_DESTINATION_EXPLORATION_KEYWORDS = (
-    "beach",
-    "city break",
-    "family friendly",
-    "family-friendly",
-    "food",
-    "nature",
-    "nightlife",
-    "relax",
-    "romantic",
-    "weekend getaway",
 )
 _META_PATTERNS = (
     r"\bwhat do you mean\b",
@@ -84,41 +73,43 @@ _TRAVELTOM_PERSONA = (
 )
 _CORE_SLOT_ORDER = ("destination", "dates", "budget")
 _CORE_SLOT_LABELS = {
-    "origin": "departure city",
     "destination": "destination",
     "dates": "travel dates",
     "budget": "budget range",
 }
 _CORE_SLOT_QUESTIONS = {
-    "origin": "Where are you flying from?",
     "destination": "Which destination should I focus on?",
     "dates": "What travel dates should I plan around?",
     "budget": "What budget range should I use?",
 }
 _ITEM_TYPE_REQUIRED_SLOT_ORDER = {
     "hotel": ("destination", "dates", "budget"),
-    "flight": ("origin", "destination", "dates", "budget"),
-    "destination": (),
+    "restaurant": ("destination",),
+    "activity": ("destination",),
 }
 _ITEM_TYPE_LABELS = {
-    "destination": "destination ideas",
     "hotel": "hotel recommendations",
-    "flight": "flight recommendations",
+    "restaurant": "restaurant recommendations",
+    "activity": "activity recommendations",
 }
 _SEARCH_TYPE_QUESTION = (
-    "Do you want hotel recommendations, flight options, or destination ideas?"
+    "What would you like help with: hotels, restaurants, or activities?"
 )
 _SEARCH_TYPE_QUESTION_WITH_DESTINATION = (
-    "I have your destination, dates, and budget. Should I look for hotel "
-    "recommendations or flights?"
+    "For that destination, would you like hotel, restaurant, "
+    "or activity recommendations?"
 )
 _SEARCH_TYPE_FOLLOW_UP_QUESTION = (
-    "Do you want hotel recommendations, flight options, or destination ideas?"
+    "What would you like help with: hotels, restaurants, or activities?"
 )
 _SEARCH_TYPE_FOLLOW_UP_QUESTION_WITH_DESTINATION = (
-    "Should I look for hotel recommendations or flights?"
+    "For that destination, would you like hotel, restaurant, "
+    "or activity recommendations?"
 )
 _TRANSCRIPT_MESSAGE_MAX_CHARS = 240
+_UNSUPPORTED_FLIGHT_MESSAGE = (
+    "Flights are not supported. I can help with hotels, restaurants, or activities."
+)
 
 
 def classify_intent(message: str) -> Intent:
@@ -235,6 +226,13 @@ def decide_next_action(message: str, state: SessionState) -> OrchestrationDecisi
             reason="social turn should stay conversational",
         )
 
+    if is_unsupported_flight_request(message):
+        return OrchestrationDecision(
+            intent="clarify",
+            should_call_recommendation_tool=False,
+            reason="flight requests are unsupported",
+        )
+
     if is_greeting(message):
         return OrchestrationDecision(
             intent="clarify",
@@ -298,19 +296,6 @@ def decide_next_action(message: str, state: SessionState) -> OrchestrationDecisi
             intent=active_intent,
             should_call_recommendation_tool=True,
             reason=f"{active_intent} intent detected",
-        )
-
-    effective_item_type = _effective_recommendation_item_type(
-        message=message,
-        state=state,
-    )
-    if effective_item_type == "destination" and _has_destination_exploration_signal(
-        message=message, state=state
-    ):
-        return OrchestrationDecision(
-            intent="recommend",
-            should_call_recommendation_tool=True,
-            reason="destination exploration can start from partial signal",
         )
 
     if state.status in {"refine", "itinerary", "booking"} and not missing_slots:
@@ -516,6 +501,8 @@ def build_guardrail_plan(
             clarification_message = build_social_turn_message(message)
         elif is_greeting(message):
             clarification_message = build_greeting_message()
+        elif is_unsupported_flight_request(message):
+            clarification_message = _UNSUPPORTED_FLIGHT_MESSAGE
         elif is_meta_question(message):
             clarification_message = build_meta_turn_message(
                 session_state=session_state,
@@ -595,6 +582,11 @@ def build_planning_prompt_context(
         "from the user and transcript.\n"
         "Do not let greetings, meta questions, or repair turns mutate trip "
         "constraints without strong conversational support.\n"
+        "Supported recommendation item types are hotel, restaurant, "
+        "and activity only.\n"
+        "Flights are not supported. If the user asks for flights, do not classify "
+        "them as flights and do not call the recommendation tool.\n"
+        "If item type is unclear, ask a clarification question instead of defaulting.\n"
         "If clarification is needed, ask for one next-most-useful missing detail.\n"
         "Strict validity rule: do not include conversation, shortlist, itinerary, "
         "last_message_at, last_recommendation_version, or any key not shown in the "
@@ -604,6 +596,10 @@ def build_planning_prompt_context(
         '- "Hotels in Santa Barbara May 10th to May 20th under 2000 euros" -> '
         "constraints.destination, constraints.dates, constraints.budget, "
         'query_controls.filters.item_type="hotel"\n'
+        '- "Restaurants in Santa Barbara" -> constraints.destination and '
+        'query_controls.filters.item_type="restaurant"\n'
+        '- "Activities in Santa Barbara" -> constraints.destination and '
+        'query_controls.filters.item_type="activity"\n'
         '- "I want hotels to be honest" after destination, dates, and budget are '
         'known -> query_controls.filters.item_type="hotel" and '
         "should_call_recommendation_tool=true\n"
@@ -616,7 +612,6 @@ def build_planning_prompt_context(
         '  "clarification_message": "required when tool call is false",\n'
         '  "state_patch": {\n'
         '    "constraints": {\n'
-        '      "origin": "string|null",\n'
         '      "destination": "string|null",\n'
         '      "dates": {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}|null,\n'
         '      "trip_length_days": 1|null,\n'
@@ -630,7 +625,7 @@ def build_planning_prompt_context(
         "  },\n"
         '  "query_controls": {\n'
         '    "query": "string|null",\n'
-        '    "filters": {"item_type": "destination|hotel|flight"},\n'
+        '    "filters": {"item_type": "hotel|restaurant|activity"},\n'
         '    "max_results": 1\n'
         "  }\n"
         "}\n"
@@ -643,9 +638,6 @@ def build_planning_prompt_context(
 
 
 def _build_acknowledgement_prefix(acknowledged_slots: list[str]) -> str:
-    if {"origin", "destination"}.issubset(set(acknowledged_slots)):
-        return "Got it, I have your route. "
-
     acknowledgements = [
         _CORE_SLOT_LABELS[slot]
         for slot in acknowledged_slots
@@ -669,24 +661,16 @@ def _build_contextual_slot_question(
     if not requested_slots:
         return ""
 
-    if requested_slots == ["origin", "destination"]:
-        return "Where are you flying from and where do you want to go?"
-
     next_slot = requested_slots[0]
     question = _CORE_SLOT_QUESTIONS[next_slot]
     item_type = session_state.conversation.last_recommendation_item_type
     if (
         session_state.conversation.last_user_intent not in {"recommend", "refine"}
         or item_type not in _ITEM_TYPE_LABELS
-        or item_type == "destination"
     ):
         return question
 
     item_label = _ITEM_TYPE_LABELS[item_type]
-    if item_type == "flight" and next_slot == "origin":
-        return "Where are you flying from for these flight recommendations?"
-    if item_type == "flight" and next_slot == "destination":
-        return "Where do you want to fly to?"
     if next_slot == "destination":
         return f"Which destination should I use for these {item_label}?"
     if next_slot == "dates":
@@ -812,7 +796,7 @@ def _effective_recommendation_item_type(
     *,
     message: str,
     state: SessionState,
-) -> str:
+) -> str | None:
     explicit_item_type = extract_query_filters(message).get("item_type")
     if explicit_item_type is not None:
         return explicit_item_type
@@ -823,22 +807,7 @@ def _effective_recommendation_item_type(
     )
     if remembered_item_type is not None:
         return remembered_item_type
-    return "destination"
-
-
-def _has_destination_exploration_signal(
-    *,
-    message: str,
-    state: SessionState,
-) -> bool:
-    if is_meta_question(message) or is_repair_turn(message):
-        return False
-    lowered = message.casefold()
-    if any(keyword in lowered for keyword in _DESTINATION_EXPLORATION_KEYWORDS):
-        return True
-    if state.conversation.last_user_intent in {"recommend", "refine"}:
-        return True
-    return classify_intent(message) in {"recommend", "refine"}
+    return None
 
 
 def needs_search_type_clarification(state: SessionState) -> bool:
@@ -871,10 +840,6 @@ def requested_slots_for_clarification(session_state: SessionState) -> list[str]:
     if not missing_slots:
         return []
 
-    item_type = session_state.conversation.last_recommendation_item_type
-    if item_type == "flight":
-        if "origin" in missing_slots and "destination" in missing_slots:
-            return ["origin", "destination"]
     previously_requested = [
         slot
         for slot in session_state.conversation.last_requested_slots
@@ -909,23 +874,29 @@ def build_no_preference_after_empty_results_message(session_state: SessionState)
     """Build deterministic copy when the user has no further refinement preference."""
 
     item_type = session_state.conversation.last_recommendation_item_type
-    if item_type == "flight":
-        return (
-            "I still do not have grounded flight matches with the current route, "
-            "dates, and budget. Try widening the budget, changing the dates, or "
-            "adjusting the route."
-        )
     if item_type == "hotel":
         destination = session_state.constraints.destination or "that destination"
         return (
             "I still do not have grounded hotel matches for "
             f"{destination} with the current dates and budget. Try widening the "
-            "budget, changing the dates, or switching to flights instead."
+            "budget or changing the dates."
+        )
+    if item_type == "restaurant":
+        destination = session_state.constraints.destination or "that destination"
+        return (
+            "I still do not have grounded restaurant matches for "
+            f"{destination}. Try a different neighborhood, cuisine, or budget."
+        )
+    if item_type == "activity":
+        destination = session_state.constraints.destination or "that destination"
+        return (
+            "I still do not have grounded activity matches for "
+            f"{destination}. Try a different vibe, neighborhood, or budget."
         )
     return (
         "I still do not have strong grounded matches with the current trip details. "
-        "Try changing the destination, dates, budget, or whether you want hotels "
-        "or flights."
+        "Try changing the destination, dates, budget, or whether you want hotels, "
+        "restaurants, or activities."
     )
 
 

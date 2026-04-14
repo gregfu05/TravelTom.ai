@@ -37,8 +37,8 @@ describe("useSessionStore", () => {
       ],
       latestRecommendations: [
         {
-          itemId: "dest-lisbon",
-          itemType: "destination",
+          itemId: "restaurant-lisbon",
+          itemType: "restaurant",
           score: 0.93,
           rank: 1,
           explanation: "Excellent match for culture and food.",
@@ -52,7 +52,7 @@ describe("useSessionStore", () => {
     expect(hydratedState.sessionId).toBe("session-restored");
     expect(hydratedState.hasRemoteSession).toBe(true);
     expect(hydratedState.messages).toHaveLength(2);
-    expect(hydratedState.latestRecommendations[0]?.itemId).toBe("dest-lisbon");
+    expect(hydratedState.latestRecommendations[0]?.itemId).toBe("restaurant-lisbon");
     expect(hydratedState.isSending).toBe(false);
     expect(hydratedState.chatError).toBeNull();
     expect(hydratedState.authToken).toBe("token-123");

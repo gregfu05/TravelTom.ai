@@ -16,8 +16,8 @@ import pandas as pd
 
 _ITEM_TYPE_TO_ENTITY_TYPES: dict[str, set[str]] = {
     "hotel": {"hotel"},
-    "flight": {"flight"},
-    "destination": {"attraction", "restaurant"},
+    "restaurant": {"restaurant"},
+    "activity": {"attraction", "activity"},
 }
 
 _GEO_FIELDS = (

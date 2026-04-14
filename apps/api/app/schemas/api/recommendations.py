@@ -43,7 +43,7 @@ class RecommendationResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     item_id: str = Field(min_length=1)
-    item_type: Literal["destination", "hotel", "flight"]
+    item_type: Literal["hotel", "restaurant", "activity"]
     score: float
     rank: int = Field(ge=1)
     features: dict[str, Any] = Field(default_factory=dict)

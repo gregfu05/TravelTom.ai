@@ -29,7 +29,9 @@ LABEL_STRATEGY_WEAK = "weak-supervision-v1"
 
 _ITEM_TYPE_BY_ENTITY_TYPE: dict[str, str] = {
     "hotel": "hotel",
-    "flight": "flight",
+    "restaurant": "restaurant",
+    "attraction": "activity",
+    "activity": "activity",
 }
 
 _IGNORED_CATEGORY_TERMS = {
@@ -491,7 +493,7 @@ def _item_type_from_entity_type(entity_type: str) -> str:
     normalized = entity_type.strip().lower()
     if normalized in _ITEM_TYPE_BY_ENTITY_TYPE:
         return _ITEM_TYPE_BY_ENTITY_TYPE[normalized]
-    return "destination"
+    return "activity"
 
 
 def _coerce_json_object(value: Any) -> dict[str, Any]:

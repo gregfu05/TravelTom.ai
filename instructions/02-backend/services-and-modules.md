@@ -73,8 +73,8 @@ apps/api/
     execution, and recommendation outcome normalization to focused
     collaborators under `app/services/orchestrator/`.
   - Owns the hybrid recommendation policy:
-    destination exploration can start from partial signal, while hotel and
-    flight searches still wait for destination, dates, and budget.
+    hotel searches wait for destination, dates, and budget, while restaurant
+    and activity searches require destination.
   - Converts validated recommendation data into route-safe `OrchestratorResponse`
     payloads.
 - TravelTom agent service (`app/services/travel_tom_agent.py`):

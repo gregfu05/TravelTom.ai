@@ -52,7 +52,7 @@ Source of truth: `apps/api/app/schemas/state.py`
 - `conversation.last_search_outcome` is
   `results|empty_results|no_new_results|null`.
 - `conversation.last_recommendation_item_type` is
-  `destination|hotel|flight|null`.
+  `hotel|restaurant|activity|null`.
 - `conversation.last_recommendation_result_ids` is a bounded list of grounded
   recommendation item ids used for duplicate suppression on follow-up turns.
 - `status` is an enum: `explore`, `refine`, `itinerary`, `booking`.
@@ -104,7 +104,7 @@ Source of truth: `apps/api/app/schemas/state.py`
   produced results, no results, or only duplicate/no-new results so vague
   follow-up replies can be handled without loops.
 - `conversation.last_recommendation_item_type` preserves the effective hotel,
-  flight, or destination mode across follow-up turns like `show me more` and
+  restaurant, or activity mode across follow-up turns like `show me more` and
   across clarification turns while those recommendation details are still being
   collected.
 - `conversation.last_recommendation_query` preserves the effective recommender
@@ -116,6 +116,5 @@ Source of truth: `apps/api/app/schemas/state.py`
   unseen results and avoid replaying the same visible list as if it were new.
 - Required-slot logic is item-type aware:
   - `hotel` requires destination, dates, and budget
-  - `flight` requires origin, destination, dates, and budget
-  - `destination` exploration does not inherit hotel/flight slot requirements
-
+  - `restaurant` requires destination
+  - `activity` requires destination

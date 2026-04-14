@@ -17,14 +17,14 @@ Decision:
 Change control:
 - Revisit only after a benchmark refresh or explicit product decision.
 
-## 2. Flight data realism in MVP
+## 2. Catalog metadata realism in MVP
 
 Status: Provisional default (active).
 
 Decision:
-- MVP uses dummy flights with realistic-looking metadata and static pricing.
-- Final keeps static demo pricing unless a real provider integration is explicitly approved.
-- Flight recommendations must remain deterministic for a fixed seed dataset.
+- MVP uses deterministic seed data for hotels, restaurants, and activities.
+- Final keeps static demo metadata unless a real provider integration is explicitly approved.
+- Recommendations must remain deterministic for a fixed seed dataset.
 
 Change control:
 - Revisit only if external provider integration enters scope.

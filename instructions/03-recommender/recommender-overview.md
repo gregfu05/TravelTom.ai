@@ -32,7 +32,7 @@ Purpose: generate a broad candidate set.
 
 Techniques:
 - Vector similarity search (query vs item embeddings).
-- Hard filters: budget, dates, star rating, location constraints, flight constraints.
+- Hard filters: budget, dates, star rating, and location constraints.
 - Keyword fallback when vector retrieval returns fewer than 20 candidates.
 
 Output: Top-K candidates (100-300 items) with basic metadata.
@@ -54,7 +54,7 @@ Signals:
 Midterm:
 - Deterministic heuristic scoring.
 - Content match, budget fit, popularity/rating.
-- Penalties: early flights, long layovers, distance.
+- Signals: content match, budget fit, popularity/rating, and distance.
 
 Final:
 - ML-based ranker (LightGBM).
@@ -70,7 +70,8 @@ Final:
 
 - Destinations
 - Hotels
-- Flights
+- Restaurants
+- Activities
 
 ## Recommender v2 (active, Yelp parquet)
 
@@ -101,7 +102,7 @@ Final:
     against catalog `city`; if no rows match the destination constraint, returns
     an empty result set.
   - Applies hard item-type filtering from `RecommendationQuery.filters.item_type`
-    (`destination|hotel|flight`); if no rows match the requested type, returns
+    (`hotel|restaurant|activity`); if no rows match the requested type, returns
     an empty result set.
   - Hotel-specific quality gate narrows `item_type=hotel` results to rows with
     lodging tags (for example `Hotels`, `Resorts`, `Inns`) when such rows are

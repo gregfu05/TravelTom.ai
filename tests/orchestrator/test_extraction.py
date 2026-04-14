@@ -29,7 +29,6 @@ def test_extracts_core_constraints_from_message() -> None:
         today=date(2026, 2, 23),
     )
 
-    assert updated.constraints.origin == "NYC"
     assert updated.constraints.destination == "Lisbon"
     assert updated.constraints.dates is not None
     assert updated.constraints.dates.start.isoformat() == "2026-06-10"
@@ -474,7 +473,7 @@ def test_clarification_slot_fill_turn_reuses_prior_item_type_and_query_terms() -
     )
 
 
-def test_explicit_item_type_override_beats_carried_type() -> None:
+def test_unsupported_flight_request_does_not_override_carried_item_type() -> None:
     state = SessionState.model_validate(
         {
             "session_id": "sess-1",
@@ -484,7 +483,7 @@ def test_explicit_item_type_override_beats_carried_type() -> None:
 
     assert (
         resolve_effective_item_type(message="actually flights", session_state=state)
-        == "flight"
+        is None
     )
     assert (
         build_effective_recommendation_query_text(
@@ -495,7 +494,7 @@ def test_explicit_item_type_override_beats_carried_type() -> None:
     )
 
 
-def test_search_type_reply_reuses_prior_query_context() -> None:
+def test_search_type_reply_reuses_prior_query_context_without_defaulting_item_type():
     state = SessionState.model_validate(
         {
             "session_id": "sess-search-type-reply",
@@ -516,7 +515,7 @@ def test_search_type_reply_reuses_prior_query_context() -> None:
 
     assert (
         resolve_effective_item_type(message="Anything works", session_state=state)
-        == "hotel"
+        is None
     )
     assert is_vague_acceptance_reply("Anything works") is True
     assert (
@@ -546,14 +545,14 @@ def test_natural_hotel_phrase_extracts_destination_dates_and_budget() -> None:
     assert updated.constraints.budget.currency == "EUR"
 
 
-def test_flight_context_extracts_bare_route_reply() -> None:
+def test_unsupported_flight_route_reply_does_not_capture_origin_or_item_type() -> None:
     state = SessionState.model_validate(
         {
-            "session_id": "sess-flight-route",
+            "session_id": "sess-unsupported-route",
             "conversation": {
                 "last_requested_slots": ["origin", "destination"],
                 "last_user_intent": "recommend",
-                "last_recommendation_item_type": "flight",
+                "last_recommendation_item_type": "hotel",
             },
         }
     )
@@ -564,5 +563,5 @@ def test_flight_context_extracts_bare_route_reply() -> None:
         today=date(2026, 3, 23),
     )
 
-    assert updated.constraints.origin == "Madrid"
-    assert updated.constraints.destination == "Lisbon"
+    assert updated.constraints.origin is None
+    assert updated.constraints.destination is None

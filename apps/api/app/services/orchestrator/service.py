@@ -63,9 +63,9 @@ RecommendationExecutor = Callable[[RecommendationQuery], RecommendationToolRespo
 AgentExecutor = Callable[[list[dict[str, str]]], dict[str, Any]]
 PlannerExecutor = Callable[[str], Mapping[str, Any] | None]
 ResponseComposer = Callable[[str], str | None]
-RecommendationItemType = Literal["destination", "hotel", "flight"]
+RecommendationItemType = Literal["hotel", "restaurant", "activity"]
 
-_VALID_ITEM_TYPES = {"destination", "hotel", "flight"}
+_VALID_ITEM_TYPES = {"hotel", "restaurant", "activity"}
 _STATE_CONTEXT_PREFIX = "TRAVELTOM_SESSION_STATE_JSON:"
 _DIRECT_QUERY_PREFIX = "TRAVELTOM_DIRECT_RECOMMENDATION_QUERY_JSON:"
 _RECOMMENDATION_CONTEXT_PREFIX = "TRAVELTOM_RECOMMENDATION_CONTEXT_JSON:"
@@ -614,8 +614,6 @@ class OrchestratorService:
                 session_state=session_state,
             )
             effective_item_type = self._normalize_item_type(resolved_item_type)
-        if effective_item_type is None:
-            effective_item_type = "destination"
         effective_query = (
             tool_query
             or self._normalize_query_override(plan.query_controls.query)
@@ -629,7 +627,7 @@ class OrchestratorService:
             session_state=session_state,
             user_message=user_message,
             recommendation_response=recommendation_response,
-            recommendation_item_type=effective_item_type,
+            recommendation_item_type=effective_item_type or "",
             recommendation_query=effective_query,
             allow_retry_on_duplicate=recommendation_executor is not None,
             candidate_message=final_ai_message.text if final_ai_message else None,
@@ -801,7 +799,7 @@ class OrchestratorService:
             recommendation_item_type=self._normalize_item_type(
                 execution_result.query.filters.get("item_type")
             )
-            or "destination",
+            or "",
             recommendation_query=execution_result.query.query,
             allow_retry_on_duplicate=False,
         )

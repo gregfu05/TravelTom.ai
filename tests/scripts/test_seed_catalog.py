@@ -12,7 +12,7 @@ from scripts.seed_catalog import _item_type_from_tags
 
 def test_item_type_ignores_generic_hotels_and_travel_bucket() -> None:
     tags = ["Hotels & Travel", "Wine Tours"]
-    assert _item_type_from_tags(tags) == "destination"
+    assert _item_type_from_tags(tags) == "activity"
 
 
 def test_item_type_detects_actual_hotel_tags() -> None:
@@ -20,9 +20,9 @@ def test_item_type_detects_actual_hotel_tags() -> None:
     assert _item_type_from_tags(tags) == "hotel"
 
 
-def test_item_type_detects_flight_tags() -> None:
-    tags = ["Airports", "Travel Services"]
-    assert _item_type_from_tags(tags) == "flight"
+def test_item_type_detects_restaurant_tags() -> None:
+    tags = ["Restaurants", "Seafood"]
+    assert _item_type_from_tags(tags) == "restaurant"
 
 
 def test_load_source_dataset_copies_raw_when_cleaned_missing(

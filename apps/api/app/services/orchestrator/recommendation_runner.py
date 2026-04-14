@@ -131,7 +131,7 @@ class RecommendationRunner:
                 mode="json"
             )
         if session_state.constraints.party_size:
-            constraints["party_size"] = (
-                session_state.constraints.party_size.model_dump()
-            )
+            constraints[
+                "party_size"
+            ] = session_state.constraints.party_size.model_dump()
         return constraints

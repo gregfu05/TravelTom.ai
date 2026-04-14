@@ -37,7 +37,7 @@ class ChatRecommendation(BaseModel):
     """Recommendation payload returned to the web client."""
 
     item_id: str
-    item_type: Literal["destination", "hotel", "flight"]
+    item_type: Literal["hotel", "restaurant", "activity"]
     score: float
     rank: int
     explanation: str

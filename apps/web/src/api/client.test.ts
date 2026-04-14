@@ -142,8 +142,8 @@ describe("apiClient", () => {
           ],
           recommendations: [
             {
-              item_id: "dest-lisbon",
-              item_type: "destination",
+              item_id: "restaurant-lisbon",
+              item_type: "restaurant",
               score: 0.93,
               rank: 1,
               explanation: "Excellent match for culture and food.",
@@ -165,7 +165,7 @@ describe("apiClient", () => {
 
     expect(response.sessionId).toBe("session-123");
     expect(response.messages[0]?.createdAt).toBe("2026-03-23T12:00:00Z");
-    expect(response.recommendations[0]?.itemId).toBe("dest-lisbon");
+    expect(response.recommendations[0]?.itemId).toBe("restaurant-lisbon");
     expect(response.recommendations[0]?.metadata).toEqual({ name: "Lisbon" });
     expect(capturedInit?.method).toBe("GET");
   });

@@ -35,7 +35,7 @@ def _context() -> RankingFeatureContext:
         query_tokens=("seafood", "santa", "barbara"),
         category_terms=("seafood",),
         entity_types=("restaurant",),
-        requested_item_type="destination",
+        requested_item_type="restaurant",
         city="santa barbara",
         state=None,
         country="us",

@@ -13,7 +13,7 @@ class CatalogSearchQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     q: str = Field(min_length=1)
-    item_type: Literal["destination", "hotel", "flight"] | None = Field(
+    item_type: Literal["hotel", "restaurant", "activity"] | None = Field(
         default=None,
         alias="type",
     )

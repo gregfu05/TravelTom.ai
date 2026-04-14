@@ -31,8 +31,8 @@ def test_recommendations_query_returns_placeholder_response() -> None:
             "ranking_version": "heuristic-v1",
             "results": [
                 {
-                    "item_id": "dest-1",
-                    "item_type": "destination",
+                    "item_id": "restaurant-1",
+                    "item_type": "restaurant",
                     "score": 0.91,
                     "rank": 1,
                     "features": {"name": "Example"},
@@ -41,9 +41,9 @@ def test_recommendations_query_returns_placeholder_response() -> None:
             ],
         }
 
-    app.dependency_overrides[get_recommendation_tool] = (
-        lambda: _fake_recommendation_tool
-    )
+    app.dependency_overrides[
+        get_recommendation_tool
+    ] = lambda: _fake_recommendation_tool
     try:
         client = TestClient(app)
         response = client.post("/api/v1/recommendations/query", json=_base_payload())
@@ -73,9 +73,9 @@ def test_recommendations_query_handles_invalid_tool_response() -> None:
         del query
         return {"ranking_version": "heuristic-v1", "results": [{"item_id": 123}]}
 
-    app.dependency_overrides[get_recommendation_tool] = (
-        lambda: _invalid_recommendation_tool
-    )
+    app.dependency_overrides[
+        get_recommendation_tool
+    ] = lambda: _invalid_recommendation_tool
     try:
         client = TestClient(app)
         response = client.post("/api/v1/recommendations/query", json=_base_payload())

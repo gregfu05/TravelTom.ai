@@ -16,7 +16,7 @@ const healthResponseSchema = z.object({
 
 const recommendationSchema = z.object({
   item_id: z.string(),
-  item_type: z.enum(["destination", "hotel", "flight"]),
+  item_type: z.enum(["hotel", "restaurant", "activity"]),
   score: z.number(),
   rank: z.number(),
   explanation: z.string(),

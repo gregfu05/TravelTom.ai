@@ -12,7 +12,7 @@
    hydrates transcript, recommendations, and server state from
    `GET /api/v1/chat/{session_id}` before the next turn.
 7. Assistant response is appended to the message list and recommendations are rendered from the latest response payload.
-8. User saves items (destinations, hotels, flights) to shortlist.
+8. User saves items (hotels, restaurants, activities) to shortlist.
 9. User views generated itinerary.
 10. User clicks booking stub to simulate conversion.
 
@@ -42,8 +42,8 @@
   - Route: `/planner`
   - Empty state
   - Empty-state chips encourage either:
-    - broad destination exploration prompts, or
-    - concrete hotel/flight prompts with destination, dates, and budget
+    - hotel prompts with destination, dates, and budget, or
+    - restaurant/activity prompts with destination
   - Conversation progression supports:
     - natural greeting
     - progressive slot capture
