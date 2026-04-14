@@ -101,7 +101,7 @@ services:
     command:
       - /bin/sh
       - -c
-      - if [ ! -d node_modules ] || [ -z "$(ls -A node_modules 2>/dev/null)" ]; then npm ci; fi && npm run dev -- --host 0.0.0.0 --port 5173
+      - if [ ! -d node_modules ] || [ -z "$(ls -A node_modules 2>/dev/null)" ] || ! npm ls --depth=0 >/dev/null 2>&1; then npm ci; fi && npm run dev -- --host 0.0.0.0 --port 5173
     restart: unless-stopped
 
 volumes:
