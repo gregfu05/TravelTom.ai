@@ -214,10 +214,10 @@ def _evaluate_model_against_heuristic(
     comparison = cast(
         dict[str, float | int | str],
         compare_grouped_rankers(
-        frame=eval_frame,
-        baseline_score_column="score_heuristic",
-        candidate_score_column="score_ml",
-        k=k,
+            frame=eval_frame,
+            baseline_score_column="score_heuristic",
+            candidate_score_column="score_ml",
+            k=k,
         ),
     )
     comparison["baseline"] = "heuristic-ranker-v3"

@@ -115,10 +115,10 @@ def get_azure_b2c_scheme_factory() -> AzureB2CSchemeFactory:
             return cast(
                 AzureB2CScheme,
                 B2CMultiTenantAuthorizationCodeBearer(
-                app_client_id=app_client_id,
-                auto_error=True,
-                scopes=scopes or None,
-                openid_config_url=openid_config_url,
+                    app_client_id=app_client_id,
+                    auto_error=True,
+                    scopes=scopes or None,
+                    openid_config_url=openid_config_url,
                 ),
             )
 
