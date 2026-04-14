@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import re
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from functools import lru_cache
@@ -20,7 +18,6 @@ from app.schemas.api.recommendations import (
 )
 from app.schemas.api.recommendations import RecommendationResponse
 from app.schemas.orchestrator import (
-    LLMComposedResponse,
     OrchestratorPolicyConfig,
     OrchestratorResponse,
     RecommendationToolRuntimePayload,
@@ -112,7 +109,6 @@ class TravelTomAgent:
     ) -> None:
         self._orchestrator = orchestrator_service
         self._provider_name = provider_name
-        self._chat_model = chat_model
         self._structured_client = structured_client
         self._recommendation_handler = recommendation_tool
         self._policy = policy_config or OrchestratorPolicyConfig()
@@ -220,26 +216,6 @@ class TravelTomAgent:
             runtime_payload.response.model_dump(mode="json")
         )
 
-    def _compose_grounded_response(self, prompt: str) -> str | None:
-        if self._provider_name == "disabled":
-            return None
-
-        try:
-            model_response = cast(Any, self._chat_model).invoke(prompt)
-        except Exception:
-            return None
-
-        payload = self._parse_composed_response_payload(
-            self._model_response_text(model_response)
-        )
-        if payload is None:
-            return None
-
-        try:
-            return LLMComposedResponse.model_validate(payload).assistant_message
-        except ValidationError:
-            return None
-
     def _plan_orchestration(self, prompt: str) -> dict[str, Any] | None:
         if self._structured_client is None:
             return None
@@ -251,56 +227,6 @@ class TravelTomAgent:
         if not isinstance(payload, dict):
             raise PlannerExecutionError("Planner response was not a JSON object")
         return cast(dict[str, Any], payload)
-
-    def _model_response_text(self, model_response: Any) -> str:
-        if isinstance(model_response, str):
-            return model_response
-
-        content = getattr(model_response, "content", "")
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            text_parts: list[str] = []
-            for block in content:
-                if isinstance(block, str):
-                    text_parts.append(block)
-                    continue
-                if isinstance(block, dict):
-                    block_text = block.get("text")
-                    if isinstance(block_text, str):
-                        text_parts.append(block_text)
-            return "\n".join(part for part in text_parts if part)
-        return ""
-
-    def _parse_composed_response_payload(
-        self,
-        content: str,
-    ) -> dict[str, Any] | None:
-        normalized = content.strip()
-        if not normalized:
-            return None
-
-        normalized = re.sub(
-            r"^```(?:json)?\s*|\s*```$",
-            "",
-            normalized,
-            flags=re.IGNORECASE | re.DOTALL,
-        ).strip()
-        try:
-            parsed = json.loads(normalized)
-        except json.JSONDecodeError:
-            start = normalized.find("{")
-            end = normalized.rfind("}")
-            if start < 0 or end <= start:
-                return None
-            try:
-                parsed = json.loads(normalized[start : end + 1])
-            except json.JSONDecodeError:
-                return None
-
-        if not isinstance(parsed, dict):
-            return None
-        return parsed
 
     def _build_recommendation_tool(self):
         @tool(
