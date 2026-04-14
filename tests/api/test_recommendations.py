@@ -31,8 +31,8 @@ def test_recommendations_query_returns_placeholder_response() -> None:
             "ranking_version": "heuristic-v1",
             "results": [
                 {
-                    "item_id": "dest-1",
-                    "item_type": "destination",
+                    "item_id": "restaurant-1",
+                    "item_type": "restaurant",
                     "score": 0.91,
                     "rank": 1,
                     "features": {"name": "Example"},

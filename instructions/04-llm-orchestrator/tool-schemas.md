@@ -15,7 +15,7 @@ All tool inputs and outputs must pass explicit Pydantic validation.
   - `query: str` (required)
   - `constraints: RecommendationConstraints` (defaults to empty object)
   - `filters: dict[str, Any]` (default `{}`)
-    - supported runtime key: `item_type` (`destination|hotel|flight`)
+    - supported runtime key: `item_type` (`hotel|restaurant|activity`)
   - `max_results: int` (default `20`, range `1..50`)
   - `ranking_version: str` (default `"heuristic-v1"`)
 - `RecommendationConstraints`
@@ -27,7 +27,7 @@ All tool inputs and outputs must pass explicit Pydantic validation.
   - `star_rating_min: int | None` (range `0..5`)
 - `RecommendationResult`
   - `item_id: str`
-  - `item_type: "destination" | "hotel" | "flight"`
+  - `item_type: "hotel" | "restaurant" | "activity"`
   - `score: float`
   - `rank: int` (>= 1)
   - `features: dict[str, Any]` (default `{}`)
@@ -47,7 +47,7 @@ Note: empty recommendation results are valid and expected in placeholder mode.
 - `ranking_version` remains pinned to `"heuristic-v1"` in orchestrator runtime.
 - `max_results` defaults to the chat policy value (`5`) in the bounded chat
   fallback path and remains request-driven for `/api/v1/recommendations/query`.
-- `filters.item_type` is normalized to `destination|hotel|flight` with
+- `filters.item_type` is normalized to `hotel|restaurant|activity` with
   deterministic extraction when absent from the agent path.
 - The tool returns a LangChain runtime artifact with:
   - `status`: `success|timeout|invalid_payload|failure`
@@ -61,7 +61,7 @@ Note: empty recommendation results are valid and expected in placeholder mode.
 
 - `CatalogSearchQuery`
   - `q: str`
-  - `item_type: "destination" | "hotel" | "flight" | None` (alias input key: `type`)
+  - `item_type: "hotel" | "restaurant" | "activity" | None` (alias input key: `type`)
   - `limit: int` (default `20`, range `1..100`)
   - `offset: int` (default `0`, `>= 0`)
 
@@ -82,4 +82,3 @@ Note: empty recommendation results are valid and expected in placeholder mode.
 - Validation failure: block tool execution and return a safe user response.
 - Tool timeout/error: normalize to a runtime artifact and return a deterministic safe response.
 - Use per-tool timeout policies from orchestration config.
-

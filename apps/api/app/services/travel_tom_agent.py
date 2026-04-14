@@ -68,8 +68,8 @@ Runtime notes:
   prior recommendation intent unless the user explicitly overrides it
 - if the user is exploring destinations, you may start recommendation_query from
   partial signal like vibe, trip length, or budget
-- if the user is asking for hotels or flights, wait until destination, dates,
-  and budget are grounded
+- if the user is asking for hotels, wait until destination, dates, and budget
+  are grounded
 - if the user just supplied the final missing detail for an active
   recommendation flow, call recommendation_query immediately instead of asking
   them to restate the request

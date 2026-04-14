@@ -171,7 +171,7 @@
   text-transform: uppercase;
 }
 
-.preview-card[data-type="destination"] {
+.preview-card[data-type="activity"] {
   border-left: 3px solid var(--primary);
 }
 
@@ -179,7 +179,7 @@
   border-left: 3px solid #3b82f6;
 }
 
-.preview-card[data-type="flight"] {
+.preview-card[data-type="restaurant"] {
   border-left: 3px solid var(--accent);
 }
 

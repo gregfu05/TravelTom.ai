@@ -53,13 +53,16 @@ HOTEL_KEYWORDS = (
     "inn",
     "inns",
 )
-FLIGHT_KEYWORDS = (
-    "airline",
-    "airlines",
-    "airport",
-    "airports",
-    "flight",
-    "flights",
+RESTAURANT_KEYWORDS = (
+    "restaurant",
+    "restaurants",
+    "food",
+    "cafe",
+    "cafes",
+    "coffee",
+    "brunch",
+    "dinner",
+    "breakfast",
 )
 
 T = TypeVar("T")
@@ -233,14 +236,14 @@ def _rating_from_row(raw: dict[str, Any]) -> Decimal | None:
 
 def _item_type_from_tags(tags: list[str] | None) -> str:
     if not tags:
-        return "destination"
+        return "activity"
 
     normalized_tags = {_normalize_tag(tag) for tag in tags}
-    if any(tag in FLIGHT_KEYWORDS for tag in normalized_tags):
-        return "flight"
     if any(tag in HOTEL_KEYWORDS for tag in normalized_tags):
         return "hotel"
-    return "destination"
+    if any(tag in RESTAURANT_KEYWORDS for tag in normalized_tags):
+        return "restaurant"
+    return "activity"
 
 
 def _item_type_from_row(raw: dict[str, Any], tags: list[str] | None) -> str:

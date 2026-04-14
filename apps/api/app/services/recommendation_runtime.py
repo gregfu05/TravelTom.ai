@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 from functools import lru_cache
 from pathlib import Path
+from typing import Callable
 
 import pandas as pd
 
@@ -13,7 +14,6 @@ from app.schemas.tools.recommendations import (
     RecommendationQuery,
     RecommendationToolResponse,
 )
-from app.services.recommendation_query import RecommendationTool
 from traveltom.recommendor.recommendor_v3 import (
     prepare_catalog_for_v3,
 )
@@ -98,7 +98,7 @@ def preload_recommendation_catalog(settings: Settings | None = None) -> pd.DataF
 def get_runtime_recommendation_tool(
     *,
     settings: Settings | None = None,
-) -> RecommendationTool:
+) -> Callable[[RecommendationQuery], RecommendationToolResponse]:
     active_settings = settings or get_settings()
     store = get_recommendation_catalog_store()
     dataset_path = _resolve_dataset_path(active_settings)

@@ -378,9 +378,9 @@ def test_item_type_filter_returns_only_requested_type() -> None:
                 "is_open": 1,
             },
             {
-                "business_id": "dest-1",
-                "item_type": "destination",
-                "name": "Destination One",
+                "business_id": "activity-1",
+                "item_type": "activity",
+                "name": "Activity One",
                 "city": "Santa Barbara",
                 "stars": 5.0,
                 "review_count": 300,
@@ -413,9 +413,9 @@ def test_item_type_filter_returns_empty_when_no_requested_type() -> None:
     catalog = pd.DataFrame(
         [
             {
-                "business_id": "dest-1",
-                "item_type": "destination",
-                "name": "Destination One",
+                "business_id": "activity-1",
+                "item_type": "activity",
+                "name": "Activity One",
                 "city": "Santa Barbara",
                 "stars": 4.9,
                 "review_count": 400,
@@ -461,7 +461,7 @@ def test_keyword_matching_avoids_bar_substring_in_barbara() -> None:
             },
             {
                 "business_id": "bar-1",
-                "item_type": "destination",
+                "item_type": "restaurant",
                 "name": "Bar One",
                 "city": "Santa Barbara",
                 "stars": 5.0,
@@ -621,7 +621,7 @@ def test_recommendation_tool_refreshes_cached_empty_catalog(
         [
             {
                 "business_id": "rest-2",
-                "item_type": "destination",
+                "item_type": "restaurant",
                 "name": "Recovered Restaurant",
                 "city": "Testville",
                 "stars": 4.6,

@@ -201,8 +201,8 @@ def test_chat_endpoint_returns_expected_shape_and_persists_records() -> None:
         assistant_message="I found 1 strong option for Lisbon.",
         recommendations=[
             {
-                "item_id": "dest-lisbon",
-                "item_type": "destination",
+                "item_id": "restaurant-lisbon",
+                "item_type": "restaurant",
                 "score": 0.93,
                 "rank": 1,
                 "features": {"interest_match": 0.9},
@@ -219,7 +219,7 @@ def test_chat_endpoint_returns_expected_shape_and_persists_records() -> None:
             "conversation": {
                 "last_requested_slots": ["budget"],
                 "last_user_intent": "recommend",
-                "last_recommendation_item_type": "destination",
+                "last_recommendation_item_type": "restaurant",
                 "last_recommendation_query": "recommend a beach trip",
             },
             "shortlist": [],
@@ -411,9 +411,9 @@ def test_get_chat_session_returns_persisted_transcript_and_recommendations() -> 
                 "conversation": {
                     "last_requested_slots": ["budget"],
                     "last_user_intent": "recommend",
-                    "last_recommendation_item_type": "destination",
+                    "last_recommendation_item_type": "restaurant",
                     "last_recommendation_query": "recommend a beach trip",
-                    "last_recommendation_result_ids": ["dest-lisbon"],
+                    "last_recommendation_result_ids": ["restaurant-lisbon"],
                 },
                 "shortlist": [],
                 "itinerary": {"days": []},
@@ -446,8 +446,8 @@ def test_get_chat_session_returns_persisted_transcript_and_recommendations() -> 
                 results_json={
                     "results": [
                         {
-                            "item_id": "dest-lisbon",
-                            "item_type": "destination",
+                            "item_id": "restaurant-lisbon",
+                            "item_type": "restaurant",
                             "score": 0.93,
                             "rank": 1,
                             "features": {"name": "Lisbon"},
@@ -472,7 +472,7 @@ def test_get_chat_session_returns_persisted_transcript_and_recommendations() -> 
     assert len(body["messages"]) == 2
     assert body["messages"][0]["role"] == "user"
     assert body["messages"][1]["role"] == "assistant"
-    assert body["recommendations"][0]["item_id"] == "dest-lisbon"
+    assert body["recommendations"][0]["item_id"] == "restaurant-lisbon"
     assert body["recommendations"][0]["metadata"] == {"name": "Lisbon"}
     assert "score" not in body["recommendations"][0]
     assert "explanation" not in body["recommendations"][0]

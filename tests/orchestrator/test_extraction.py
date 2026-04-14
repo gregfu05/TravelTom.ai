@@ -10,6 +10,7 @@ from app.services.orchestrator.extraction import (
     apply_message_state_updates,
     apply_structured_state_patch,
     build_effective_recommendation_query_text,
+    has_conversational_recommendation_signal,
     is_follow_up_refinement,
     is_vague_acceptance_reply,
     resolve_effective_item_type,
@@ -29,7 +30,6 @@ def test_extracts_core_constraints_from_message() -> None:
         today=date(2026, 2, 23),
     )
 
-    assert updated.constraints.origin == "NYC"
     assert updated.constraints.destination == "Lisbon"
     assert updated.constraints.dates is not None
     assert updated.constraints.dates.start.isoformat() == "2026-06-10"
@@ -172,6 +172,43 @@ def test_extracts_bare_budget_reply_with_currency_word_when_budget_slot_requeste
     assert updated.constraints.budget.min == 0.0
     assert updated.constraints.budget.max == 2000.0
     assert updated.constraints.budget.currency == "EUR"
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_min", "expected_max", "expected_currency"),
+    [
+        ("starting from 700 euros", 700.0, 10000.0, "EUR"),
+        ("from 700", 700.0, 10000.0, "USD"),
+        ("at least 700", 700.0, 10000.0, "USD"),
+        ("700 and up", 700.0, 10000.0, "USD"),
+        ("under 700", 0.0, 700.0, "USD"),
+        ("up to 700", 0.0, 700.0, "USD"),
+        ("max 700", 0.0, 700.0, "USD"),
+        ("less than 700", 0.0, 700.0, "USD"),
+        ("not more than 700", 0.0, 700.0, "USD"),
+        ("500 to 800", 500.0, 800.0, "USD"),
+        ("between 500 and 800", 500.0, 800.0, "USD"),
+        ("around 700", 0.0, 700.0, "USD"),
+    ],
+)
+def test_extracts_flexible_budget_expressions(
+    message: str,
+    expected_min: float,
+    expected_max: float,
+    expected_currency: str,
+) -> None:
+    state = SessionState(session_id="sess-flex-budget")
+
+    updated = apply_message_state_updates(
+        message=message,
+        session_state=state,
+        today=date(2026, 3, 23),
+    )
+
+    assert updated.constraints.budget is not None
+    assert updated.constraints.budget.min == expected_min
+    assert updated.constraints.budget.max == expected_max
+    assert updated.constraints.budget.currency == expected_currency
 
 
 def test_santa_barbara_does_not_false_match_bar_nightlife_interest() -> None:
@@ -474,7 +511,7 @@ def test_clarification_slot_fill_turn_reuses_prior_item_type_and_query_terms() -
     )
 
 
-def test_explicit_item_type_override_beats_carried_type() -> None:
+def test_unsupported_flight_request_does_not_override_carried_item_type() -> None:
     state = SessionState.model_validate(
         {
             "session_id": "sess-1",
@@ -484,7 +521,7 @@ def test_explicit_item_type_override_beats_carried_type() -> None:
 
     assert (
         resolve_effective_item_type(message="actually flights", session_state=state)
-        == "flight"
+        is None
     )
     assert (
         build_effective_recommendation_query_text(
@@ -495,7 +532,7 @@ def test_explicit_item_type_override_beats_carried_type() -> None:
     )
 
 
-def test_search_type_reply_reuses_prior_query_context() -> None:
+def test_search_type_reply_reuses_prior_query_context_without_defaulting_item_type():
     state = SessionState.model_validate(
         {
             "session_id": "sess-search-type-reply",
@@ -516,7 +553,7 @@ def test_search_type_reply_reuses_prior_query_context() -> None:
 
     assert (
         resolve_effective_item_type(message="Anything works", session_state=state)
-        == "hotel"
+        is None
     )
     assert is_vague_acceptance_reply("Anything works") is True
     assert (
@@ -526,6 +563,37 @@ def test_search_type_reply_reuses_prior_query_context() -> None:
         )
         == "Anything works Santa Barbara 10th May to 20th May 2000 euros"
     )
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_item_type"),
+    [
+        ("I want chicken", "restaurant"),
+        ("something fun tonight", "activity"),
+        ("I need a room", "hotel"),
+    ],
+)
+def test_conversational_item_type_inference_resolves_likely_domain(
+    message: str, expected_item_type: str
+) -> None:
+    state = SessionState(session_id="sess-conversational-intent")
+
+    assert resolve_effective_item_type(message=message, session_state=state) == (
+        expected_item_type
+    )
+
+
+@pytest.mark.parametrize(
+    ("message",),
+    [
+        ("I want somewhere nice",),
+        ("not too expensive",),
+    ],
+)
+def test_conversational_recommendation_signal_detects_vague_preference_requests(
+    message: str,
+) -> None:
+    assert has_conversational_recommendation_signal(message) is True
 
 
 def test_natural_hotel_phrase_extracts_destination_dates_and_budget() -> None:
@@ -546,14 +614,14 @@ def test_natural_hotel_phrase_extracts_destination_dates_and_budget() -> None:
     assert updated.constraints.budget.currency == "EUR"
 
 
-def test_flight_context_extracts_bare_route_reply() -> None:
+def test_unsupported_flight_route_reply_does_not_capture_origin_or_item_type() -> None:
     state = SessionState.model_validate(
         {
-            "session_id": "sess-flight-route",
+            "session_id": "sess-unsupported-route",
             "conversation": {
                 "last_requested_slots": ["origin", "destination"],
                 "last_user_intent": "recommend",
-                "last_recommendation_item_type": "flight",
+                "last_recommendation_item_type": "hotel",
             },
         }
     )
@@ -564,5 +632,5 @@ def test_flight_context_extracts_bare_route_reply() -> None:
         today=date(2026, 3, 23),
     )
 
-    assert updated.constraints.origin == "Madrid"
-    assert updated.constraints.destination == "Lisbon"
+    assert updated.constraints.origin is None
+    assert updated.constraints.destination is None

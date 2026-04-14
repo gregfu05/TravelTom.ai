@@ -52,7 +52,7 @@ Indexes:
 ### catalog_items
 
 - id (uuid, pk)
-- item_type (text: destination|hotel|flight)
+- item_type (text: hotel|restaurant|activity)
 - name (text)
 - description (text)
 - location_city (text)
@@ -68,9 +68,9 @@ Indexes:
 
 Recommended metadata (by type):
 
-- destination: `popular_seasons`, `avg_nightly_price`, `activities`
 - hotel: `star_rating`, `amenities`, `room_types`
-- flight: `origin`, `destination`, `departure_time`, `arrival_time`, `duration_minutes`, `stops`, `layover_minutes`, `airline`
+- restaurant: `cuisines`, `price_level`, `reservation_url`
+- activity: `activity_category`, `duration_minutes`, `booking_url`
 
 Indexes:
 - idx_catalog_type

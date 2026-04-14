@@ -19,7 +19,7 @@ TravelTom is an AI-powered travel agent that enables users to plan trips end-to-
 ## Functional requirements
 
 - Conversational chat interface for constraint and preference capture.
-- Recommendations for destinations, hotels, and flights.
+- Recommendations for hotels, restaurants, and activities.
 - Shortlist management (save, dismiss, compare).
 - Day-by-day itinerary draft generation.
 - Booking workflow stubs (no real transactions in MVP).
@@ -30,4 +30,3 @@ TravelTom is an AI-powered travel agent that enables users to plan trips end-to-
 - Real booking integrations with external providers.
 - End-to-end ML ranking training pipelines.
 - Event streaming infrastructure beyond database logging.
-

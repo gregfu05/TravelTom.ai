@@ -70,7 +70,7 @@
   - `apps/api/app/services/orchestrator/extraction.py` now hardens
     deterministic fallback so filler phrases like `be honest` and `lower cost`
     cannot overwrite a valid destination, and lower-cost follow-ups preserve
-    hotel/flight continuity.
+    hotel/restaurant/activity continuity.
   - `apps/api/app/services/orchestrator/policies.py` and
     `apps/api/app/services/travel_tom_agent.py` now document and enforce that
     the planner owns natural-language slot extraction on normal chat turns,
@@ -91,7 +91,7 @@
     requirements, and stronger empty-results guidance.
   - `04-llm-orchestrator/prompts-and-guardrails.md` now documents the
     `search_type` / `refine_preference` clarification branches, generic
-    trip-to-recommendation promotion, natural flight-route extraction, and
+    trip-to-recommendation promotion, unsupported-flight handling, and
     mixed one-shot destination/date/budget parsing.
   - `04-llm-orchestrator/session-state-schema.md` now includes
     `conversation.last_clarification_kind` and
@@ -180,8 +180,8 @@
     through slot-filling turns.
   - `apps/api/app/services/orchestrator/policies.py` now implements the hybrid
     recommendation policy: destination exploration can start from partial signal,
-    while hotel and flight searches still require destination, dates, and
-    budget.
+    while hotel searches still require destination, dates, and budget, and
+    restaurant/activity searches require destination.
   - `apps/api/app/services/travel_tom_agent.py` now adds provider-backed
     grounded response composition after validated tool/state normalization so
     Ollama/OpenAI replies stay natural without allowing model-invented items.
@@ -506,7 +506,7 @@
 - Fixed recommender keyword false-positive matching so `bar` no longer matches
   inside location names like `Santa Barbara`.
 - Added request-level `item_type` filter extraction in orchestrator and applied
-  hard item-type filtering in recommender (`destination|hotel|flight`).
+  hard item-type filtering in recommender (`hotel|restaurant|activity`).
 - Added hotel-result quality narrowing to prefer lodging-tagged rows over
   generic travel/tour rows for hotel queries.
 - Updated seed classification rules to avoid mapping generic `Hotels & Travel`
@@ -553,7 +553,8 @@
 
 - Updated documentation to align with `TravelTom_Final_Design_Document.pdf` (requirements, architecture, recommender, orchestrator, events, and plan).
 - Adjusted repo structure to `apps/api` and `apps/web` and updated paths across the plan.
-- Refined recommender specs with retrieval sizes, ranking signals, and flight penalties.
+- Refined recommender specs with retrieval sizes and ranking signals for the
+  supported recommendation types.
 - Reduced open questions to those explicitly listed in the design doc.
 - Noted runtime README placeholders in `repo-structure.md`.
 - Added health endpoint to backend docs and layout.

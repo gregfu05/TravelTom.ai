@@ -41,14 +41,15 @@ DEFAULT_RANKER_MODE = "heuristic"
 
 _RESULT_ITEM_TYPE_BY_ENTITY_TYPE: dict[str, str] = {
     "hotel": "hotel",
-    "flight": "flight",
+    "restaurant": "restaurant",
+    "attraction": "activity",
+    "activity": "activity",
 }
 
 _ITEM_TYPE_TO_ENTITY_TYPES: dict[str, set[str]] = {
     "hotel": {"hotel"},
-    "flight": {"flight"},
-    # Destination ideas should not be forced to hotels.
-    "destination": {"attraction", "restaurant"},
+    "restaurant": {"restaurant"},
+    "activity": {"attraction", "activity"},
 }
 
 _GEO_FIELDS = (
@@ -853,7 +854,7 @@ def _build_response(
         ranked.head(request.max_results).itertuples(index=False), start=1
     ):
         entity_type = _normalize_text(getattr(row, "entity_type", ""))
-        item_type = _RESULT_ITEM_TYPE_BY_ENTITY_TYPE.get(entity_type, "destination")
+        item_type = _RESULT_ITEM_TYPE_BY_ENTITY_TYPE.get(entity_type, "activity")
 
         features: dict[str, Any] = {
             "name": getattr(row, "name", ""),
@@ -1103,7 +1104,7 @@ def _extract_category_terms(
     terms.update(
         token
         for token in query_tokens
-        if token not in {"hotel", "hotels", "flight", "flights"}
+        if token not in {"hotel", "hotels", "restaurant", "restaurants"}
     )
 
     return sorted(terms)
@@ -1138,7 +1139,7 @@ def _normalize_item_type(value: Any) -> str | None:
         return None
     if normalized.endswith("s") and len(normalized) > 3:
         normalized = normalized[:-1]
-    if normalized in {"destination", "hotel", "flight"}:
+    if normalized in {"hotel", "restaurant", "activity"}:
         return normalized
     return None
 

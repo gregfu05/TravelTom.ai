@@ -117,7 +117,7 @@ class ConversationState(BaseModel):
         ]
         | None
     ) = None
-    last_recommendation_item_type: Literal["destination", "hotel", "flight"] | None = (
+    last_recommendation_item_type: Literal["hotel", "restaurant", "activity"] | None = (
         None
     )
     last_recommendation_query: str | None = None

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal, cast
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -35,20 +35,19 @@ from app.services.orchestrator.policies import (
 )
 from app.services.orchestrator.runtime_types import PreparedTurn
 
-RecommendationItemType = Literal["destination", "hotel", "flight"]
-_VALID_ITEM_TYPES = {"destination", "hotel", "flight"}
+_VALID_ITEM_TYPES = {"hotel", "restaurant", "activity"}
 _PLANNER_FAILURE_COOLDOWN_SECONDS = 120
 logger = logging.getLogger(__name__)
 
 
-def _normalize_item_type_value(item_type: Any) -> RecommendationItemType | None:
+def _normalize_item_type_value(item_type: Any) -> Any:
     if not isinstance(item_type, str):
         return None
     normalized = item_type.strip().casefold()
     if normalized.endswith("s"):
         normalized = normalized[:-1]
     if normalized in _VALID_ITEM_TYPES:
-        return cast(RecommendationItemType, normalized)
+        return normalized
     return None
 
 
@@ -258,10 +257,9 @@ class TurnPreparer:
             merged_filters["item_type"] = normalized_remembered_item_type
             return merged_filters
 
-        merged_filters["item_type"] = "destination"
         return merged_filters
 
-    def normalize_item_type(self, item_type: Any) -> RecommendationItemType | None:
+    def normalize_item_type(self, item_type: Any) -> Any:
         return _normalize_item_type_value(item_type)
 
     def normalize_query_override(self, query: Any) -> str | None:
