@@ -16,6 +16,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
+from urllib.request import url2pathname
 
 import numpy as np
 import pandas as pd
@@ -335,8 +336,13 @@ def _resolved_artifact_path_from_env() -> Path:
 
 def _resolve_artifact_path_from_reference(reference: str) -> Path:
     parsed = urlparse(reference)
-    if parsed.scheme in {"", "file"}:
-        raw_path = unquote(parsed.path if parsed.scheme == "file" else reference)
+    if parsed.scheme == "":
+        raw_path = unquote(reference)
+        return Path(raw_path).expanduser().resolve()
+    if parsed.scheme == "file":
+        raw_path = url2pathname(unquote(parsed.path))
+        if parsed.netloc and parsed.netloc not in {"", "localhost"}:
+            raw_path = f"//{parsed.netloc}{raw_path}"
         return Path(raw_path).expanduser().resolve()
 
     if parsed.scheme in {"http", "https"} and parsed.netloc.endswith(
