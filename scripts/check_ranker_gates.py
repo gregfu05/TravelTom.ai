@@ -19,7 +19,9 @@ def main() -> None:
         "coverage_gate_passed": _coverage_gate_passed(candidate),
         "ranking_gate_passed": _ranking_gate_passed(candidate, baseline),
         "fallback_gate_passed": fallback_gate_passed,
-        "ml_queries_with_fallback": _metric_as_int(candidate, "ml_queries_with_fallback"),
+        "ml_queries_with_fallback": _metric_as_int(
+            candidate, "ml_queries_with_fallback"
+        ),
         "ml_total_queries": _metric_as_int(candidate, "ml_total_queries"),
         "baseline_mode": "existing-model" if baseline is not None else "first-model",
     }
