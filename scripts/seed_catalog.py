@@ -30,7 +30,9 @@ API_ROOT = REPO_ROOT / "apps" / "api"
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
-DEFAULT_DATASET = REPO_ROOT / "traveltom" / "datasets" / "business_SB_Cleaned.csv"
+DEFAULT_DATASET = (
+    REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean2.csv"
+)
 
 DEFAULT_RAW_DATASET = (
     REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean2.csv"

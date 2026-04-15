@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with: 
+          lfs: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -70,6 +72,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with: 
+          lfs: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -81,6 +85,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+
+      - name: Force missing cleaned snapshot
+        run: rm -f traveltom/datasets/composite/traveltom_clean2.csv
 
       - name: Ensure vector extension exists
         run: |
