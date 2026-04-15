@@ -11,6 +11,7 @@ import logging
 import os
 import pickle
 import tempfile
+from hashlib import sha256
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -361,18 +362,30 @@ def _download_azure_blob_artifact(reference: str) -> Path:
         or Path(tempfile.gettempdir()) / "traveltom-ml-cache"
     )
     cache_root.mkdir(parents=True, exist_ok=True)
-    parsed = urlparse(reference)
-    blob_name = Path(parsed.path).name or "ranker.pkl"
-    local_path = cache_root / blob_name
+    local_path = _cache_file_path_for_blob_reference(cache_root, reference)
     if local_path.exists():
         return local_path.resolve()
 
     credential = DefaultAzureCredential()
     blob_client = BlobClient.from_blob_url(reference, credential=credential)
-    with local_path.open("wb") as handle:
+    temp_path = local_path.with_name(f"{local_path.name}.tmp")
+    with temp_path.open("wb") as handle:
         stream = blob_client.download_blob()
         handle.write(stream.readall())
+    temp_path.replace(local_path)
     return local_path.resolve()
+
+
+def _cache_file_path_for_blob_reference(cache_root: Path, reference: str) -> Path:
+    parsed = urlparse(reference)
+    blob_name = Path(parsed.path).name or "ranker.pkl"
+    blob_path = Path(blob_name)
+    suffix = "".join(blob_path.suffixes)
+    basename = blob_name[: -len(suffix)] if suffix else blob_name
+    safe_basename = basename or "artifact"
+    reference_hash = sha256(reference.encode("utf-8")).hexdigest()[:20]
+    filename = f"{safe_basename}-{reference_hash}{suffix}"
+    return cache_root / filename
 
 
 @lru_cache(maxsize=16)
