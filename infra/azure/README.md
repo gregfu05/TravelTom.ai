@@ -283,8 +283,11 @@ Internet
   - reactivate the previous revisions on failure
 - `ML Promote Dev` now validates:
   - the target artifact exists in blob storage
+  - the candidate training manifest matches the target `model_version`
   - the latest gate decision for the model has `promote=true`
+  - `coverage_gate_passed`, `ranking_gate_passed`, and `fallback_gate_passed` are all `true`
   - the previous promoted model config can be restored on failure
+  - note: `ML Train Dev` enforces immutable model versions and rejects overwriting existing `models/<model_version>/...` blobs
 
 ## Destroy Environment
 

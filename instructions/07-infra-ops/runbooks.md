@@ -110,7 +110,10 @@ Rollback sequence:
   - confirm the previous active revision names were captured in workflow logs
 - `ML Evaluate Dev`
   - confirm candidate artifact and manifest exist
+  - confirm candidate manifest validation passed
   - confirm uploaded `gates.json` is present after evaluation
 - `ML Promote Dev`
   - confirm candidate artifact exists
+  - confirm candidate manifest validation passed
   - confirm `gates.json` has `promote=true`
+  - confirm `coverage_gate_passed`, `ranking_gate_passed`, and `fallback_gate_passed` are all `true`
