@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Literal
+from typing import Any, Literal
 
 from app.schemas.orchestrator import (
     Intent,
@@ -19,7 +19,6 @@ from app.services.orchestrator.extraction import (
     build_effective_recommendation_query_text,
     extract_query_filters,
     has_conversational_recommendation_signal,
-    infer_conversational_item_type,
     is_follow_up_refinement,
     is_unsupported_flight_request,
     is_unsupported_flight_route_reply,
@@ -561,13 +560,17 @@ def build_planning_prompt_context(
     """Build prompt context for LLM planning."""
 
     state_payload = json.dumps(
-        session_state.model_dump(mode="json"),
+        _prompt_state_snapshot(session_state),
         sort_keys=True,
         separators=(",", ":"),
     )
     deterministic_hint_payload = json.dumps(
         {
-            "hint_state": deterministic_hint_state.model_dump(mode="json"),
+            "hint_constraints": deterministic_hint_state.constraints.model_dump(
+                mode="json",
+                exclude_none=True,
+            ),
+            "hint_interests": _top_weighted_interests(deterministic_hint_state),
             "effective_query": build_effective_recommendation_query_text(
                 message=user_message,
                 session_state=deterministic_hint_state,
@@ -588,67 +591,20 @@ def build_planning_prompt_context(
     recent_transcript = _format_recent_transcript(recent_messages)
     return (
         "You are the TravelTom orchestration planner.\n"
-        "Return JSON only.\n"
-        "Use a single-line compact JSON object and omit optional keys you are "
-        "not setting.\n"
-        "Primary duties: interpret intent, extract grounded trip details from the "
-        "latest user turn, choose whether to call recommendation tool, and propose "
-        "structured state updates.\n"
-        "Use the recent transcript to avoid re-asking for details already captured.\n"
-        "For normal chat turns, you are the primary extractor. Use state_patch to "
-        "capture destination, dates, budget, and preferences from natural language.\n"
-        "Treat deterministic extraction hints as advisory only. If they conflict "
-        "with the raw user message or transcript, prefer the conversational meaning "
-        "from the user and transcript.\n"
-        "Do not let greetings, meta questions, or repair turns mutate trip "
-        "constraints without strong conversational support.\n"
-        "Supported recommendation item types are hotel, restaurant, "
-        "and activity only.\n"
-        "Flights are not supported. If the user asks for flights, do not classify "
-        "them as flights and do not call the recommendation tool.\n"
-        "If item type is unclear, ask a clarification question instead of defaulting.\n"
-        "If clarification is needed, ask for one next-most-useful missing detail.\n"
-        "Strict validity rule: do not include conversation, shortlist, itinerary, "
-        "last_message_at, last_recommendation_version, or any key not shown in the "
-        "valid shape. Any extra key makes the response invalid.\n"
-        "Natural examples you should handle with state_patch:\n"
-        '- "I want to go to Santa Barbara" -> constraints.destination="Santa Barbara"\n'
-        '- "Hotels in Santa Barbara May 10th to May 20th under 2000 euros" -> '
-        "constraints.destination, constraints.dates, constraints.budget, "
-        'query_controls.filters.item_type="hotel"\n'
-        '- "Restaurants in Santa Barbara" -> constraints.destination and '
-        'query_controls.filters.item_type="restaurant"\n'
-        '- "Activities in Santa Barbara" -> constraints.destination and '
-        'query_controls.filters.item_type="activity"\n'
-        '- "I want hotels to be honest" after destination, dates, and budget are '
-        'known -> query_controls.filters.item_type="hotel" and '
-        "should_call_recommendation_tool=true\n"
-        "Never fabricate recommendation items.\n"
-        f"Recommendation max_results hard limit for this turn: {max_results}.\n"
-        "Valid JSON shape:\n"
-        "{\n"
-        '  "intent": "recommend|refine|clarify",\n'
-        '  "should_call_recommendation_tool": true|false,\n'
-        '  "clarification_message": "required when tool call is false",\n'
-        '  "state_patch": {\n'
-        '    "constraints": {\n'
-        '      "destination": "string|null",\n'
-        '      "dates": {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}|null,\n'
-        '      "trip_length_days": 1|null,\n'
-        '      "budget": {"min": 0, "max": 0, "currency": "USD"}|null,\n'
-        '      "party_size": {"adults": 1, "children": 0}|null\n'
-        "    },\n"
-        '    "preferences": {"weighted_interests": {"key": 0.8}, '
-        '"dislikes": ["text"]},\n'
-        '    "entities": {"destinations": ["string"]},\n'
-        '    "status": "explore|refine|itinerary|booking"\n'
-        "  },\n"
-        '  "query_controls": {\n'
-        '    "query": "string|null",\n'
-        '    "filters": {"item_type": "hotel|restaurant|activity"},\n'
-        '    "max_results": 1\n'
-        "  }\n"
-        "}\n"
+        "Return a single compact JSON object only.\n"
+        "Use state_patch for grounded state updates from the latest user turn.\n"
+        "Use query_controls only for safe backend hints like item_type or a "
+        "normalized query.\n"
+        "Backend owns recommendation execution and validation.\n"
+        "Rules:\n"
+        "- Never invent recommendations, prices, or availability.\n"
+        "- Supported item types are hotel, restaurant, and activity.\n"
+        "- Flights are unsupported.\n"
+        "- Greetings, meta questions, and repair turns should usually stay "
+        "clarification-only and must not fill trip constraints without strong support.\n"
+        "- If tool call is false, provide one short next-best clarification message.\n"
+        "- Avoid unsupported keys; invalid JSON will be discarded.\n"
+        f"Recommendation max_results hard limit: {max_results}.\n"
         f"Current session state JSON: {state_payload}\n"
         "Deterministic extraction and carry-forward hints JSON: "
         f"{deterministic_hint_payload}\n"
@@ -685,19 +641,24 @@ def _build_contextual_slot_question(
 
     next_slot = requested_slots[0]
     lowered = message.casefold() if message is not None else ""
-    inferred_item_type = (
-        infer_conversational_item_type(message) if message is not None else None
+    resolved_item_type = (
+        resolve_effective_item_type(
+            message=message,
+            session_state=session_state,
+        )
+        if message is not None
+        else session_state.conversation.last_recommendation_item_type
     )
     if (
         next_slot == "destination"
         and session_state.constraints.destination is None
-        and inferred_item_type == "restaurant"
+        and resolved_item_type == "restaurant"
     ):
         return "Sure - that sounds like food. What city should I look in?"
     if (
         next_slot == "destination"
         and session_state.constraints.destination is None
-        and inferred_item_type == "activity"
+        and resolved_item_type == "activity"
     ):
         if "tonight" in lowered or "this evening" in lowered:
             return "Sounds fun - what city should I look in tonight?"
@@ -705,13 +666,14 @@ def _build_contextual_slot_question(
     if (
         next_slot == "destination"
         and session_state.constraints.destination is None
-        and inferred_item_type == "hotel"
+        and resolved_item_type == "hotel"
     ):
         return "Sure - what city do you need a place to stay in?"
     if (
         next_slot == "destination"
         and session_state.constraints.destination is None
         and message is not None
+        and resolved_item_type is None
         and has_conversational_recommendation_signal(message)
     ):
         return build_search_type_question(session_state)
@@ -745,7 +707,10 @@ def build_response_prompt_context(
 ) -> str:
     """Build prompt context for grounded response composition."""
 
-    state_payload = json.dumps(session_state.model_dump(mode="json"), sort_keys=True)
+    state_payload = json.dumps(
+        _prompt_state_snapshot(session_state),
+        sort_keys=True,
+    )
 
     def _display_name(item: RecommendationResult) -> str:
         name = item.features.get("name")
@@ -806,6 +771,44 @@ def build_response_prompt_context(
         f"Latest user message: {user_message}\n"
         f"Recommendation records:\n{recommendation_block}"
     )
+
+
+def _prompt_state_snapshot(session_state: SessionState) -> dict[str, Any]:
+    return {
+        "constraints": session_state.constraints.model_dump(
+            mode="json",
+            exclude_none=True,
+        ),
+        "preferences": {
+            "weighted_interests": _top_weighted_interests(session_state),
+            "dislikes": list(session_state.preferences.dislikes),
+        },
+        "conversation": {
+            "last_requested_slots": list(
+                session_state.conversation.last_requested_slots
+            ),
+            "last_user_intent": session_state.conversation.last_user_intent,
+            "last_clarification_kind": (
+                session_state.conversation.last_clarification_kind
+            ),
+            "last_search_outcome": session_state.conversation.last_search_outcome,
+            "last_recommendation_item_type": (
+                session_state.conversation.last_recommendation_item_type
+            ),
+            "last_recommendation_query": (
+                session_state.conversation.last_recommendation_query
+            ),
+        },
+        "status": session_state.status,
+    }
+
+
+def _top_weighted_interests(session_state: SessionState) -> dict[str, float]:
+    weighted_interests = sorted(
+        session_state.preferences.weighted_interests.items(),
+        key=lambda item: (-item[1], item[0]),
+    )
+    return {interest: weight for interest, weight in weighted_interests[:3]}
 
 
 def _format_recent_transcript(messages: list[TranscriptMessage]) -> str:
@@ -989,9 +992,9 @@ def is_repair_turn(message: str) -> bool:
     lowered = message.casefold()
     if is_meta_question(message):
         return False
-    if has_conversational_recommendation_signal(message):
-        return False
     if is_unsupported_flight_request(message):
+        return False
+    if not any(re.search(pattern, lowered) for pattern in _REPAIR_PATTERNS):
         return False
     if re.search(
         (
@@ -1001,9 +1004,11 @@ def is_repair_turn(message: str) -> bool:
         lowered,
     ):
         return False
+    if re.search(r"^\s*not\s+(?:too\s+|very\s+)?(?:expensive|pricey)\b", lowered):
+        return False
     if re.search(r"\b\d[\d,]*(?:\.\d+)?k?\b", lowered) and "budget" in lowered:
         return False
-    return any(re.search(pattern, lowered) for pattern in _REPAIR_PATTERNS)
+    return True
 
 
 def build_meta_turn_message(

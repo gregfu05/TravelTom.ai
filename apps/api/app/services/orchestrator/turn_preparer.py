@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
-from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from pydantic import ValidationError
@@ -36,7 +35,6 @@ from app.services.orchestrator.policies import (
 from app.services.orchestrator.runtime_types import PreparedTurn
 
 _VALID_ITEM_TYPES = {"hotel", "restaurant", "activity"}
-_PLANNER_FAILURE_COOLDOWN_SECONDS = 120
 logger = logging.getLogger(__name__)
 
 
@@ -67,7 +65,6 @@ class TurnPreparer:
         policy: OrchestratorPolicyConfig,
     ) -> None:
         self._policy = policy
-        self._planner_cooldowns: dict[str, datetime] = {}
 
     def prepare_turn(
         self,
@@ -111,9 +108,6 @@ class TurnPreparer:
         ):
             return fallback_turn
 
-        if self._planner_is_in_cooldown(previous_state.session_id):
-            return fallback_turn
-
         prompt = build_planning_prompt_context(
             session_state=previous_state,
             deterministic_hint_state=deterministic_state,
@@ -124,7 +118,6 @@ class TurnPreparer:
         try:
             plan_payload = planner_executor(prompt)
         except Exception as exc:
-            self._mark_planner_failure(previous_state.session_id)
             logger.warning(
                 "planner_execution_failed",
                 extra={
@@ -135,8 +128,13 @@ class TurnPreparer:
                 },
             )
             return fallback_turn
+        if plan_payload is None:
+            logger.info(
+                "planner_unavailable",
+                extra={"context": {"session_id": previous_state.session_id}},
+            )
+            return fallback_turn
         if not isinstance(plan_payload, Mapping):
-            self._mark_planner_failure(previous_state.session_id)
             logger.warning(
                 "planner_output_invalid",
                 extra={
@@ -159,7 +157,6 @@ class TurnPreparer:
                 ),
             )
         except ValidationError as exc:
-            self._mark_planner_failure(previous_state.session_id)
             logger.warning(
                 "planner_output_invalid",
                 extra={
@@ -170,8 +167,6 @@ class TurnPreparer:
                 },
             )
             return fallback_turn
-
-        self._clear_planner_cooldown(previous_state.session_id)
 
         return PreparedTurn(
             session_state=planned_state,
@@ -356,23 +351,6 @@ class TurnPreparer:
                 max_results=max_results,
             ),
         )
-
-    def _planner_is_in_cooldown(self, session_id: str) -> bool:
-        cooldown_until = self._planner_cooldowns.get(session_id)
-        if cooldown_until is None:
-            return False
-        if cooldown_until <= datetime.now(timezone.utc):
-            self._planner_cooldowns.pop(session_id, None)
-            return False
-        return True
-
-    def _mark_planner_failure(self, session_id: str) -> None:
-        self._planner_cooldowns[session_id] = datetime.now(timezone.utc) + timedelta(
-            seconds=_PLANNER_FAILURE_COOLDOWN_SECONDS
-        )
-
-    def _clear_planner_cooldown(self, session_id: str) -> None:
-        self._planner_cooldowns.pop(session_id, None)
 
     def _sanitize_plan_payload(
         self,

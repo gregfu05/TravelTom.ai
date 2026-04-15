@@ -415,7 +415,6 @@ _ITEM_TYPE_PATTERNS: dict[str, tuple[str, ...]] = {
     "restaurant": (
         r"\brestaurant\b",
         r"\brestaurants\b",
-        r"\bfood\b",
         r"\bdining\b",
         r"\bdinner\b",
         r"\blunch\b",
@@ -479,6 +478,16 @@ _CONVERSATIONAL_ITEM_TYPE_PATTERNS: dict[str, tuple[str, ...]] = {
         r"\bneed a place to stay\b",
     ),
 }
+_FOOD_REQUEST_PATTERNS = (
+    r"\bi want\b",
+    r"\bi need\b",
+    r"\blooking for\b",
+    r"\bfind\b",
+    r"\bshow me\b",
+    r"\brecommend\b",
+    r"\bsuggest\b",
+    r"\bwhere should\b",
+)
 _UNSUPPORTED_FLIGHT_PATTERNS = (
     r"\bflight\b",
     r"\bflights\b",
@@ -659,6 +668,15 @@ def infer_conversational_item_type(message: str) -> str | None:
     """Infer likely recommendation type from lightweight conversational cues."""
 
     lowered = message.casefold()
+    if "food" in lowered and any(
+        re.search(pattern, lowered) for pattern in _FOOD_REQUEST_PATTERNS
+    ):
+        food_match = re.search(r"\bfood\b", lowered)
+        if food_match is not None and not _match_is_negated(
+            message=lowered,
+            start_index=food_match.start(),
+        ):
+            return "restaurant"
     for item_type, patterns in _CONVERSATIONAL_ITEM_TYPE_PATTERNS.items():
         for pattern in patterns:
             match = re.search(pattern, lowered)
@@ -673,6 +691,8 @@ def infer_conversational_item_type(message: str) -> str | None:
 def has_conversational_recommendation_signal(message: str) -> bool:
     """Return whether the message sounds like a lightweight recommendation ask."""
 
+    if extract_query_filters(message):
+        return True
     if infer_conversational_item_type(message) is not None:
         return True
 
@@ -813,21 +833,7 @@ def build_effective_recommendation_query_text(
         else:
             base = normalized_message
 
-        if base != normalized_message:
-            return base
-
-        fragments: list[str] = [base]
-        if session_state.constraints.destination:
-            fragments.append(session_state.constraints.destination)
-
-        weighted_interests = sorted(
-            session_state.preferences.weighted_interests.items(),
-            key=lambda item: (-item[1], item[0]),
-        )
-        for interest, _weight in weighted_interests[:3]:
-            fragments.append(interest)
-
-        return _merge_query_fragments(*fragments)
+        return base
 
     if prior_query:
         return _merge_query_fragments(normalized_message, prior_query)

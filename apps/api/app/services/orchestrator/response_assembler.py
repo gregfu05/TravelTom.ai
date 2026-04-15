@@ -52,16 +52,26 @@ class ResponseAssembler:
             ),
             None,
         )
+        displayed_results = results[:preview_limit]
         preview_items = "\n".join(
             f"{i}. {self._recommendation_display_name(item)}"
-            for i, item in enumerate(results[:preview_limit], start=1)
+            for i, item in enumerate(displayed_results, start=1)
         )
         result_label = self._result_collection_label(results)
-        base = (
-            preference_preface
-            + f"I found {len(results)} {result_label} that fit your request. "
-            + f"Top picks:\n{preview_items}"
-        )
+        result_count = len(results)
+        if result_count == 1:
+            preview_name = self._recommendation_display_name(displayed_results[0])
+            base = (
+                preference_preface
+                + f"I found 1 {self._result_singular_label(results)} that fits your request. "
+                + f"Top pick: {preview_name}"
+            )
+        else:
+            base = (
+                preference_preface
+                + f"I found {result_count} {result_label} that fit your request. "
+                + f"Top picks:\n{preview_items}"
+            )
         if limit_notice:
             return f"{limit_notice} {base}"
         return base
@@ -209,3 +219,18 @@ class ResponseAssembler:
         if item_type == "activity":
             return "activities"
         return "results"
+
+    def _result_singular_label(
+        self,
+        results: list[RecommendationResult],
+    ) -> str:
+        if not results:
+            return "result"
+        item_type = results[0].item_type
+        if item_type == "hotel":
+            return "hotel"
+        if item_type == "restaurant":
+            return "restaurant"
+        if item_type == "activity":
+            return "activity"
+        return "result"

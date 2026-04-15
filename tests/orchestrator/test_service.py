@@ -709,8 +709,9 @@ def test_orchestrator_follow_up_uses_carried_item_type_and_query() -> None:
     )
 
     assert captured["messages"][-1]["content"] == "show me more"
-    assert response.assistant_message.startswith(
-        "Based on your interests in nightlife, I found 1 hotels that fit your request."
+    assert response.assistant_message == (
+        "Based on your interests in nightlife, I found 1 hotel that fits your "
+        "request. Top pick: Lisbon Stay"
     )
     assert response.recommendations[0].item_id == "hotel-lisbon-1"
     assert response.state["conversation"]["last_recommendation_item_type"] == "hotel"
@@ -1759,7 +1760,7 @@ def test_orchestrator_reasks_same_missing_slot_until_it_is_captured() -> None:
     )
 
     assert response.state["conversation"]["last_requested_slots"] == ["destination"]
-    assert "destination" in response.assistant_message.casefold()
+    assert "city" in response.assistant_message.casefold()
     assert response.state["conversation"]["last_recommendation_item_type"] == "hotel"
 
 
@@ -2051,7 +2052,7 @@ def test_orchestrator_build_results_message_falls_back_to_item_id_without_name()
         ]
     )
 
-    assert "Top picks:\n1. activity-lisbon" in message
+    assert message == "I found 1 activity that fits your request. Top pick: activity-lisbon"
 
 
 def test_orchestrator_extracts_direct_recommendation_payload_from_tool_message() -> (

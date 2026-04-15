@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pandas as pd
-import pytest
 from app.schemas.tools.recommendations import RecommendationQuery
 from app.services.recommendation_runtime import (
     clear_recommendation_catalog_store,
@@ -15,66 +12,27 @@ from app.services.recommendation_runtime import (
 )
 
 
-def _csv_style_catalog() -> pd.DataFrame:
+def _catalog_rows() -> pd.DataFrame:
     return pd.DataFrame(
         [
             {
+                "business_id": "hotel-rome-1",
+                "item_type": "hotel",
                 "name": "Rome Central Hotel",
                 "city": "Rome",
-                "country": "IT",
-                "country_name": "Italy",
-                "continent": "Europe",
-                "latitude": 41.9028,
-                "longitude": 12.4964,
-                "categories_clean": "hotel,city center",
-                "description_clean": "Central stay in Rome.",
-                "stars_norm": 1.1,
-                "review_count_norm": 0.9,
-                "popularity_norm": 1.4,
-                "source_tbo_hotels": 1,
-                "source_tripadvisor": 0,
-                "source_openstreetmap": 0,
-                "entity_type_hotel": 1,
-                "entity_type_restaurant": 0,
+                "stars": 4.4,
+                "review_count": 220,
+                "popularity": 14.8,
+                "categories": "Hotels, City Center",
+                "tags": ["Hotels", "City Center"],
+                "is_open": 1,
             }
         ]
     )
 
 
-def _settings_for_dataset(path: str):
-    return SimpleNamespace(recommender_dataset_path=path)
-
-
-def test_preload_recommendation_catalog_loads_configured_dataset(tmp_path) -> None:
-    clear_recommendation_catalog_store()
-    dataset_path = tmp_path / "traveltom_clean.csv"
-    _csv_style_catalog().to_csv(dataset_path, index=False)
-
-    catalog = preload_recommendation_catalog(
-        settings=_settings_for_dataset(str(dataset_path))
-    )
-
-    assert not catalog.empty
-    assert get_recommendation_catalog_store().dataset_path == dataset_path.resolve()
-
-
-def test_runtime_recommendation_tool_uses_preloaded_catalog_without_reloading_csv(
-    tmp_path, monkeypatch
-) -> None:
-    clear_recommendation_catalog_store()
-    dataset_path = tmp_path / "traveltom_clean.csv"
-    _csv_style_catalog().to_csv(dataset_path, index=False)
-    settings = _settings_for_dataset(str(dataset_path))
-
-    preload_recommendation_catalog(settings=settings)
-    monkeypatch.setattr(
-        "app.services.recommendation_runtime.pd.read_csv",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("runtime tool should use preloaded in-memory catalog")
-        ),
-    )
-    tool = get_runtime_recommendation_tool(settings=settings)
-    query = RecommendationQuery.model_validate(
+def _query() -> RecommendationQuery:
+    return RecommendationQuery.model_validate(
         {
             "session_id": "sess-runtime",
             "query": "hotel in Rome",
@@ -85,31 +43,64 @@ def test_runtime_recommendation_tool_uses_preloaded_catalog_without_reloading_cs
         }
     )
 
-    response = tool(query)
 
+def test_preload_recommendation_catalog_loads_runtime_catalog(monkeypatch) -> None:
+    clear_recommendation_catalog_store()
+    monkeypatch.setattr(
+        "app.services.recommendation_runtime.recommendor_v1._load_catalog",
+        lambda: _catalog_rows(),
+    )
+
+    catalog = preload_recommendation_catalog()
+
+    assert not catalog.empty
+    assert get_recommendation_catalog_store().source_label == "catalog_items"
+
+
+def test_runtime_recommendation_tool_uses_preloaded_catalog_without_reloading(
+    monkeypatch,
+) -> None:
+    clear_recommendation_catalog_store()
+    load_calls = {"count": 0}
+
+    def fake_load_catalog() -> pd.DataFrame:
+        load_calls["count"] += 1
+        return _catalog_rows()
+
+    monkeypatch.setattr(
+        "app.services.recommendation_runtime.recommendor_v1._load_catalog",
+        fake_load_catalog,
+    )
+    preload_recommendation_catalog()
+
+    tool = get_runtime_recommendation_tool()
+    response = tool(_query())
+
+    assert load_calls["count"] == 1
     assert response.results
     assert response.results[0].item_type == "hotel"
     assert response.results[0].features.get("city") == "Rome"
 
 
-def test_runtime_recommendation_tool_defers_catalog_load_until_execution(
-    tmp_path,
+def test_runtime_recommendation_tool_reloads_when_cached_catalog_is_empty(
+    monkeypatch,
 ) -> None:
     clear_recommendation_catalog_store()
-    missing_dataset_path = tmp_path / "missing-traveltom-clean.csv"
-    settings = _settings_for_dataset(str(missing_dataset_path))
+    load_calls = {"count": 0}
 
-    tool = get_runtime_recommendation_tool(settings=settings)
-    query = RecommendationQuery.model_validate(
-        {
-            "session_id": "sess-runtime",
-            "query": "hotel in Rome",
-            "constraints": {"destination": "Rome"},
-            "filters": {"item_type": "hotel"},
-            "max_results": 3,
-            "ranking_version": "heuristic-v1",
-        }
+    def fake_load_catalog() -> pd.DataFrame:
+        load_calls["count"] += 1
+        if load_calls["count"] == 1:
+            return pd.DataFrame()
+        return _catalog_rows()
+
+    monkeypatch.setattr(
+        "app.services.recommendation_runtime.recommendor_v1._load_catalog",
+        fake_load_catalog,
     )
 
-    with pytest.raises(FileNotFoundError, match="Recommendation dataset not found"):
-        tool(query)
+    tool = get_runtime_recommendation_tool()
+    response = tool(_query())
+
+    assert load_calls["count"] == 2
+    assert response.results

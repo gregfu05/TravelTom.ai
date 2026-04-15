@@ -86,6 +86,26 @@ class Settings(BaseSettings):
         ge=1.0,
         validation_alias=AliasChoices("ORCHESTRATOR_STRUCTURED_TIMEOUT_SECONDS"),
     )
+    orchestrator_planner_timeout_seconds: float | None = Field(
+        default=None,
+        ge=1.0,
+        validation_alias=AliasChoices("ORCHESTRATOR_PLANNER_TIMEOUT_SECONDS"),
+    )
+    orchestrator_composer_timeout_seconds: float | None = Field(
+        default=None,
+        ge=1.0,
+        validation_alias=AliasChoices("ORCHESTRATOR_COMPOSER_TIMEOUT_SECONDS"),
+    )
+    orchestrator_provider_failure_threshold: int = Field(
+        2,
+        ge=1,
+        validation_alias=AliasChoices("ORCHESTRATOR_PROVIDER_FAILURE_THRESHOLD"),
+    )
+    orchestrator_provider_cooldown_seconds: float = Field(
+        60.0,
+        ge=1.0,
+        validation_alias=AliasChoices("ORCHESTRATOR_PROVIDER_COOLDOWN_SECONDS"),
+    )
     ollama_base_url: str = Field(
         "http://127.0.0.1:11434",
         validation_alias=AliasChoices("OLLAMA_BASE_URL"),

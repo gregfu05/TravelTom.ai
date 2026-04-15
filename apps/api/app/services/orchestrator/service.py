@@ -273,7 +273,7 @@ class OrchestratorService:
         user_message: str,
         session_state: SessionState,
         recent_messages: Sequence[TranscriptMessage] | None = None,
-        agent_executor: AgentExecutor,
+        agent_executor: AgentExecutor | None = None,
         planner_executor: PlannerExecutor | None = None,
         recommendation_executor: RecommendationExecutor | None = None,
         response_composer: ResponseComposer | None = None,
@@ -314,7 +314,7 @@ class OrchestratorService:
             prepared_turn=prepared_turn,
             recommendation_executor_available=recommendation_executor is not None,
         )
-        if routing_decision.path == "direct_response":
+        if routing_decision.path == "direct_response" or agent_executor is None:
             return self._direct_response_from_plan(
                 user_message=message,
                 session_state=prepared_state,
@@ -1212,5 +1212,7 @@ class OrchestratorService:
                 session_state.constraints.destination,
                 session_state.constraints.dates,
                 session_state.constraints.budget,
+                session_state.preferences.weighted_interests,
+                session_state.preferences.dislikes,
             )
         )
