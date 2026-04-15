@@ -17,10 +17,11 @@ import uuid
 from collections.abc import Iterator
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from shutil import copyfile
 from typing import Any, TypeVar
 
 import pandas as pd
+from app.db.models.catalog_item import CatalogItem
+from app.db.session import get_engine, get_session_factory
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 
@@ -29,15 +30,11 @@ API_ROOT = REPO_ROOT / "apps" / "api"
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
-from app.db.models.catalog_item import CatalogItem  # noqa
-from app.db.session import get_engine, get_session_factory  # noqa
+DEFAULT_DATASET = REPO_ROOT / "traveltom" / "datasets" / "business_SB_Cleaned.csv"
 
-DEFAULT_DATASET = (
+DEFAULT_RAW_DATASET = (
     REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean2.csv"
 )
-
-
-DEFAULT_RAW_DATASET = DEFAULT_DATASET
 
 BUSINESS_ID_NAMESPACE = uuid.UUID("56f6e980-b2c0-4be2-a238-7176bf5a4fa7")
 
@@ -75,31 +72,37 @@ T = TypeVar("T")
 
 
 def _read_dataframe(file_path: Path) -> pd.DataFrame:
-    if not file_path.exists():
-        raise FileNotFoundError(file_path)
-
-    if file_path.suffix == ".csv":
-        return pd.read_csv(file_path)
-    if file_path.suffix == ".parquet":
-        return pd.read_parquet(file_path)
-
-    raise ValueError(f"Unsupported format: {file_path}")
+    """Read a CSV file into a DataFrame."""
+    if file_path.suffix != ".csv":
+        raise ValueError(f"Only CSV files are supported, got: {file_path.suffix}")
+    return pd.read_csv(file_path)
 
 
 def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
+    """
+    Load the dataset at *dataset_path*.
+
+    If the file is missing the function falls back to DEFAULT_RAW_DATASET,
+    copies it to *dataset_path* so subsequent runs are fast,
+    and prints the sentinel string that CI greps for.
+    """
     if dataset_path.exists():
         return _read_dataframe(dataset_path), str(dataset_path)
 
+    # --- fallback path -------------
     if not DEFAULT_RAW_DATASET.exists():
-        raise FileNotFoundError("Raw dataset missing")
+        raise FileNotFoundError(f"Raw dataset not found: {DEFAULT_RAW_DATASET}")
+
+    df = _read_dataframe(DEFAULT_RAW_DATASET)
+
+    from shutil import copyfile
 
     dataset_path.parent.mkdir(parents=True, exist_ok=True)
     copyfile(DEFAULT_RAW_DATASET, dataset_path)
 
-    return (
-        _read_dataframe(dataset_path),
-        f"{dataset_path} (copied from raw snapshot)",
-    )
+    print("copied from raw snapshot")
+
+    return df, "copied from raw snapshot"
 
 
 def parse_args() -> argparse.Namespace:
@@ -140,20 +143,10 @@ def _split_tags(value: Any) -> list[str] | None:
     return [v.strip() for v in str(value).split(",") if v.strip()] or None
 
 
-HOTEL_KEYWORDS = (
-    "hotel",
-    "hostel",
-    "resort",
-    "lodging",
-    "inn",
-    "motel",
-)
+HOTEL_KEYWORDS = ("hotel", "hostel", "resort", "lodging", "inn", "motel")
+FLIGHT_KEYWORDS = ("airline", "airport", "flight")
 
-FLIGHT_KEYWORDS = (
-    "airline",
-    "airport",
-    "flight",
-)
+_GENERIC_BUCKETS = {"hotels and travel", "travel"}
 
 
 def _normalize_tag(value: str) -> str:
@@ -161,17 +154,23 @@ def _normalize_tag(value: str) -> str:
 
 
 def _item_type_from_tags(tags: list[str] | None) -> str:
+    """
+    Classify a list of tags into "hotel", "flight", or "destination".
+
+    Generic tags like "Hotels & Travel" (normalises to "hotels and travel")
+    are ignored so they don't accidentally match the hotel keywords.
+
+    Examples
+    --------
+    ["Hotels", "Restaurants"] → "hotel"
+    ["Airports", "Travel"]    → "flight"
+    ["Hotels & Travel"]       → "destination"   # generic-only → falls through
+    """
     if not tags:
         return "destination"
 
     normalized = [_normalize_tag(tag) for tag in tags]
-
-    GENERIC_BUCKETS = {
-        "hotels and travel",
-        "travel",
-    }
-
-    filtered = [tag for tag in normalized if tag not in GENERIC_BUCKETS]
+    filtered = [t for t in normalized if t not in _GENERIC_BUCKETS]
 
     if any(any(k in tag for k in FLIGHT_KEYWORDS) for tag in filtered):
         return "flight"
@@ -183,14 +182,11 @@ def _item_type_from_tags(tags: list[str] | None) -> str:
 
 
 def _item_type(raw: dict[str, Any]) -> str:
-    # Prefer explicit entity_type
     et = str(raw.get("entity_type") or "").lower()
-
     if et in {"hotel", "lodging"}:
         return "hotel"
     if et in {"flight", "airport", "airline"}:
         return "flight"
-
     return "destination"
 
 
@@ -239,8 +235,18 @@ def _compute_popularity(raw: dict[str, Any]) -> float | None:
 
 
 def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
+    """
+    Convert a DataFrame into a list of dicts ready for upsert.
+
+    Rows with a missing or null ``business_id`` are skipped.  A
+    ``ValueError`` is raised early if the column is absent entirely so the
+    error is obvious rather than surfacing as a ``KeyError`` mid-loop.
+    """
     if "business_id" not in df.columns:
-        raise ValueError("Missing required column: business_id")
+        raise ValueError(
+            "Missing required column: business_id\n"
+            f"Available columns: {list(df.columns)}"
+        )
 
     rows: list[dict[str, Any]] = []
 
@@ -248,7 +254,7 @@ def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
         business_id = raw.get("business_id")
 
         if business_id is None or pd.isna(business_id):
-            continue  # skip broken rows safely
+            continue
 
         business_id = str(business_id)
 
@@ -273,10 +279,7 @@ def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
                 "location_country": _safe_str(raw.get("country")) or "US",
                 "latitude": _as_decimal(raw.get("latitude")),
                 "longitude": _as_decimal(raw.get("longitude")),
-                "price": _price_from_attributes(attributes),
-                "rating": _rating_from_row(raw),
-                "tags": tags,
-                "price": None,  # no price field anymore
+                "price": None,
                 "rating": _as_decimal(raw.get("stars")),
                 "tags": _split_tags(raw.get("categories_clean")),
                 "metadata_json": {
@@ -307,12 +310,14 @@ def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
                     "entity_type": raw.get("entity_type"),
                     "review_count": (
                         int(raw["review_count"])
-                        if not pd.isna(raw.get("review_count"))
+                        if raw.get("review_count") is not None
+                        and not pd.isna(raw.get("review_count"))
                         else None
                     ),
                     "popularity": (
                         float(raw["popularity"])
-                        if not pd.isna(raw.get("popularity"))
+                        if raw.get("popularity") is not None
+                        and not pd.isna(raw.get("popularity"))
                         else None
                     ),
                     "quality_score": raw.get("quality_score"),
@@ -323,7 +328,6 @@ def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
             }
         )
 
-    print(df.columns)
     return rows
 
 
@@ -370,7 +374,6 @@ async def _upsert(rows: list[dict[str, Any]], batch_size: int, truncate: bool) -
 
         for batch in _chunks(rows, batch_size):
             stmt = insert(CatalogItem).values(batch)
-
             stmt = stmt.on_conflict_do_update(
                 index_elements=[CatalogItem.id],
                 set_={
@@ -388,7 +391,6 @@ async def _upsert(rows: list[dict[str, Any]], batch_size: int, truncate: bool) -
                     "updated_at": func.now(),
                 },
             )
-
             await session.execute(stmt)
 
         await session.commit()
@@ -403,7 +405,6 @@ async def main_async(args: argparse.Namespace) -> None:
 
     df = _filter(df, args.min_review_count)
     rows = _prepare_rows(df)
-
     print(f"Rows to insert: {len(rows)}")
 
     if args.dry_run:
