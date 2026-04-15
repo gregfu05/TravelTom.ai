@@ -54,3 +54,7 @@ repair turns, and direct recommendation execution:
 pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider disabled
 pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider ollama
 ```
+
+If you need a stable auth credential for repeated runs, pass `-Password`
+explicitly or set `TRAVELTOM_SMOKE_PASSWORD`. Otherwise the script generates a
+one-off password for the temporary smoke account it creates.
