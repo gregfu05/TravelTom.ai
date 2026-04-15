@@ -164,13 +164,13 @@ class OllamaStructuredClient:
             raise RuntimeError("Ollama prompt cannot be empty")
         resolved_model_name = self._resolve_model_name(model_name)
         attempts = [
+            lambda: self._invoke_api_chat(resolved_model_name, prompt, schema),
+            lambda: self._invoke_generate(resolved_model_name, prompt, schema),
             lambda: self._invoke_openai_chat_completions(
                 resolved_model_name,
                 prompt,
                 schema,
             ),
-            lambda: self._invoke_api_chat(resolved_model_name, prompt, schema),
-            lambda: self._invoke_generate(resolved_model_name, prompt, schema),
         ]
         last_error: Exception | None = None
         for attempt in attempts:
@@ -222,7 +222,9 @@ class OllamaStructuredClient:
         content = message.get("content")
         if not isinstance(content, str):
             raise RuntimeError("Ollama response missing textual content")
-        return parse_structured_json_content(content)
+        payload = parse_structured_json_content(content)
+        self._ensure_payload_matches_schema(payload, schema)
+        return payload
 
     def _invoke_openai_chat_completions(
         self,
@@ -264,7 +266,9 @@ class OllamaStructuredClient:
         content = message.get("content")
         if not isinstance(content, str):
             raise RuntimeError("Ollama OpenAI-compatible content is invalid")
-        return parse_structured_json_content(content)
+        payload = parse_structured_json_content(content)
+        self._ensure_payload_matches_schema(payload, schema)
+        return payload
 
     def _invoke_generate(
         self,
@@ -289,7 +293,9 @@ class OllamaStructuredClient:
         content = response_payload.get("response")
         if not isinstance(content, str):
             raise RuntimeError("Ollama generate response missing textual content")
-        return parse_structured_json_content(content)
+        payload = parse_structured_json_content(content)
+        self._ensure_payload_matches_schema(payload, schema)
+        return payload
 
     def _resolve_model_name(self, configured_model_name: str) -> str:
         available_model_names = self._available_model_names()
@@ -326,3 +332,14 @@ class OllamaStructuredClient:
             payload=payload,
             timeout_seconds=timeout_seconds,
         )
+
+    def _ensure_payload_matches_schema(
+        self,
+        payload: dict[str, Any],
+        schema: dict[str, Any],
+    ) -> None:
+        required_fields = schema.get("required")
+        if not isinstance(required_fields, list):
+            return
+        if any(field not in payload for field in required_fields):
+            raise RuntimeError("Structured payload did not match the required schema")

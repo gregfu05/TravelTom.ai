@@ -27,8 +27,6 @@ from app.services.orchestrator.policies import (
     build_guardrail_plan,
     build_planning_prompt_context,
     is_greeting,
-    is_meta_question,
-    is_repair_turn,
     is_social_turn,
     missing_core_constraint_slots,
 )
@@ -95,18 +93,29 @@ class TurnPreparer:
                 ),
             ),
             acknowledged_slots=acknowledged_slots,
+            planner_attempted=False,
             planner_used=False,
+            planner_status="not_requested",
         )
         if planner_executor is None:
-            return fallback_turn
+            return PreparedTurn(
+                session_state=fallback_turn.session_state,
+                plan=fallback_turn.plan,
+                acknowledged_slots=fallback_turn.acknowledged_slots,
+                planner_attempted=False,
+                planner_used=False,
+                planner_status="not_configured",
+            )
 
-        if (
-            is_social_turn(user_message)
-            or is_greeting(user_message)
-            or is_meta_question(user_message)
-            or is_repair_turn(user_message)
-        ):
-            return fallback_turn
+        if is_social_turn(user_message) or is_greeting(user_message):
+            return PreparedTurn(
+                session_state=fallback_turn.session_state,
+                plan=fallback_turn.plan,
+                acknowledged_slots=fallback_turn.acknowledged_slots,
+                planner_attempted=False,
+                planner_used=False,
+                planner_status="skipped_fast_path",
+            )
 
         prompt = build_planning_prompt_context(
             session_state=previous_state,
@@ -127,13 +136,27 @@ class TurnPreparer:
                     }
                 },
             )
-            return fallback_turn
+            return PreparedTurn(
+                session_state=fallback_turn.session_state,
+                plan=fallback_turn.plan,
+                acknowledged_slots=fallback_turn.acknowledged_slots,
+                planner_attempted=True,
+                planner_used=False,
+                planner_status="failed",
+            )
         if plan_payload is None:
             logger.info(
                 "planner_unavailable",
                 extra={"context": {"session_id": previous_state.session_id}},
             )
-            return fallback_turn
+            return PreparedTurn(
+                session_state=fallback_turn.session_state,
+                plan=fallback_turn.plan,
+                acknowledged_slots=fallback_turn.acknowledged_slots,
+                planner_attempted=False,
+                planner_used=False,
+                planner_status="unavailable",
+            )
         if not isinstance(plan_payload, Mapping):
             logger.warning(
                 "planner_output_invalid",
@@ -144,13 +167,20 @@ class TurnPreparer:
                     }
                 },
             )
-            return fallback_turn
+            return PreparedTurn(
+                session_state=fallback_turn.session_state,
+                plan=fallback_turn.plan,
+                acknowledged_slots=fallback_turn.acknowledged_slots,
+                planner_attempted=True,
+                planner_used=False,
+                planner_status="invalid_output",
+            )
 
         normalized_plan_payload = self._sanitize_plan_payload(plan_payload)
         try:
             plan = LLMOrchestrationPlan.model_validate(normalized_plan_payload)
             planned_state = apply_structured_state_patch(
-                session_state=previous_state,
+                session_state=deterministic_state,
                 state_patch=plan.state_patch.model_dump(
                     mode="python",
                     exclude_unset=True,
@@ -166,7 +196,14 @@ class TurnPreparer:
                     }
                 },
             )
-            return fallback_turn
+            return PreparedTurn(
+                session_state=fallback_turn.session_state,
+                plan=fallback_turn.plan,
+                acknowledged_slots=fallback_turn.acknowledged_slots,
+                planner_attempted=True,
+                planner_used=False,
+                planner_status="invalid_output",
+            )
 
         return PreparedTurn(
             session_state=planned_state,
@@ -180,7 +217,9 @@ class TurnPreparer:
                 previous_state=previous_state,
                 next_state=planned_state,
             ),
+            planner_attempted=True,
             planner_used=True,
+            planner_status="succeeded",
         )
 
     def enforce_recommendation_slot_gating(
@@ -215,7 +254,9 @@ class TurnPreparer:
             session_state=prepared_turn.session_state,
             plan=gated_plan,
             acknowledged_slots=prepared_turn.acknowledged_slots,
+            planner_attempted=prepared_turn.planner_attempted,
             planner_used=prepared_turn.planner_used,
+            planner_status=prepared_turn.planner_status,
         )
 
     def merge_query_filters(

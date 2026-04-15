@@ -222,6 +222,51 @@ def test_orchestrator_planner_patch_updates_state_before_clarification() -> None
     assert "travel dates" in response.assistant_message
 
 
+def test_orchestrator_planner_success_preserves_deterministic_slot_extraction() -> None:
+    service = OrchestratorService()
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        captured_query["value"] = query
+        return RecommendationToolResponse.model_validate(
+            {
+                "ranking_version": "heuristic-v1",
+                "results": [
+                    {
+                        "item_id": "hotel-sb-1",
+                        "item_type": "hotel",
+                        "score": 0.95,
+                        "rank": 1,
+                        "features": {"name": "Santa Barbara Hotel"},
+                        "explanation": "Grounded hotel after planner success.",
+                    }
+                ],
+            }
+        )
+
+    response = service.handle_message(
+        user_message="Hotels in Santa Barbara from 2026-05-10 to 2026-05-20 under 2000 USD",
+        session_state=SessionState(session_id="sess-planner-deterministic-base"),
+        planner_executor=lambda _prompt: {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "state_patch": {},
+            "query_controls": {"filters": {"item_type": "hotel"}, "max_results": 5},
+        },
+        recommendation_executor=recommendation_executor,
+    )
+
+    query = captured_query["value"]
+    assert query is not None
+    assert query.constraints.destination == "Santa Barbara"
+    assert query.constraints.dates is not None
+    assert query.constraints.budget is not None
+    assert response.state["constraints"]["destination"] == "Santa Barbara"
+    assert response.recommendations[0].item_id == "hotel-sb-1"
+
+
 def test_orchestrator_state_patch_conversation_does_not_block_recommendation() -> None:
     service = OrchestratorService()
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
@@ -481,6 +526,33 @@ def test_orchestrator_meta_turn_does_not_auto_trigger_search() -> None:
     assert "By destination" in response.assistant_message
 
 
+def test_orchestrator_meta_turn_uses_planner_when_available() -> None:
+    service = OrchestratorService()
+    planner_called = {"value": False}
+
+    def planner_executor(_prompt: str) -> dict[str, Any]:
+        planner_called["value"] = True
+        return {
+            "intent": "clarify",
+            "should_call_recommendation_tool": False,
+            "clarification_message": (
+                "By destination, I mean the place you want me to focus on."
+            ),
+        }
+
+    response = service.handle_message(
+        user_message="what do you mean by destination",
+        session_state=SessionState(session_id="sess-meta-planner"),
+        planner_executor=planner_executor,
+        agent_executor=lambda _messages: {
+            "messages": [AIMessage(content="ignored")]
+        },
+    )
+
+    assert planner_called["value"] is True
+    assert response.assistant_message.startswith("By destination")
+
+
 def test_orchestrator_repair_turn_does_not_auto_trigger_search() -> None:
     service = OrchestratorService()
     state = SessionState.model_validate(
@@ -516,6 +588,34 @@ def test_orchestrator_repair_turn_does_not_auto_trigger_search() -> None:
     assert captured_query["value"] is None
     assert response.recommendations == []
     assert "I will not assume restaurants" in response.assistant_message
+
+
+def test_orchestrator_repair_turn_uses_planner_when_available() -> None:
+    service = OrchestratorService()
+    planner_called = {"value": False}
+
+    def planner_executor(_prompt: str) -> dict[str, Any]:
+        planner_called["value"] = True
+        return {
+            "intent": "clarify",
+            "should_call_recommendation_tool": False,
+            "clarification_message": (
+                "Understood. I will not assume restaurants. Tell me what kind of "
+                "sightseeing you want."
+            ),
+        }
+
+    response = service.handle_message(
+        user_message="not restaurants, more like sightseeing",
+        session_state=SessionState(session_id="sess-repair-planner"),
+        planner_executor=planner_executor,
+        agent_executor=lambda _messages: {
+            "messages": [AIMessage(content="ignored")]
+        },
+    )
+
+    assert planner_called["value"] is True
+    assert "not assume restaurants" in response.assistant_message
 
 
 def test_orchestrator_show_me_more_prefers_unseen_results() -> None:

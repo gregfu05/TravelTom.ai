@@ -23,7 +23,9 @@ class PreparedTurn:
     session_state: SessionState
     plan: LLMOrchestrationPlan
     acknowledged_slots: list[str]
+    planner_attempted: bool
     planner_used: bool
+    planner_status: str
 
 
 @dataclass(frozen=True)

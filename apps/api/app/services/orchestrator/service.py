@@ -16,6 +16,7 @@ from app.schemas.api.recommendations import (
 )
 from app.schemas.orchestrator import (
     Intent,
+    OrchestratorDiagnostics,
     LLMOrchestrationPlan,
     OrchestratorPolicyConfig,
     OrchestratorResponse,
@@ -52,6 +53,7 @@ from app.services.orchestrator.policies import (
     is_greeting,
     is_meta_question,
     is_repair_turn,
+    is_social_turn,
     missing_core_constraint_slots,
     requested_slots_for_clarification,
 )
@@ -59,6 +61,7 @@ from app.services.orchestrator.recommendation_runner import RecommendationRunner
 from app.services.orchestrator.response_assembler import ResponseAssembler
 from app.services.orchestrator.runtime_types import (
     AgentRunResult,
+    PreparedTurn,
     RecommendationOutcome,
 )
 from app.services.orchestrator.turn_preparer import TurnPreparer
@@ -277,12 +280,18 @@ class OrchestratorService:
         planner_executor: PlannerExecutor | None = None,
         recommendation_executor: RecommendationExecutor | None = None,
         response_composer: ResponseComposer | None = None,
+        diagnostics: OrchestratorDiagnostics | None = None,
     ) -> OrchestratorResponse:
         """Run the chat agent and normalize the transcript into API output."""
 
         message = user_message.strip()
         history = list(recent_messages or [])
+        effective_diagnostics = diagnostics or OrchestratorDiagnostics()
         if not message:
+            self._set_fallback_reason(
+                effective_diagnostics,
+                "empty_message",
+            )
             return self._clarification_response(
                 previous_state=session_state,
                 session_state=session_state,
@@ -293,6 +302,7 @@ class OrchestratorService:
                 response_composer=response_composer,
                 intent="clarify",
                 requested_slots=session_state.conversation.last_requested_slots,
+                diagnostics=effective_diagnostics,
             )
 
         prepared_turn = self._turn_preparer.prepare_turn(
@@ -307,6 +317,10 @@ class OrchestratorService:
         )
         prepared_state = prepared_turn.session_state
         acknowledged_slots = prepared_turn.acknowledged_slots
+        self._apply_prepared_turn_diagnostics(
+            diagnostics=effective_diagnostics,
+            prepared_turn=prepared_turn,
+        )
         routing_decision = self._decision_engine.decide(
             user_message=message,
             previous_state=session_state,
@@ -324,6 +338,7 @@ class OrchestratorService:
                 recent_messages=history,
                 recommendation_executor=recommendation_executor,
                 response_composer=response_composer,
+                diagnostics=effective_diagnostics,
             )
 
         try:
@@ -338,6 +353,7 @@ class OrchestratorService:
                 )
             )
         except Exception:
+            self._set_fallback_reason(effective_diagnostics, "agent_execution_failed")
             return self._fallback_from_agent_failure(
                 user_message=message,
                 session_state=prepared_state,
@@ -347,6 +363,7 @@ class OrchestratorService:
                 recommendation_executor=recommendation_executor,
                 recent_messages=history,
                 response_composer=response_composer,
+                diagnostics=effective_diagnostics,
             )
 
         return self._response_from_agent_result(
@@ -359,6 +376,7 @@ class OrchestratorService:
             recent_messages=history,
             recommendation_executor=recommendation_executor,
             response_composer=response_composer,
+            diagnostics=effective_diagnostics,
         )
 
     def response_from_direct_agent_result(
@@ -399,6 +417,7 @@ class OrchestratorService:
         recent_messages: Sequence[TranscriptMessage],
         recommendation_executor: RecommendationExecutor | None,
         response_composer: ResponseComposer | None,
+        diagnostics: OrchestratorDiagnostics,
     ) -> OrchestratorResponse:
         conversation_intent = self._turn_intent(
             previous_state,
@@ -407,6 +426,8 @@ class OrchestratorService:
             planned_intent=plan.intent,
         )
         if not plan.should_call_recommendation_tool:
+            if diagnostics.fallback_reason is None:
+                self._set_fallback_reason(diagnostics, "clarification_only")
             return self._clarification_response(
                 previous_state=previous_state,
                 session_state=session_state,
@@ -426,17 +447,21 @@ class OrchestratorService:
                     user_message=user_message,
                 ),
                 rebuild_clarification_from_state=True,
+                diagnostics=diagnostics,
             )
 
         if recommendation_executor is None:
+            self._set_fallback_reason(diagnostics, "missing_recommendation_executor")
             return self._safe_error_response(
                 previous_state=previous_state,
                 session_state=session_state,
                 user_message=user_message,
                 assistant_message=build_tool_failure_message(),
                 intent=conversation_intent,
+                diagnostics=diagnostics,
             )
 
+        self._set_fallback_reason(diagnostics, "direct_recommendation_bypass")
         return self._run_recommendation_fallback(
             user_message=user_message,
             session_state=session_state,
@@ -451,6 +476,7 @@ class OrchestratorService:
             filters_override=plan.query_controls.filters,
             response_composer=response_composer,
             intent=conversation_intent,
+            diagnostics=diagnostics,
         )
 
     def build_recommendation_query(
@@ -510,6 +536,7 @@ class OrchestratorService:
         recent_messages: Sequence[TranscriptMessage],
         recommendation_executor: RecommendationExecutor | None,
         response_composer: ResponseComposer | None,
+        diagnostics: OrchestratorDiagnostics,
     ) -> OrchestratorResponse:
         final_ai_message = agent_result.last_final_ai_message()
         tool_message = agent_result.last_recommendation_tool_message()
@@ -525,6 +552,7 @@ class OrchestratorService:
                 plan.should_call_recommendation_tool
                 and recommendation_executor is not None
             ):
+                self._set_fallback_reason(diagnostics, "agent_missing_tool_call")
                 return self._run_recommendation_fallback(
                     user_message=user_message,
                     session_state=session_state,
@@ -539,8 +567,10 @@ class OrchestratorService:
                     filters_override=plan.query_controls.filters,
                     response_composer=response_composer,
                     intent=conversation_intent,
+                    diagnostics=diagnostics,
                 )
 
+            self._set_fallback_reason(diagnostics, "agent_clarification_response")
             return self._clarification_response(
                 previous_state=previous_state,
                 session_state=session_state,
@@ -560,43 +590,52 @@ class OrchestratorService:
                     user_message=user_message,
                 ),
                 rebuild_clarification_from_state=True,
+                diagnostics=diagnostics,
             )
 
         if getattr(tool_message, "status", "success") == "error":
+            self._set_fallback_reason(diagnostics, "agent_invalid_request")
             return self._safe_error_response(
                 previous_state=previous_state,
                 session_state=session_state,
                 user_message=user_message,
                 assistant_message=build_invalid_request_message(session_state),
                 intent=conversation_intent,
+                diagnostics=diagnostics,
             )
 
         runtime_payload = RecommendationToolRuntimePayload.model_validate(
             getattr(tool_message, "artifact", None)
         )
         if runtime_payload.status == "timeout":
+            self._set_fallback_reason(diagnostics, "tool_timeout")
             return self._safe_error_response(
                 previous_state=previous_state,
                 session_state=session_state,
                 user_message=user_message,
                 assistant_message=build_tool_timeout_message(),
                 intent=conversation_intent,
+                diagnostics=diagnostics,
             )
         if runtime_payload.status == "invalid_payload":
+            self._set_fallback_reason(diagnostics, "invalid_tool_payload")
             return self._safe_error_response(
                 previous_state=previous_state,
                 session_state=session_state,
                 user_message=user_message,
                 assistant_message=build_invalid_tool_payload_message(),
                 intent=conversation_intent,
+                diagnostics=diagnostics,
             )
         if runtime_payload.status != "success" or runtime_payload.response is None:
+            self._set_fallback_reason(diagnostics, "tool_failure")
             return self._safe_error_response(
                 previous_state=previous_state,
                 session_state=session_state,
                 user_message=user_message,
                 assistant_message=build_tool_failure_message(),
                 intent=conversation_intent,
+                diagnostics=diagnostics,
             )
 
         recommendation_response = runtime_payload.response
@@ -638,6 +677,7 @@ class OrchestratorService:
         )
         outcome.next_state.conversation.last_user_intent = conversation_intent
         if outcome.retry_with_expanded_results and recommendation_executor is not None:
+            self._set_fallback_reason(diagnostics, "retry_duplicate_results")
             return self._run_recommendation_fallback(
                 user_message=user_message,
                 session_state=session_state,
@@ -653,12 +693,14 @@ class OrchestratorService:
                 filters_override=tool_filters,
                 response_composer=response_composer,
                 intent=conversation_intent,
+                diagnostics=diagnostics,
             )
         return self._orchestrator_response_from_recommendation_outcome(
             outcome=outcome,
             recent_messages=recent_messages,
             user_message=user_message,
             response_composer=response_composer,
+            diagnostics=diagnostics,
         )
 
     def _fallback_from_agent_failure(
@@ -672,6 +714,7 @@ class OrchestratorService:
         recommendation_executor: RecommendationExecutor | None,
         recent_messages: Sequence[TranscriptMessage],
         response_composer: ResponseComposer | None,
+        diagnostics: OrchestratorDiagnostics,
     ) -> OrchestratorResponse:
         conversation_intent = self._turn_intent(
             previous_state,
@@ -698,15 +741,18 @@ class OrchestratorService:
                     session_state=session_state,
                     user_message=user_message,
                 ),
+                diagnostics=diagnostics,
             )
 
         if recommendation_executor is None:
+            self._set_fallback_reason(diagnostics, "missing_recommendation_executor")
             return self._safe_error_response(
                 previous_state=previous_state,
                 session_state=session_state,
                 user_message=user_message,
                 assistant_message=build_tool_failure_message(),
                 intent=conversation_intent,
+                diagnostics=diagnostics,
             )
 
         return self._run_recommendation_fallback(
@@ -723,6 +769,7 @@ class OrchestratorService:
             filters_override=plan.query_controls.filters,
             response_composer=response_composer,
             intent=conversation_intent,
+            diagnostics=diagnostics,
         )
 
     def _run_recommendation_fallback(
@@ -738,6 +785,7 @@ class OrchestratorService:
         filters_override: Mapping[str, Any] | None = None,
         response_composer: ResponseComposer | None,
         intent: Intent | None = None,
+        diagnostics: OrchestratorDiagnostics,
     ) -> OrchestratorResponse:
         effective_max_results = (
             self._recommendation_runner.expanded_follow_up_max_results(
@@ -754,6 +802,7 @@ class OrchestratorService:
             filters_override=filters_override,
         )
         if query is None:
+            self._set_fallback_reason(diagnostics, "invalid_request")
             return self._clarification_response(
                 previous_state=previous_state,
                 session_state=session_state,
@@ -769,6 +818,7 @@ class OrchestratorService:
                     user_message=user_message,
                 ),
                 outcome="invalid_request",
+                diagnostics=diagnostics,
             )
 
         try:
@@ -777,6 +827,7 @@ class OrchestratorService:
                 recommendation_executor=recommendation_executor,
             )
         except ValidationError:
+            self._set_fallback_reason(diagnostics, "invalid_tool_payload")
             return self._safe_error_response(
                 previous_state=previous_state,
                 session_state=session_state,
@@ -784,8 +835,10 @@ class OrchestratorService:
                 assistant_message=build_invalid_tool_payload_message(),
                 intent=intent
                 or self._turn_intent(previous_state, user_message, session_state),
+                diagnostics=diagnostics,
             )
         except FuturesTimeoutError:
+            self._set_fallback_reason(diagnostics, "tool_timeout")
             return self._safe_error_response(
                 previous_state=previous_state,
                 session_state=session_state,
@@ -793,8 +846,10 @@ class OrchestratorService:
                 assistant_message=build_tool_timeout_message(),
                 intent=intent
                 or self._turn_intent(previous_state, user_message, session_state),
+                diagnostics=diagnostics,
             )
         except Exception:
+            self._set_fallback_reason(diagnostics, "tool_failure")
             return self._safe_error_response(
                 previous_state=previous_state,
                 session_state=session_state,
@@ -802,6 +857,7 @@ class OrchestratorService:
                 assistant_message=build_tool_failure_message(),
                 intent=intent
                 or self._turn_intent(previous_state, user_message, session_state),
+                diagnostics=diagnostics,
             )
 
         outcome = self._response_assembler.normalize_recommendation_outcome(
@@ -826,6 +882,7 @@ class OrchestratorService:
             recent_messages=recent_messages,
             user_message=user_message,
             response_composer=response_composer,
+            diagnostics=diagnostics,
         )
 
     def _normalize_item_type(
@@ -836,6 +893,35 @@ class OrchestratorService:
 
     def _normalize_query_override(self, query: Any) -> str | None:
         return self._turn_preparer.normalize_query_override(query)
+
+    def _apply_prepared_turn_diagnostics(
+        self,
+        *,
+        diagnostics: OrchestratorDiagnostics,
+        prepared_turn: PreparedTurn,
+    ) -> None:
+        diagnostics.planner_attempted = (
+            diagnostics.planner_attempted or prepared_turn.planner_attempted
+        )
+        diagnostics.planner_used = prepared_turn.planner_used
+        if (
+            diagnostics.planner_status == "not_requested"
+            and prepared_turn.planner_status != "not_requested"
+        ):
+            diagnostics.planner_status = prepared_turn.planner_status
+
+        if prepared_turn.planner_status == "skipped_fast_path":
+            if diagnostics.fallback_reason is None:
+                self._set_fallback_reason(diagnostics, "greeting_or_social_fast_path")
+            if diagnostics.composer_status == "not_requested":
+                diagnostics.composer_status = "skipped_fast_path"
+
+    def _set_fallback_reason(
+        self,
+        diagnostics: OrchestratorDiagnostics,
+        reason: str,
+    ) -> None:
+        diagnostics.fallback_reason = reason
 
     def _compose_assistant_message(
         self,
@@ -850,6 +936,7 @@ class OrchestratorService:
         ],
         response_composer: ResponseComposer | None,
         candidate_message: str | None = None,
+        diagnostics: OrchestratorDiagnostics | None = None,
     ) -> str:
         normalized_candidate = _normalize_text_value(candidate_message)
         if (
@@ -861,6 +948,11 @@ class OrchestratorService:
             and not session_state.conversation.last_requested_slots
         ):
             return normalized_candidate
+
+        if is_greeting(user_message) or is_social_turn(user_message):
+            if diagnostics is not None and diagnostics.composer_status == "not_requested":
+                diagnostics.composer_status = "skipped_fast_path"
+            return fallback_message
 
         if response_composer is not None:
             prompt = build_response_prompt_context(
@@ -878,6 +970,8 @@ class OrchestratorService:
             if isinstance(composed_message, str):
                 normalized = composed_message.strip()
                 if normalized:
+                    if diagnostics is not None:
+                        diagnostics.composer_used = True
                     return normalized
             return fallback_message
 
@@ -890,6 +984,7 @@ class OrchestratorService:
         recent_messages: Sequence[TranscriptMessage],
         user_message: str,
         response_composer: ResponseComposer | None,
+        diagnostics: OrchestratorDiagnostics,
     ) -> OrchestratorResponse:
         assistant_message = self._compose_assistant_message(
             session_state=outcome.next_state,
@@ -903,6 +998,7 @@ class OrchestratorService:
             ),
             response_composer=response_composer,
             candidate_message=outcome.candidate_message,
+            diagnostics=diagnostics,
         )
         return OrchestratorResponse(
             session_id=outcome.next_state.session_id,
@@ -910,6 +1006,7 @@ class OrchestratorService:
             recommendations=outcome.recommendations,
             itinerary=outcome.next_state.itinerary.model_dump(),
             state=outcome.next_state.model_dump(mode="json"),
+            diagnostics=diagnostics,
         )
 
     def _extract_tool_call_query(self, tool_call: dict[str, Any] | None) -> str | None:
@@ -1106,6 +1203,7 @@ class OrchestratorService:
         requested_slots: list[str],
         outcome: Literal["clarification", "invalid_request"] = "clarification",
         rebuild_clarification_from_state: bool = False,
+        diagnostics: OrchestratorDiagnostics,
     ) -> OrchestratorResponse:
         next_state = session_state.model_copy(deep=True)
         next_state.status = "refine" if intent == "refine" else "explore"
@@ -1169,13 +1267,20 @@ class OrchestratorService:
             outcome=outcome,
             response_composer=response_composer,
             candidate_message=final_ai_message.text if final_ai_message else None,
+            diagnostics=diagnostics,
         )
+        if diagnostics.fallback_reason is None:
+            self._set_fallback_reason(
+                diagnostics,
+                "invalid_request" if outcome == "invalid_request" else "clarification",
+            )
         return OrchestratorResponse(
             session_id=next_state.session_id,
             assistant_message=assistant_message,
             recommendations=[],
             itinerary=next_state.itinerary.model_dump(),
             state=next_state.model_dump(mode="json"),
+            diagnostics=diagnostics,
         )
 
     def _safe_error_response(
@@ -1186,6 +1291,7 @@ class OrchestratorService:
         user_message: str,
         assistant_message: str,
         intent: Intent,
+        diagnostics: OrchestratorDiagnostics,
     ) -> OrchestratorResponse:
         next_state = session_state.model_copy(deep=True)
         next_state.last_message_at = datetime.now(timezone.utc)
@@ -1203,6 +1309,7 @@ class OrchestratorService:
             recommendations=[],
             itinerary=next_state.itinerary.model_dump(),
             state=next_state.model_dump(mode="json"),
+            diagnostics=diagnostics,
         )
 
     def _has_trip_setup_context(self, session_state: SessionState) -> bool:

@@ -15,6 +15,7 @@ from app.services.orchestrator.llm_provider import (
     map_provider_exception_to_api_error,
 )
 from app.services.orchestrator.providers import OllamaStructuredClient
+from app.services.travel_tom_agent import _resolve_structured_stage_timeout_seconds
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
@@ -108,6 +109,45 @@ def test_resolve_ollama_health_timeout_seconds_bounds() -> None:
     assert _resolve_ollama_health_timeout_seconds(20.0) == 5.0
 
 
+def test_resolve_structured_stage_timeout_seconds_clamps_local_ollama() -> None:
+    assert (
+        _resolve_structured_stage_timeout_seconds(
+            provider_name="ollama",
+            stage_name="planner",
+            timeout_seconds=20.0,
+            local_environment=True,
+        )
+        == 60.0
+    )
+    assert (
+        _resolve_structured_stage_timeout_seconds(
+            provider_name="openai",
+            stage_name="planner",
+            timeout_seconds=20.0,
+            local_environment=True,
+        )
+        == 20.0
+    )
+    assert (
+        _resolve_structured_stage_timeout_seconds(
+            provider_name="ollama",
+            stage_name="planner",
+            timeout_seconds=50.0,
+            local_environment=True,
+        )
+        == 60.0
+    )
+    assert (
+        _resolve_structured_stage_timeout_seconds(
+            provider_name="ollama",
+            stage_name="composer",
+            timeout_seconds=50.0,
+            local_environment=True,
+        )
+        == 90.0
+    )
+
+
 def test_build_direct_recommendation_model_returns_deterministic_model() -> None:
     model = build_direct_recommendation_model()
     assert isinstance(model, DeterministicRecommendationAgentModel)
@@ -126,16 +166,14 @@ def test_ollama_structured_client_uses_configured_timeout_for_planner_requests(
         captured_request["payload"] = payload
         captured_timeouts.append(timeout)
         return {
-            "choices": [
-                {
-                    "message": {
-                        "content": (
-                            '{"intent":"clarify",'
-                            '"should_call_recommendation_tool":false}'
-                        )
-                    }
-                }
-            ]
+            "message": {
+                "content": (
+                    '{"intent":"clarify",'
+                    '"should_call_recommendation_tool":false,'
+                    '"state_patch":{},'
+                    '"query_controls":{}}'
+                )
+            }
         }
 
     client = OllamaStructuredClient(
@@ -158,14 +196,71 @@ def test_ollama_structured_client_uses_configured_timeout_for_planner_requests(
     assert payload == {
         "intent": "clarify",
         "should_call_recommendation_tool": False,
+        "state_patch": {},
+        "query_controls": {},
     }
     assert captured_timeouts == [20.0]
-    assert str(captured_request["url"]).endswith("/v1/chat/completions")
+    assert str(captured_request["url"]).endswith("/api/chat")
     response_payload = cast(dict[str, object], captured_request["payload"])
-    response_format = response_payload.get("response_format")
+    response_format = response_payload.get("format")
     assert isinstance(response_format, dict)
-    assert response_format["type"] == "json_schema"
-    assert isinstance(response_format["json_schema"], dict)
+    assert "properties" in response_format
+
+
+def test_ollama_structured_client_falls_back_when_openai_payload_shape_is_invalid(
+    monkeypatch,
+) -> None:
+    calls: list[str] = []
+
+    def transport(
+        url: str, payload: dict[str, object], timeout: float
+    ) -> dict[str, object]:
+        del payload
+        del timeout
+        calls.append(url)
+        if url.endswith("/api/chat"):
+            raise RuntimeError("api chat unavailable")
+        if url.endswith("/api/generate"):
+            return {
+                "response": (
+                    '{"intent":"clarify",'
+                    '"should_call_recommendation_tool":false,'
+                    '"state_patch":{},'
+                    '"query_controls":{}}'
+                )
+            }
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"schema":"2.1","should_call_recommendation_tool":false}'
+                    }
+                }
+            ]
+        }
+
+    client = OllamaStructuredClient(
+        base_url="http://127.0.0.1:11434",
+        planning_model_name="llama3.1:8b",
+        response_model_name="llama3.1:8b",
+        timeout_seconds=20.0,
+        temperature=0.0,
+        transport=transport,
+    )
+    monkeypatch.setattr(
+        client,
+        "_available_model_names",
+        lambda: ["llama3.1:8b"],
+        raising=False,
+    )
+
+    payload = client.plan({"prompt": "hello"})
+
+    assert payload["intent"] == "clarify"
+    assert payload["should_call_recommendation_tool"] is False
+    assert len(calls) == 2
+    assert calls[0].endswith("/api/chat")
+    assert calls[1].endswith("/api/generate")
 
 
 class _FakeResponse:

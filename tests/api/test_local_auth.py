@@ -21,7 +21,11 @@ from app.db.models.session import Session
 from app.db.models.user import User
 from app.db.session import get_db
 from app.main import app
-from app.schemas.orchestrator import OrchestratorResponse, TranscriptMessage
+from app.schemas.orchestrator import (
+    OrchestratorDiagnostics,
+    OrchestratorResponse,
+    TranscriptMessage,
+)
 from app.services.chat_persistence import session_pk
 from app.services.travel_tom_agent import get_travel_tom_agent
 from fastapi.testclient import TestClient
@@ -180,9 +184,11 @@ class _FakeTravelTomAgent:
         *,
         assistant_message: str,
         state: dict[str, Any],
+        diagnostics: dict[str, Any] | None = None,
     ) -> None:
         self.assistant_message = assistant_message
         self.state = state
+        self.diagnostics = diagnostics or {}
         self.recent_messages_seen: list[TranscriptMessage] | None = None
 
     @property
@@ -206,6 +212,7 @@ class _FakeTravelTomAgent:
                 "recommendations": [],
                 "itinerary": {"days": []},
                 "state": self.state,
+                "diagnostics": self.diagnostics,
             }
         )
 
@@ -426,6 +433,17 @@ def test_chat_accepts_local_bearer_token_when_auth_is_enabled(monkeypatch) -> No
             "last_recommendation_version": "heuristic-v1",
             "last_message_at": "2026-03-07T19:15:00Z",
         },
+        diagnostics=OrchestratorDiagnostics(
+            provider="ollama",
+            planner_attempted=True,
+            planner_used=True,
+            planner_status="succeeded",
+            composer_attempted=True,
+            composer_used=False,
+            composer_status="failed",
+            fallback_reason="clarification_only",
+            degraded=True,
+        ).model_dump(mode="json"),
     )
     token = create_access_token(
         subject=str(user_id),
@@ -453,6 +471,10 @@ def test_chat_accepts_local_bearer_token_when_auth_is_enabled(monkeypatch) -> No
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
+    assert response.headers["X-TravelTom-Provider"] == "ollama"
+    assert response.headers["X-TravelTom-Planner-Used"] == "true"
+    assert response.headers["X-TravelTom-Composer-Status"] == "failed"
+    assert response.headers["X-TravelTom-Orchestration-Degraded"] == "true"
     assert fake_db.existing_session is not None
     assert fake_db.existing_session.id == session_pk("session-auth")
     assert fake_db.existing_session.user_id == existing_user.id

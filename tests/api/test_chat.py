@@ -14,7 +14,11 @@ from app.db.models.session import Session
 from app.db.models.user import User
 from app.db.session import get_db
 from app.main import app
-from app.schemas.orchestrator import OrchestratorResponse, TranscriptMessage
+from app.schemas.orchestrator import (
+    OrchestratorDiagnostics,
+    OrchestratorResponse,
+    TranscriptMessage,
+)
 from app.services.chat_persistence import session_pk
 from app.services.travel_tom_agent import get_travel_tom_agent
 from fastapi.testclient import TestClient
@@ -90,10 +94,12 @@ class _FakeTravelTomAgent:
         assistant_message: str,
         recommendations: list[dict[str, Any]],
         state: dict[str, Any],
+        diagnostics: dict[str, Any] | None = None,
     ) -> None:
         self.assistant_message = assistant_message
         self.recommendations = recommendations
         self.state = state
+        self.diagnostics = diagnostics or {}
         self.recent_messages_seen: list[TranscriptMessage] | None = None
 
     @property
@@ -117,6 +123,7 @@ class _FakeTravelTomAgent:
                 "recommendations": self.recommendations,
                 "itinerary": {"days": []},
                 "state": self.state,
+                "diagnostics": self.diagnostics,
             }
         )
 
@@ -228,6 +235,15 @@ def test_chat_endpoint_returns_expected_shape_and_persists_records() -> None:
             "last_recommendation_version": "heuristic-v1",
             "last_message_at": "2026-02-12T10:00:00Z",
         },
+        diagnostics={
+            "provider": "ollama",
+            "planner_attempted": True,
+            "planner_used": True,
+            "planner_status": "succeeded",
+            "composer_attempted": True,
+            "composer_used": True,
+            "composer_status": "succeeded",
+        },
     )
     app.dependency_overrides[get_db] = _override_db(fake_db)
     app.dependency_overrides[get_travel_tom_agent] = lambda: fake_agent
@@ -243,6 +259,9 @@ def test_chat_endpoint_returns_expected_shape_and_persists_records() -> None:
     assert body["session_id"] == "session-123"
     assert body["message_id"] == "msg-001"
     assert body["assistant_message"] == "I found 1 strong option for Lisbon."
+    assert response.headers["X-TravelTom-Provider"] == "ollama"
+    assert response.headers["X-TravelTom-Planner-Used"] == "true"
+    assert response.headers["X-TravelTom-Composer-Used"] == "true"
     assert len(body["recommendations"]) == 1
     assert body["recommendations"][0]["metadata"] == {"interest_match": 0.9}
     assert "score" not in body["recommendations"][0]
@@ -314,6 +333,16 @@ def test_chat_endpoint_allows_empty_recommendations() -> None:
             "last_recommendation_version": "heuristic-v1",
             "last_message_at": "2026-02-12T10:00:00Z",
         },
+        diagnostics=OrchestratorDiagnostics(
+            provider="ollama",
+            planner_attempted=False,
+            planner_used=False,
+            planner_status="skipped_fast_path",
+            composer_attempted=False,
+            composer_used=False,
+            composer_status="skipped_fast_path",
+            fallback_reason="greeting_or_social_fast_path",
+        ).model_dump(mode="json"),
     )
     app.dependency_overrides[get_db] = _override_db(fake_db)
     app.dependency_overrides[get_travel_tom_agent] = lambda: fake_agent
@@ -328,6 +357,10 @@ def test_chat_endpoint_allows_empty_recommendations() -> None:
     body = response.json()
     assert body["recommendations"] == []
     assert body["assistant_message"] == "I need more detail to find strong matches."
+    assert response.headers["X-TravelTom-Planner-Status"] == "skipped_fast_path"
+    assert response.headers["X-TravelTom-Fallback-Reason"] == (
+        "greeting_or_social_fast_path"
+    )
     assert fake_db.committed is True
     snapshots = [item for item in fake_db.added if isinstance(item, Recommendation)]
     assert len(snapshots) == 1

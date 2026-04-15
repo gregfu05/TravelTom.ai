@@ -207,6 +207,22 @@ class RecommendationToolRuntimePayload(BaseModel):
     error_message: str | None = None
 
 
+class OrchestratorDiagnostics(BaseModel):
+    """Per-turn diagnostics for planner/composer usage and fallback behavior."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    provider: Literal["disabled", "ollama", "openai"] | None = None
+    planner_attempted: bool = False
+    planner_used: bool = False
+    planner_status: str = "not_requested"
+    composer_attempted: bool = False
+    composer_used: bool = False
+    composer_status: str = "not_requested"
+    fallback_reason: str | None = None
+    degraded: bool = False
+
+
 class OrchestratorResponse(BaseModel):
     """Normalized orchestrator output for API layer integration."""
 
@@ -215,3 +231,6 @@ class OrchestratorResponse(BaseModel):
     recommendations: list[RecommendationResult] = Field(default_factory=list)
     itinerary: dict[str, Any] = Field(default_factory=dict)
     state: dict[str, Any]
+    diagnostics: OrchestratorDiagnostics = Field(
+        default_factory=OrchestratorDiagnostics
+    )
