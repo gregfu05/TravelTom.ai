@@ -1,60 +1,76 @@
 # Web App
 
-Purpose: React frontend for the TravelTom chat experience and planning UI.
+Purpose: React frontend for TravelTom marketing pages, auth flows, and the planner chat workspace.
+
 Ownership: Frontend.
 
 ## Stack
 
-- React + TypeScript + Vite
-- React Query for server state
-- Zustand (reserved for session UI state in upcoming steps)
-- Zod for API response validation
+- React 19
+- TypeScript
+- Vite
+- React Query
+- Zod
+- Zustand
+- Vitest + Playwright
 
-## Current scope
+## Current Scope
 
-- Frontend scaffold (MVP Step 14 foundation)
-- Homepage with responsive, accessibility-aware layout and tokenized styling
-- Planner route with chat UI and `/api/v1/chat` message flow
-- Planner workspace redesign with split panes so chat remains visible while
-  recommendations are present
-- Recommendations rail that renders a top-5 ranked list from the latest chat
-  response with a fixed-height, scrollable panel and a mobile picks drawer path
-- Standalone informational routes:
-  - `/planner`
-  - `/why-traveltom`
-  - `/how-it-works`
-- Typed API client for `/api/v1` integration
+- Public landing and informational routes
+- Planner chat workspace backed by `/api/v1/chat`
+- Recommendation rail and planner-specific UI state
+- Login and signup screens for local auth
+- Typed `/api/v1` client integration
 
-## Troubleshooting
+Current route surface:
 
-- If `/api/v1/chat`, login, or signup fail with a `422 validation_error` and the
-  backend says the request body is a string:
-  1. Confirm the frontend request body in the browser network tab is a JSON
-     object payload, not a quoted JSON string.
-  2. Keep JSON calls on the shared `apiClient` JSON request path so request
-     bodies are serialized exactly once.
-- If chat replies appear but recommendation cards do not:
-  1. Confirm backend `/api/v1/chat` response includes a non-empty
-     `recommendations` array in the browser network tab.
-  2. Confirm API proxy target points to the running backend
-     (`VITE_API_PROXY_TARGET`, default `http://localhost:8000`).
-  3. Restart backend after API wiring changes so cached dependencies refresh.
+- `/`
+- `/planner`
+- `/why-traveltom`
+- `/how-it-works`
+- `/login`
+- `/signup`
 
-## Commands
+## Source Layout
+
+- `src/app/`: route composition
+- `src/pages/`: route-level screens
+- `src/features/`: planner feature modules
+- `src/components/`: reusable UI pieces
+- `src/api/`: client and error handling
+- `src/styles/`: tokens and page styling
+
+## Common Commands
 
 ```bash
 npm install
 npm run dev
 npm run build
 npm run preview
+npm run test
+npm run test:e2e
 npm run typecheck
 ```
 
-## API target
+## API Target
 
 - Dev requests use `/api/v1/*` and are proxied by Vite.
 - Configure proxy target in `apps/web/.env`:
   - `VITE_API_PROXY_TARGET=http://localhost:8000`
 - Copy from `apps/web/.env.example` and set the backend port you actually run.
 
-See `instructions/05-frontend/` for UX flows and architecture.
+## Troubleshooting
+
+- If `/api/v1/chat`, login, or signup fail with a `422 validation_error` and the backend says the request body is a string:
+  1. Confirm the request payload is a JSON object, not a quoted JSON string.
+  2. Keep JSON calls on the shared API client path so serialization happens once.
+- If chat replies appear but recommendation cards do not:
+  1. Confirm `/api/v1/chat` returns a non-empty `recommendations` array.
+  2. Confirm `VITE_API_PROXY_TARGET` points to the running backend.
+  3. Restart the backend after API wiring changes if dependencies were cached.
+
+## Related Docs
+
+- `src/README.md`
+- `../../instructions/05-frontend/`
+- `../api/README.md`
