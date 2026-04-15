@@ -301,9 +301,7 @@ def _set_orchestration_debug_headers(
     response.headers["X-TravelTom-Planner-Attempted"] = str(
         diagnostics.planner_attempted
     ).lower()
-    response.headers["X-TravelTom-Planner-Used"] = str(
-        diagnostics.planner_used
-    ).lower()
+    response.headers["X-TravelTom-Planner-Used"] = str(diagnostics.planner_used).lower()
     response.headers["X-TravelTom-Planner-Status"] = diagnostics.planner_status
     response.headers["X-TravelTom-Composer-Attempted"] = str(
         diagnostics.composer_attempted

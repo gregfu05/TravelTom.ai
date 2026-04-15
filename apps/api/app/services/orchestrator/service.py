@@ -16,8 +16,8 @@ from app.schemas.api.recommendations import (
 )
 from app.schemas.orchestrator import (
     Intent,
-    OrchestratorDiagnostics,
     LLMOrchestrationPlan,
+    OrchestratorDiagnostics,
     OrchestratorPolicyConfig,
     OrchestratorResponse,
     RecommendationQueryControls,
@@ -950,7 +950,10 @@ class OrchestratorService:
             return normalized_candidate
 
         if is_greeting(user_message) or is_social_turn(user_message):
-            if diagnostics is not None and diagnostics.composer_status == "not_requested":
+            if (
+                diagnostics is not None
+                and diagnostics.composer_status == "not_requested"
+            ):
                 diagnostics.composer_status = "skipped_fast_path"
             return fallback_message
 

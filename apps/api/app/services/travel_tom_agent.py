@@ -156,12 +156,24 @@ class TravelTomAgent:
                 diagnostics=diagnostics,
             )
             if span is not None:
-                span.set_attribute("orchestrator.planner_attempted", diagnostics.planner_attempted)
-                span.set_attribute("orchestrator.planner_used", diagnostics.planner_used)
-                span.set_attribute("orchestrator.planner_status", diagnostics.planner_status)
-                span.set_attribute("orchestrator.composer_attempted", diagnostics.composer_attempted)
-                span.set_attribute("orchestrator.composer_used", diagnostics.composer_used)
-                span.set_attribute("orchestrator.composer_status", diagnostics.composer_status)
+                span.set_attribute(
+                    "orchestrator.planner_attempted", diagnostics.planner_attempted
+                )
+                span.set_attribute(
+                    "orchestrator.planner_used", diagnostics.planner_used
+                )
+                span.set_attribute(
+                    "orchestrator.planner_status", diagnostics.planner_status
+                )
+                span.set_attribute(
+                    "orchestrator.composer_attempted", diagnostics.composer_attempted
+                )
+                span.set_attribute(
+                    "orchestrator.composer_used", diagnostics.composer_used
+                )
+                span.set_attribute(
+                    "orchestrator.composer_status", diagnostics.composer_status
+                )
                 span.set_attribute("orchestrator.degraded", diagnostics.degraded)
                 if diagnostics.fallback_reason is not None:
                     span.set_attribute(
@@ -271,7 +283,11 @@ class TravelTomAgent:
         diagnostics: OrchestratorDiagnostics | None = None,
     ) -> dict[str, Any] | None:
         if client is None:
-            status = "disabled" if self._provider_name == "disabled" else "client_unavailable"
+            status = (
+                "disabled"
+                if self._provider_name == "disabled"
+                else "client_unavailable"
+            )
             self._mark_stage_diagnostics(
                 diagnostics,
                 stage_name=stage_name,

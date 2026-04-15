@@ -233,7 +233,10 @@ def test_ollama_structured_client_falls_back_when_openai_payload_shape_is_invali
             "choices": [
                 {
                     "message": {
-                        "content": '{"schema":"2.1","should_call_recommendation_tool":false}'
+                        "content": (
+                            '{"schema":"2.1",'
+                            '"should_call_recommendation_tool":false}'
+                        )
                     }
                 }
             ]

@@ -544,9 +544,7 @@ def test_orchestrator_meta_turn_uses_planner_when_available() -> None:
         user_message="what do you mean by destination",
         session_state=SessionState(session_id="sess-meta-planner"),
         planner_executor=planner_executor,
-        agent_executor=lambda _messages: {
-            "messages": [AIMessage(content="ignored")]
-        },
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
     )
 
     assert planner_called["value"] is True
@@ -609,9 +607,7 @@ def test_orchestrator_repair_turn_uses_planner_when_available() -> None:
         user_message="not restaurants, more like sightseeing",
         session_state=SessionState(session_id="sess-repair-planner"),
         planner_executor=planner_executor,
-        agent_executor=lambda _messages: {
-            "messages": [AIMessage(content="ignored")]
-        },
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
     )
 
     assert planner_called["value"] is True
