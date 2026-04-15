@@ -21,6 +21,7 @@ jobs:
     env:
       STORAGE_ACCOUNT_NAME: ${{ vars.AZURE_MLOPS_STORAGE_ACCOUNT_NAME }}
       ARTIFACT_CONTAINER: ${{ vars.AZURE_MLOPS_ARTIFACT_CONTAINER }}
+      MANIFEST_CONTAINER: ${{ vars.AZURE_MLOPS_MANIFEST_CONTAINER }}
       RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_DEV }}
       API_APP_NAME: ${{ vars.AZURE_CONTAINER_APP_API_DEV }}
       EVALUATION_CONTAINER: ${{ vars.AZURE_MLOPS_EVALUATION_CONTAINER }}
@@ -40,6 +41,7 @@ jobs:
           missing=()
           [[ -z "$STORAGE_ACCOUNT_NAME" ]] && missing+=("AZURE_MLOPS_STORAGE_ACCOUNT_NAME")
           [[ -z "$ARTIFACT_CONTAINER" ]] && missing+=("AZURE_MLOPS_ARTIFACT_CONTAINER")
+          [[ -z "$MANIFEST_CONTAINER" ]] && missing+=("AZURE_MLOPS_MANIFEST_CONTAINER")
           [[ -z "$EVALUATION_CONTAINER" ]] && missing+=("AZURE_MLOPS_EVALUATION_CONTAINER")
           [[ -z "$RESOURCE_GROUP" ]] && missing+=("AZURE_RESOURCE_GROUP_DEV")
           [[ -z "$API_APP_NAME" ]] && missing+=("AZURE_CONTAINER_APP_API_DEV")
@@ -74,16 +76,36 @@ jobs:
           az storage blob download \
             --account-name "$STORAGE_ACCOUNT_NAME" \
             --auth-mode login \
+            --container-name "$MANIFEST_CONTAINER" \
+            --name "${artifact_prefix}/train-manifest.json" \
+            --file build/mlops/train-manifest.json
+          az storage blob download \
+            --account-name "$STORAGE_ACCOUNT_NAME" \
+            --auth-mode login \
             --container-name "$EVALUATION_CONTAINER" \
             --name "${artifact_prefix}/gates.json" \
             --file build/mlops/promote-gates.json
+          python scripts/validate_training_manifest.py \
+            --manifest-json build/mlops/train-manifest.json \
+            --expected-model-version "$MODEL_VERSION" \
+            --expected-feature-schema-version "ranking-features-v3-v1"
           python - <<'PY'
           import json
           from pathlib import Path
 
           gates = json.loads(Path("build/mlops/promote-gates.json").read_text(encoding="utf-8"))
-          if not gates.get("promote"):
-              raise SystemExit("Promotion blocked: gates.json does not allow promote=true")
+          required_true_fields = (
+              "coverage_gate_passed",
+              "ranking_gate_passed",
+              "fallback_gate_passed",
+              "promote",
+          )
+          missing_or_false = [name for name in required_true_fields if gates.get(name) is not True]
+          if missing_or_false:
+              raise SystemExit(
+                  "Promotion blocked: gates.json missing or failing required fields: "
+                  + ", ".join(missing_or_false)
+              )
           PY
 
       - name: Promote model in dev API config

@@ -38,6 +38,7 @@ jobs:
           missing=()
           [[ -z "$STORAGE_ACCOUNT_NAME" ]] && missing+=("AZURE_MLOPS_STORAGE_ACCOUNT_NAME")
           [[ -z "$ARTIFACT_CONTAINER" ]] && missing+=("AZURE_MLOPS_ARTIFACT_CONTAINER")
+          [[ -z "$MANIFEST_CONTAINER" ]] && missing+=("AZURE_MLOPS_MANIFEST_CONTAINER")
           [[ -z "$EVALUATION_CONTAINER" ]] && missing+=("AZURE_MLOPS_EVALUATION_CONTAINER")
           [[ -z "$MODEL_VERSION" ]] && missing+=("model_version")
           if [[ ${#missing[@]} -gt 0 ]]; then
@@ -86,6 +87,15 @@ jobs:
             --container-name "$MANIFEST_CONTAINER" \
             --name "${artifact_prefix}/train-manifest.json" \
             --file build/mlops/eval/train-manifest.json
+
+      - name: Validate candidate manifest lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validate_training_manifest.py \
+            --manifest-json build/mlops/eval/train-manifest.json \
+            --expected-model-version "$MODEL_VERSION" \
+            --expected-feature-schema-version "ranking-features-v3-v1"
 
       - name: Download baseline metrics if provided
         if: ${{ github.event.inputs.baseline_metrics_blob_path != '' }}
