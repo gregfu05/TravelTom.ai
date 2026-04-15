@@ -1,0 +1,9 @@
+Dataset: /Users/kareemhawwash/Desktop/study/chatbot/TravelTom.ai/traveltom/datasets/composite/traveltom_clean2.csv
+Dataset: /Users/kareemhawwash/Desktop/study/chatbot/TravelTom.ai/traveltom/datasets/composite/traveltom_clean.csv
+Index(['business_id', 'name', 'city', 'state', 'country', 'country_name',
+       'continent', 'latitude', 'longitude', 'stars', 'review_count',
+       'categories', 'attributes', 'hours', 'is_open', 'address',
+       'price_level', 'description', 'website', 'phone', 'image_url', 'source',
+       'entity_type', 'popularity'],
+      dtype='str')
+Rows to insert: 149485

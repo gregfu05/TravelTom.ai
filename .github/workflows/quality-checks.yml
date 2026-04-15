@@ -110,16 +110,13 @@ jobs:
         id: seed_catalog
         run: |
           set -euo pipefail
-          python scripts/seed_catalog.py --truncate --batch-size 1000 | tee seed.log
-          if grep -q "Dataset not found. Skipping catalog_items seed." seed.log; then
-            echo "seed_skipped=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "seed_skipped=false" >> "$GITHUB_OUTPUT"
-          fi
+          PYTHONPATH=apps/api python scripts/seed_catalog.py --truncate --batch-size 1000 | tee seed.log
+          grep -q "copied from raw snapshot" seed.log
 
       - name: Verify seed row count
         if: steps.seed_catalog.outputs.seed_skipped != 'true'
         run: |
+          test -f traveltom/datasets/composite/traveltom_clean2.csv
           python - <<'PY'
           import asyncio
           import os
