@@ -61,9 +61,11 @@ class ResponseAssembler:
         result_count = len(results)
         if result_count == 1:
             preview_name = self._recommendation_display_name(displayed_results[0])
+            singular_label = self._result_singular_label(results)
             base = (
                 preference_preface
-                + f"I found 1 {self._result_singular_label(results)} that fits your request. "
+                + f"I found 1 {singular_label} "
+                + "that fits your request. "
                 + f"Top pick: {preview_name}"
             )
         else:

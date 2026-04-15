@@ -4,6 +4,7 @@ import os
 import shutil
 import sys
 import uuid
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -48,7 +49,7 @@ def reset_settings_and_rate_limit_state():
 
 
 @pytest.fixture
-def tmp_path() -> Path:
+def tmp_path() -> Generator[Path, None, None]:
     """Provide a repo-safe temporary directory independent of pytest basetemp."""
 
     _CUSTOM_TMP_ROOT.mkdir(parents=True, exist_ok=True)

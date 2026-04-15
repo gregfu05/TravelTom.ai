@@ -2052,7 +2052,10 @@ def test_orchestrator_build_results_message_falls_back_to_item_id_without_name()
         ]
     )
 
-    assert message == "I found 1 activity that fits your request. Top pick: activity-lisbon"
+    assert (
+        message
+        == "I found 1 activity that fits your request. Top pick: activity-lisbon"
+    )
 
 
 def test_orchestrator_extracts_direct_recommendation_payload_from_tool_message() -> (

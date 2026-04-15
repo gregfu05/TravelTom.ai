@@ -194,7 +194,9 @@ class TravelTomAgent:
             prompt=prompt,
             stage_name="composer",
             validator=self._validate_composed_response,
-            executor=lambda client, prompt_text: client.compose({"prompt": prompt_text}),
+            executor=lambda client, prompt_text: client.compose(
+                {"prompt": prompt_text}
+            ),
         )
         if not isinstance(payload, dict):
             return None
