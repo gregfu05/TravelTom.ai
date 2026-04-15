@@ -9,6 +9,10 @@ on:
       baseline_metrics_blob_path:
         description: Optional baseline metrics blob path inside the evaluation container
         required: false
+      allow_no_baseline:
+        description: Set to true only for first-model bootstrap when no baseline metrics exist
+        required: false
+        default: "false"
 
 permissions:
   contents: read
@@ -119,6 +123,9 @@ jobs:
           gate_args=()
           if [[ -f build/mlops/eval/baseline-metrics.json ]]; then
             gate_args+=(--baseline-metrics-json build/mlops/eval/baseline-metrics.json)
+          elif [[ "${{ github.event.inputs.allow_no_baseline }}" != "true" ]]; then
+            echo "::error::baseline_metrics_blob_path is required unless allow_no_baseline=true"
+            exit 1
           fi
           python scripts/check_ranker_gates.py \
             --metrics-json build/mlops/eval/evaluation.json \

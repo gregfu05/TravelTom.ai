@@ -65,6 +65,7 @@ Implemented dev-only ML workflow split:
 - `ML Evaluate Dev`: manual workflow that evaluates a candidate artifact and
   applies offline promotion gates
   - validates candidate training manifest lineage and expected model version
+  - requires a baseline metrics input by default (unless explicitly bootstrapping first model)
 - `ML Promote Dev`: manual workflow that updates the dev API runtime to point
   at the promoted artifact in blob storage
   - promotion is blocked unless the artifact exists and `gates.json` reports
