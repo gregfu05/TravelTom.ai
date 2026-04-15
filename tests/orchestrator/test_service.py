@@ -247,7 +247,9 @@ def test_orchestrator_planner_success_preserves_deterministic_slot_extraction() 
         )
 
     response = service.handle_message(
-        user_message="Hotels in Santa Barbara from 2026-05-10 to 2026-05-20 under 2000 USD",
+        user_message=(
+            "Hotels in Santa Barbara from 2026-05-10 to 2026-05-20 under 2000 USD"
+        ),
         session_state=SessionState(session_id="sess-planner-deterministic-base"),
         planner_executor=lambda _prompt: {
             "intent": "recommend",
