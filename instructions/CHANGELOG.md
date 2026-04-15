@@ -1,5 +1,24 @@
 # Instructions Changelog
 
+## 2026-04-15
+
+- Re-documented the chat runtime after the deterministic-core repair:
+  - `README.md` now describes `/api/v1/chat` as backend-owned orchestration with
+    optional planner/composer helpers instead of a free-form chat-agent loop.
+  - `04-llm-orchestrator/orchestrator-overview.md`,
+    `04-llm-orchestrator/prompts-and-guardrails.md`, and
+    `04-llm-orchestrator/tool-schemas.md` now reflect the planner/composer-only
+    provider role and backend-owned recommendation execution.
+  - `03-recommender/recommender-overview.md` now records `catalog_items` as the
+    live API runtime source of truth.
+  - `07-infra-ops/local-dev.md`, `07-infra-ops/observability.md`, and
+    `08-quality/testing-strategy.md` now document planner/composer stage budgets,
+    provider degradation signals, and the new chat smoke workflow.
+  - `docs/ollama-remote-deployment.md` now documents remote Ollama rollout for
+    the planner/composer-only integration model.
+- Added `scripts/smoke-chat-runtime.ps1` for greeting, slot-gating, follow-up,
+  repair-turn, and direct recommendation runtime verification.
+
 ## 2026-04-14
 
 - Hardened Azure deployment modules and workflows with shared resource tags,

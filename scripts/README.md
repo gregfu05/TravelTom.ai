@@ -30,3 +30,19 @@ Preview without writing:
 ```bash
 python scripts/seed_catalog.py --dry-run
 ```
+
+## Smoke checks
+
+API health plus deterministic recommendation endpoint:
+
+```bash
+pwsh ./scripts/smoke-api.ps1 -BaseUrl http://localhost:8000
+```
+
+Conversational runtime checks across greeting, slot gating, follow-up carry-forward,
+repair turns, and direct recommendation execution:
+
+```bash
+pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider disabled
+pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider ollama
+```

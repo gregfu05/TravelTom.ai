@@ -1,112 +1,81 @@
 # TravelTom.ai
 
-Plan trips faster with a deterministic, tool-first travel planner. TravelTom combines a strict recommender pipeline with an orchestration layer so results are explainable, testable, and reproducible.
+TravelTom is a full-stack travel planning app with a deterministic recommendation
+core and an optional LLM-assisted chat layer. The backend owns recommendation
+execution, state updates, and safety checks; provider-backed planning and
+response composition are bounded helpers, not sources of truth.
 
-**What This Repo Is**
-TravelTom is a full-stack project that delivers a travel-planning chat experience backed by a deterministic retrieval + ranking system. The LLM orchestrates tools but never fabricates recommendations.
+## Runtime shape
 
-**Highlights**
-- Deterministic recommendations with ranking explanations.
-- Strict schemas and validation for tool calls and responses.
-- Clean separation between orchestration and recommendation logic.
-- First-class documentation in `instructions/` with an executable plan.
-- Local-first development with Docker, Alembic, and seed data.
-- Azure deployment scaffolding for Container Apps, PostgreSQL, Key Vault, and App Insights.
+- `apps/api`: FastAPI backend, chat persistence, recommender, auth, telemetry.
+- `apps/web`: React/Vite frontend.
+- `traveltom/recommendor`: deterministic ranking and ML ranker experiments.
+- `instructions/`: repo source-of-truth docs.
+- `scripts/`: seed, evaluation, and smoke tooling.
 
-**Architecture (MVP)**
-- API service in `apps/api` using FastAPI.
-- Recommender service (retrieval + ranking) in `apps/api/app/services/recommender`.
-- Orchestrator service in `apps/api/app/services/orchestrator`.
-- Frontend in `apps/web` (Vite + React).
-- Analytics events in `apps/api/app/services/events`.
+## Chat architecture
 
-**Quickstart (Backend)**
+- `/api/v1/chat` runs through a deterministic orchestrator.
+- The backend decides when to clarify, when to search, and how to build
+  `RecommendationQuery`.
+- The LLM, when enabled, is limited to:
+  - structured planner hints
+  - grounded response composition
+- `/api/v1/recommendations/query` is deterministic end to end.
+
+## Local backend quickstart
+
 1. Create and activate a virtual environment.
 2. Install dependencies.
-3. Configure `.env`.
-4. Run migrations.
-5. Build cleaned catalog snapshot.
-6. Seed catalog data.
-7. Start the API.
+3. Copy `.env.example` to `.env`.
+4. Run Postgres and migrations.
+5. Seed `catalog_items`.
+6. Start the API.
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+python -m venv venv
+venv\Scripts\activate
 pip install -e .
-```
-
-```bash
-cp .env.example .env
-```
-
-```bash
+copy .env.example .env
 alembic -c apps/api/alembic.ini upgrade head
-```
-
-```bash
-python -m traveltom.cleaning.cleaning
-```
-
-Optional (legacy SB dataset): `scripts/seed_catalog.py` manages the legacy
-Santa Barbara sample. The active recommender v2 instead reads
-`traveltom/datasets/cleaned_Yelp_DS.parquet` directly (no DB seed required).
-Optional: `scripts/seed_catalog.py` will automatically copy
-`traveltom/datasets/business_SB.parquet` to
-`traveltom/datasets/business_SB_Cleaned.parquet` when the cleaned file is missing.
-
-```bash
 python scripts/seed_catalog.py --truncate
-```
-
-```bash
 uvicorn app.main:app --reload --app-dir apps/api
 ```
 
-**Recommender v2 (current)**
-- Code: `traveltom/recommendor/recommendor_v2.py`
-- Data: `traveltom/datasets/cleaned_Yelp_DS.parquet`
-- Defaults to top 5 results (1–10 allowed); requests above 10 return a polite notice
-  and cap at 10.
-- City filter runs first: if you specify a city present in the dataset, only that city’s
-  places are considered; if the city is missing, you’ll get a friendly notice.
-- Filters user intents (bars, burgers, late night, parking, wifi, reservations,
-  alcohol, outdoor, kid-friendly, pizza, coffee, brunch, hotels, etc.), ranks with
-  `score = stars + 0.25 * log1p(review_count) + 0.25 * popularity` plus opening-hours
-  boosts; returns place name + Google Maps link (UI only shows those two fields).
+## Local chat modes
 
-**Repository Layout**
-- `apps/` runtime services (API + web).
-- `infra/` local and cloud infrastructure.
-- `scripts/` data and tooling.
-- `tests/` unit and integration tests.
-- `instructions/` authoritative design and implementation plan.
-- `traveltom/` existing prototypes and experiments.
+- Default local mode: `ORCHESTRATOR_LLM_PROVIDER=ollama`
+- Deterministic-only mode: `ORCHESTRATOR_LLM_PROVIDER=disabled`
+- OpenAI mode: `ORCHESTRATOR_LLM_PROVIDER=openai`
 
-**Docs Map**
-- Start here: `instructions/README.md`.
-- Implementation plan: `instructions/09-implementation-plan/implementation-plan.md`.
-- Backend design: `instructions/02-backend/`.
-- Recommender design: `instructions/03-recommender/`.
-- Orchestrator design: `instructions/04-llm-orchestrator/`.
-- Frontend UX: `instructions/05-frontend/`.
-- Azure runtime infra: `infra/azure/README.md`.
+The active recommendation runtime reads from seeded PostgreSQL `catalog_items`.
+`RECOMMENDER_DATASET_PATH` is not used by `/api/v1/chat` or
+`/api/v1/recommendations/query`; it remains an offline/legacy setting.
 
-**Deployment**
-- Production API container: `apps/api/Dockerfile`
-- Production web container: `apps/web/Dockerfile`
-- Azure infra modules: `infra/azure/`
-- Smoke checks:
-  - `pwsh ./scripts/smoke-api.ps1 -BaseUrl https://<api-url>`
-  - `pwsh ./scripts/smoke-web.ps1 -BaseUrl https://<web-url>`
+## Verification
 
-**Configuration Rules**
-- Never hard-code environment-specific values in code.
-- Store local settings in `.env` and keep `.env.example` updated.
+Run the backend test suite:
 
-**Status**
-MVP build-out in progress.
+```bash
+venv\Scripts\python.exe -m pytest tests -q
+```
 
-**License**
+Run smoke checks against a running API:
+
+```bash
+pwsh ./scripts/smoke-api.ps1 -BaseUrl http://localhost:8000
+pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider disabled
+pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider ollama
+```
+
+## Docs map
+
+- Backend modules: `instructions/02-backend/`
+- Recommender runtime: `instructions/03-recommender/`
+- Chat orchestration: `instructions/04-llm-orchestrator/`
+- Local dev and ops: `instructions/07-infra-ops/`
+- Testing strategy: `instructions/08-quality/testing-strategy.md`
+
+## License
+
 See `LICENSE`.
-
-

@@ -11,74 +11,62 @@ All tool inputs and outputs must pass explicit Pydantic validation.
 ## Recommendation tool
 
 - `RecommendationQuery`
-  - `session_id: str` (required)
-  - `query: str` (required)
-  - `constraints: RecommendationConstraints` (defaults to empty object)
-  - `filters: dict[str, Any]` (default `{}`)
+  - `session_id: str`
+  - `query: str`
+  - `constraints: RecommendationConstraints`
+  - `filters: dict[str, Any]`
     - supported runtime key: `item_type` (`hotel|restaurant|activity`)
-  - `max_results: int` (default `20`, range `1..50`)
-  - `ranking_version: str` (default `"heuristic-v1"`)
+  - `max_results: int`
+  - `ranking_version: str`
 - `RecommendationConstraints`
   - `origin: str | None`
   - `destination: str | None`
   - `dates: DateRange | None`
   - `budget: BudgetRange | None`
   - `party_size: PartySize | None`
-  - `star_rating_min: int | None` (range `0..5`)
+  - `star_rating_min: int | None`
 - `RecommendationResult`
   - `item_id: str`
   - `item_type: "hotel" | "restaurant" | "activity"`
   - `score: float`
-  - `rank: int` (>= 1)
-  - `features: dict[str, Any]` (default `{}`)
+  - `rank: int`
+  - `features: dict[str, Any]`
   - `explanation: str`
 - `RecommendationToolResponse`
-  - `results: list[RecommendationResult]` (default `[]`)
+  - `results: list[RecommendationResult]`
   - `ranking_version: str`
 
-Note: empty recommendation results are valid and expected in placeholder mode.
+## Orchestrator usage notes
 
-## Orchestrator usage notes (LangChain-native flow)
-
-- `TravelTomAgent` registers the recommendation tool once with LangChain's
-  `@tool` decorator and supplies it to two `create_agent` instances:
-  - a bounded chat agent
-  - a deterministic direct recommendation agent
-- `ranking_version` remains pinned to `"heuristic-v1"` in orchestrator runtime.
-- `max_results` defaults to the chat policy value (`5`) in the bounded chat
-  fallback path and remains request-driven for `/api/v1/recommendations/query`.
-- `filters.item_type` is normalized to `hotel|restaurant|activity` with
-  deterministic extraction when absent from the agent path.
-- The tool returns a LangChain runtime artifact with:
-  - `status`: `success|timeout|invalid_payload|failure`
-  - `response`: validated `RecommendationToolResponse` on success
-  - `error_code` / `error_message` on failure
-- Direct recommendation mode uses the same `RecommendationQuery` and
-  `RecommendationToolResponse` contracts and returns only validated tool-backed
-  results to the route.
+- `/api/v1/chat` does not rely on model-authored tool calls.
+- Backend code builds and executes `RecommendationQuery` directly.
+- `ranking_version` remains pinned to `"heuristic-v1"` in the conversational runtime.
+- Chat default `max_results` stays policy-driven; direct recommendation requests remain request-driven.
+- `filters.item_type` is normalized to `hotel|restaurant|activity` by backend guardrails.
+- Empty recommendation results remain valid and expected.
 
 ## Catalog tool
 
 - `CatalogSearchQuery`
   - `q: str`
-  - `item_type: "hotel" | "restaurant" | "activity" | None` (alias input key: `type`)
-  - `limit: int` (default `20`, range `1..100`)
-  - `offset: int` (default `0`, `>= 0`)
+  - `item_type: "hotel" | "restaurant" | "activity" | None`
+  - `limit: int`
+  - `offset: int`
 
 ## Events tool
 
 - `EventPayload`
   - `event_id: str`
   - `event_type: str`
-  - `event_version: int` (>= 1)
+  - `event_version: int`
   - `occurred_at: datetime`
   - `session_id: str`
   - `user_id: str | None`
-  - `idempotency_key: str` (required)
-  - `payload: dict[str, Any]` (default `{}`)
+  - `idempotency_key: str`
+  - `payload: dict[str, Any]`
 
 ## Failure handling baseline
 
-- Validation failure: block tool execution and return a safe user response.
-- Tool timeout/error: normalize to a runtime artifact and return a deterministic safe response.
-- Use per-tool timeout policies from orchestration config.
+- Validation failure: block execution and return a safe response.
+- Recommendation timeout/error: normalize to deterministic fallback copy.
+- Invalid payload: reject it rather than guessing.

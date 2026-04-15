@@ -31,6 +31,11 @@ Services:
 - `CORS_ALLOWED_ORIGINS` (space- or comma-separated, default `http://localhost:5173 http://127.0.0.1:5173`)
 - `ORCHESTRATOR_LLM_PROVIDER=ollama|openai|disabled`
 - `ORCHESTRATOR_LLM_TIMEOUT_SECONDS` (default `20`)
+- `ORCHESTRATOR_STRUCTURED_TIMEOUT_SECONDS` (default `10`; legacy shared planner/composer budget)
+- `ORCHESTRATOR_PLANNER_TIMEOUT_SECONDS` (optional stage override)
+- `ORCHESTRATOR_COMPOSER_TIMEOUT_SECONDS` (optional stage override)
+- `ORCHESTRATOR_PROVIDER_FAILURE_THRESHOLD` (default `2`)
+- `ORCHESTRATOR_PROVIDER_COOLDOWN_SECONDS` (default `60`)
 - `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`)
 - `OLLAMA_PLANNING_MODEL` (default `llama3.1:8b`)
 - `OLLAMA_RESPONSE_MODEL` (default `llama3.1:8b`)
@@ -40,21 +45,29 @@ Services:
 - `OPENAI_PLANNING_MODEL` (default `gpt-4.1-mini`)
 - `OPENAI_RESPONSE_MODEL` (default `gpt-4.1-mini`)
 - `OPENAI_TEMPERATURE` (default `0`)
+- `RECOMMENDER_PRELOAD_ON_STARTUP` (default `true`)
 
 Store these in a local `.env` file (copy from `.env.example`) and do not hard-code them in code.
 
 Local chat runtime default:
 
 - `.env.example`, the checked-in local `.env`, and backend config default to
-  `ORCHESTRATOR_LLM_PROVIDER=ollama` so local chat uses a provider-backed,
-  natural-language runtime by default.
+  `ORCHESTRATOR_LLM_PROVIDER=ollama` so local chat uses provider-assisted
+  planning/composition by default.
 - Set `ORCHESTRATOR_LLM_PROVIDER=disabled` only when you explicitly want the
-  deterministic fallback/test path.
+  deterministic-only runtime/test path.
+- `/api/v1/chat` stays backend-owned in every mode.
+- `/api/v1/recommendations/query` is deterministic in every mode.
+- The live recommendation runtime reads PostgreSQL `catalog_items`, not
+  `RECOMMENDER_DATASET_PATH`.
 
 To use the default local Ollama orchestration:
 
 1. Run Ollama locally and pull a model (for example `ollama pull llama3.1:8b`).
 2. Set `ORCHESTRATOR_LLM_PROVIDER=ollama` in `.env`.
+3. Optionally raise `ORCHESTRATOR_PLANNER_TIMEOUT_SECONDS` and
+   `ORCHESTRATOR_COMPOSER_TIMEOUT_SECONDS` above the shared structured timeout
+   if the local model is slow.
 3. Restart the API process so cached service dependencies reload.
 
 If you are not running Ollama locally, switch `.env`
@@ -117,6 +130,10 @@ Local auth lifecycle notes:
 
 Optional pre-check:
 - Preview catalog ingestion without writes: `python scripts/seed_catalog.py --dry-run`
+- Smoke the running API:
+  - `pwsh ./scripts/smoke-api.ps1 -BaseUrl http://localhost:8000`
+  - `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider disabled`
+  - `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider ollama`
 
 ## Troubleshooting
 
@@ -150,6 +167,10 @@ Optional pre-check:
     directly; if that is empty, restart backend and ensure latest recommender code
     is deployed.
   - Restart API after backend code/config changes so cached dependencies refresh.
+  - If provider-assisted chat feels unexpectedly fast or robotic, inspect logs
+    for `provider_stage_failed`, `provider_stage_skipped`,
+    `planner_execution_failed`, and `planner_unavailable` to confirm whether the
+    runtime is operating deterministically.
 - Chat returns `429` immediately:
   - Inspect `error.code` first.
   - `rate_limit_exceeded` means TravelTom-owned throttling. Use `Retry-After`,
@@ -173,7 +194,9 @@ Run from repo root:
 - `black --check .`
 - `ruff check .`
 - `mypy apps/api`
-- `python -m pytest -q`
+- `venv\Scripts\python.exe -m pytest tests -q`
+- `pwsh ./scripts/smoke-api.ps1 -BaseUrl http://localhost:8000`
+- `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider disabled`
 
 Run from `apps/web`:
 - `npm install`

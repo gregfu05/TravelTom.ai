@@ -7,6 +7,12 @@
 - For chat 429s, log whether the source is `traveltom` or `provider`.
 - TravelTom limiter logs should include `chat_rate_limit`, caller identity key,
   retry-after, client host, and trace ID.
+- Chat provider degradation logs should include:
+  - `provider_stage_succeeded`
+  - `provider_stage_failed`
+  - `provider_stage_skipped`
+  - `planner_execution_failed`
+  - `planner_unavailable`
 - Azure deployment workflows should log:
   - target image tag
   - computed revision suffix
@@ -22,7 +28,8 @@
   - Chat request
   - Recommendation retrieval
   - Ranking
-  - LLM call
+  - planner stage
+  - composer stage
 
 Current implementation boundary:
 - Backend bootstrap installs JSON logging and Azure Monitor/OpenTelemetry export in `apps/api/app/main.py`.
@@ -36,6 +43,7 @@ Current implementation boundary:
   - `/api/v1/recommendations/query` <= 1.5s
 - Error rates by endpoint.
 - Tool failure counts.
+- Planner/composer failure counts and circuit-open events.
 
 ## Model-quality metrics
 
@@ -64,6 +72,10 @@ Current implementation boundary:
 
 - Latency and error dashboard.
 - Recommender coverage, CTR proxy, and drift dashboard.
+- Chat runtime dashboard:
+  - planner success/failure/skip counts
+  - composer success/failure/skip counts
+  - deterministic-only versus provider-assisted traffic split
 - Azure dashboard seed file: `infra/azure/dashboards.json`.
 
 ## Azure infra metadata
