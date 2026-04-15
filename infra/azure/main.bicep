@@ -90,7 +90,7 @@ param acrPublicNetworkAccess string = 'Enabled'
   'Enabled'
   'Disabled'
 ])
-param keyVaultPublicNetworkAccess string = 'Enabled'
+param keyVaultPublicNetworkAccess string = environment == 'prod' ? 'Disabled' : 'Enabled'
 
 @description('Public network access setting for Postgres.')
 @allowed([
@@ -100,14 +100,21 @@ param keyVaultPublicNetworkAccess string = 'Enabled'
 param postgresPublicNetworkAccess string = 'Enabled'
 
 @description('Whether to allow Azure services firewall access to Postgres.')
-param postgresAllowAzureServicesFirewall bool = true
+param postgresAllowAzureServicesFirewall bool = environment == 'prod' ? false : true
 
 @description('Public network access setting for MLOps storage.')
 @allowed([
   'Enabled'
   'Disabled'
 ])
-param mlopsStoragePublicNetworkAccess string = 'Enabled'
+param mlopsStoragePublicNetworkAccess string = environment == 'prod' ? 'Disabled' : 'Enabled'
+
+@description('Public network access setting for Azure ML workspace.')
+@allowed([
+  'Enabled'
+  'Disabled'
+])
+param mlWorkspacePublicNetworkAccess string = environment == 'prod' ? 'Disabled' : 'Enabled'
 
 @description('CPU allocation for the API container app.')
 param apiContainerCpu string = '0.5'
@@ -292,6 +299,7 @@ module mlWorkspace './modules/aml-workspace.bicep' = if (enableMlops) {
     keyVaultId: keyVault.id
     storageAccountId: mlopsStorage.outputs.id
     containerRegistryId: containerRegistryForMl.id
+    publicNetworkAccess: mlWorkspacePublicNetworkAccess
     tags: commonTags
   }
 }

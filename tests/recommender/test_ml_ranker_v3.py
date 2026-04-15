@@ -197,3 +197,20 @@ def test_blob_artifact_download_requires_supported_dependencies(monkeypatch) -> 
         ml_ranker_module._resolve_artifact_path_from_reference(
             "https://example.blob.core.windows.net/ml-artifacts/ranker.pkl"
         )
+
+
+def test_blob_cache_file_path_is_reference_scoped(tmp_path) -> None:
+    ref_a = "https://example.blob.core.windows.net/ml-artifacts/models/v1/ranker.pkl"
+    ref_b = "https://example.blob.core.windows.net/ml-artifacts/models/v2/ranker.pkl"
+
+    path_a = ml_ranker_module._cache_file_path_for_blob_reference(tmp_path, ref_a)
+    path_a_repeat = ml_ranker_module._cache_file_path_for_blob_reference(
+        tmp_path, ref_a
+    )
+    path_b = ml_ranker_module._cache_file_path_for_blob_reference(tmp_path, ref_b)
+
+    assert path_a == path_a_repeat
+    assert path_a != path_b
+    assert path_a.parent == tmp_path
+    assert path_b.parent == tmp_path
+    assert path_a.suffix == ".pkl"

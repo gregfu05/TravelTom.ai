@@ -1,25 +1,23 @@
 # Scripts
 
-Purpose: Data ingestion, seeding, evaluation, and local tooling.
+Purpose: seeding, evaluation, smoke checks, and local helper tooling.
+
 Ownership: Backend/Data.
 
-See `instructions/03-recommender/` and `instructions/07-infra-ops/` for usage.
+## What Lives Here
 
-## Catalog seeding
+- `seed_catalog.py`: loads a cleaned snapshot into `catalog_items`.
+- `train_ranker_v3.py`: ranker training entrypoint.
+- `evaluate_ranker_v3.py`: evaluation helper for the recommender pipeline.
+- `check_ranker_gates.py`: gate/check helper for ranking outputs.
+- `smoke-api.ps1`: API smoke verification.
+- `smoke-web.ps1`: web smoke verification.
+
+## Common Tasks
+
+### Catalog seeding
 
 Load the cleaned Yelp snapshot into `catalog_items`:
-
-```bash
-python scripts/seed_catalog.py --truncate
-```
-
-The seed script defaults to `traveltom/datasets/business_SB_Cleaned.parquet`.
-If the cleaned file is missing, it is copied from
-`traveltom/datasets/business_SB.parquet` before seeding.
-
-`item_type` classification uses normalized category tags and avoids treating
-generic `Hotels & Travel` buckets as hotels without lodging-specific tags.
-When classification logic changes, re-run:
 
 ```bash
 python scripts/seed_catalog.py --truncate
@@ -29,6 +27,16 @@ Preview without writing:
 
 ```bash
 python scripts/seed_catalog.py --dry-run
+```
+
+The seed script defaults to `traveltom/datasets/business_SB_Cleaned.parquet`.
+If the cleaned file is missing, it is copied from `traveltom/datasets/business_SB.parquet` before seeding.
+
+### Smoke checks
+
+```bash
+pwsh ./scripts/smoke-api.ps1 -BaseUrl http://localhost:8000
+pwsh ./scripts/smoke-web.ps1 -BaseUrl http://localhost:5173
 ```
 
 ## Smoke checks
