@@ -14,13 +14,19 @@ def main() -> None:
         _read_json(args.baseline_metrics_json) if args.baseline_metrics_json else None
     )
 
+    fallback_gate_passed = _ml_fallback_gate_passed(candidate)
     decision = {
         "coverage_gate_passed": _coverage_gate_passed(candidate),
         "ranking_gate_passed": _ranking_gate_passed(candidate, baseline),
+        "fallback_gate_passed": fallback_gate_passed,
+        "ml_queries_with_fallback": _metric_as_int(candidate, "ml_queries_with_fallback"),
+        "ml_total_queries": _metric_as_int(candidate, "ml_total_queries"),
         "baseline_mode": "existing-model" if baseline is not None else "first-model",
     }
     decision["promote"] = bool(
-        decision["coverage_gate_passed"] and decision["ranking_gate_passed"]
+        decision["coverage_gate_passed"]
+        and decision["ranking_gate_passed"]
+        and decision["fallback_gate_passed"]
     )
 
     if args.output_json is not None:
@@ -61,8 +67,24 @@ def _ranking_gate_passed(
     )
 
 
+def _ml_fallback_gate_passed(metrics: dict[str, object]) -> bool:
+    if "ml_queries_with_fallback" not in metrics:
+        return False
+    fallback_queries = _metric_as_int(metrics, "ml_queries_with_fallback")
+    return fallback_queries == 0
+
+
 def _read_json(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _metric_as_int(
+    metrics: dict[str, object],
+    key: str,
+    *,
+    fallback_key: str | None = None,
+) -> int:
+    return int(_metric_as_float(metrics, key, fallback_key=fallback_key))
 
 
 def _metric_as_float(
