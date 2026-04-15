@@ -153,7 +153,6 @@ diagnostics headers such as:
 `scripts/smoke-chat-runtime.ps1` generates a one-off password when `-Password`
 is omitted. Set `TRAVELTOM_SMOKE_PASSWORD` or pass `-Password` explicitly if you
 want a stable credential for repeated auth smoke runs.
-
 ## Recommender Runtime
 
 - Active API runtime: shared recommendation runtime via

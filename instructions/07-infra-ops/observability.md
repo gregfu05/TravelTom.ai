@@ -11,6 +11,8 @@
   - `provider_stage_succeeded`
   - `provider_stage_failed`
   - `provider_stage_skipped`
+  - `provider_stage_degraded`
+  - `orchestrator_turn_completed`
   - `planner_execution_failed`
   - `planner_unavailable`
 - Azure deployment workflows should log:
@@ -28,8 +30,7 @@
   - Chat request
   - Recommendation retrieval
   - Ranking
-  - planner stage
-  - composer stage
+  - planner/composer assisted orchestration turn
 
 Current implementation boundary:
 - Backend bootstrap installs JSON logging and Azure Monitor/OpenTelemetry export in `apps/api/app/main.py`.
@@ -44,6 +45,8 @@ Current implementation boundary:
 - Error rates by endpoint.
 - Tool failure counts.
 - Planner/composer failure counts and circuit-open events.
+- Planner/composer attempted versus used counts.
+- Degraded-mode fallback counts by `fallback_reason`.
 
 ## Model-quality metrics
 
@@ -75,6 +78,9 @@ Current implementation boundary:
 - Chat runtime dashboard:
   - planner success/failure/skip counts
   - composer success/failure/skip counts
+  - planner attempted versus used
+  - composer attempted versus used
+  - degraded-mode fallback reasons
   - deterministic-only versus provider-assisted traffic split
 - Azure dashboard seed file: `infra/azure/dashboards.json`.
 

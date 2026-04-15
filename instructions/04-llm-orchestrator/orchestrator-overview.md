@@ -14,12 +14,13 @@
   - Route-facing adapter used by `/chat` and `/recommendations/query`.
   - Wires planner/composer structured clients plus the shared recommendation tool.
   - Applies provider stage circuit-breaking for planner and composer.
+  - Emits per-turn planner/composer diagnostics for local/dev verification.
 - `apps/api/app/services/orchestrator/service.py`
   - Main coordinator for turn handling, clarification continuity, and response mapping.
 - `apps/api/app/services/orchestrator/turn_preparer.py`
   - Deterministic extraction, planner invocation/validation, and slot gating.
 - `apps/api/app/services/orchestrator/decision_engine.py`
-  - Chooses direct runtime handling versus legacy agent-path handling.
+  - Chooses direct runtime handling versus agent-path handling.
 - `apps/api/app/services/orchestrator/recommendation_runner.py`
   - Builds validated `RecommendationQuery` and runs deterministic search execution.
 - `apps/api/app/services/orchestrator/response_assembler.py`
@@ -40,7 +41,8 @@
    - bounded recent transcript
    - deterministic hint state
    - raw user text
-4. Planner output is schema-validated and merged through backend code only.
+4. Planner output is schema-validated and merged on top of deterministic
+   extraction through backend code only.
 5. Deterministic guardrails decide whether the turn is:
    - clarification-only
    - search-ready
@@ -51,6 +53,8 @@
    grounded composition when healthy.
 8. The API persists updated state, transcript messages, and the latest grounded
    recommendation snapshot.
+9. In local/dev, `/api/v1/chat` also returns planner/composer diagnostics in
+   `X-TravelTom-*` headers so degraded execution is visible immediately.
 
 ## Direct recommendation flow
 
@@ -78,6 +82,10 @@
   - stage-specific timeout budgets
   - failure thresholds
   - cooldown windows
+- On Ollama, TravelTom prefers the native structured `/api/chat` flow before the
+  OpenAI-compatible endpoint for planner/composer requests.
+- In local/dev, slow local Ollama models use higher effective timeout floors for
+  planner/composer stages so realistic prompts can complete.
 - Provider failures log explicitly and fall back safely.
 
 ## Failure handling

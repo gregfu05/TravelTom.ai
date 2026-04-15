@@ -187,22 +187,23 @@ Implementation notes (current):
 - Endpoint lives in `apps/api/app/api/v1/chat.py` (thin router, agent invocation + persistence wiring only).
 - Router resolves `apps/api/app/services/travel_tom_agent.py:get_travel_tom_agent`
   and calls `TravelTomAgent.handle_chat(...)`.
-- Orchestrator runtime is a real LangChain `create_agent` chat loop with one
-  shared `@tool` recommendation tool.
-- `TravelTomAgent` builds the chat agent with LangChain-native OpenAI or Ollama
-  chat models for the intended local runtime, or a deterministic in-process
-  model when provider mode is `disabled` fallback/test mode.
+- Orchestrator runtime is backend-owned and deterministic first; planner and
+  composer are structured provider stages, not free-form agent loops.
+- `TravelTomAgent` wires structured planner/composer clients plus the shared
+  deterministic recommendation runtime.
 - `OrchestratorService` applies deterministic extraction and carry-forward query
-  shaping before agent invocation, preserves pending recommendation intent
-  across clarification turns, then converts the final agent transcript into the
-  normalized backend response and ignores model-invented recommendation
-  content.
+  shaping before planner invocation, preserves pending recommendation intent
+  across clarification turns, then converts grounded backend outcomes into the
+  normalized response.
 - Hybrid recommendation policy:
   - hotel searches wait for destination, dates, and budget
   - restaurant and activity searches require destination
-  - if the final required slot arrives and the agent still clarifies, backend
+  - if the final required slot arrives and the runtime still clarifies, backend
     runs the deterministic recommendation path immediately
 - Recommendation retrieval remains tool-first and deterministic; router never returns model-invented recommendation items.
+- In local/dev, `/api/v1/chat` also emits `X-TravelTom-*` headers describing
+  planner/composer attempted-versus-used state, degraded-mode status, and the
+  fallback reason when deterministic copy wins.
 - Request/response Pydantic schemas live in `apps/api/app/schemas/api/chat.py` (`ChatRequest`, `ChatResponse`, `ChatRecommendation`, `ClientContext`).
 - Chat transaction boundary lives in `apps/api/app/services/chat_uow.py`.
 - Session/message/recommendation persistence lives in `apps/api/app/repositories/chat.py`.
@@ -278,10 +279,11 @@ Notes:
 - Router resolves `apps/api/app/services/travel_tom_agent.py:get_travel_tom_agent`
   and calls `TravelTomAgent.handle_recommendation_query(...)`.
 - API request/response schemas live in `apps/api/app/schemas/api/recommendations.py`.
-- Deterministic recommendation tool registration/invocation lives in
-  `apps/api/app/services/travel_tom_agent.py` and uses LangChain `@tool`.
-- The endpoint uses a separate deterministic `create_agent` configuration that
-  forces one validated recommendation tool call and returns only tool-backed results.
+- Deterministic recommendation execution lives in
+  `apps/api/app/services/travel_tom_agent.py` and
+  `apps/api/app/services/recommendation_query.py`.
+- The endpoint returns validated backend recommendation results directly; it
+  does not require a LangChain `create_agent` loop.
 - Recommendation tool error/normalization helpers live in
   `apps/api/app/services/recommendation_query.py`.
 - Service validates tool payloads using `app/schemas/tools/recommendations.py` contracts.

@@ -81,6 +81,7 @@ apps/api/
   - Owns the route-facing backend agent abstraction used by `/chat` and `/recommendations/query`.
   - Owns provider-backed structured planner/composer calls for `/chat`.
   - Applies stage-level provider circuit-breaking.
+  - Emits local/dev planner/composer diagnostics and degraded-mode status.
   - Delegates deterministic state preparation, routing, recommendation
     execution, and response shaping to `OrchestratorService`.
   - Calls the shared deterministic recommendation runtime directly for
@@ -106,8 +107,9 @@ apps/api/
   - Own JSON-only planner/composer HTTP clients for OpenAI and Ollama.
   - Keep structured planner/composer transport separate from deterministic
     recommendation execution.
-  - On Ollama, prefer the OpenAI-compatible structured endpoint with schema
-    response formatting.
+  - On Ollama, prefer the native schema-constrained `/api/chat` flow before the
+    OpenAI-compatible endpoint, with additional payload-shape validation before
+    accepting structured output.
 - Recommendation runtime (`app/services/recommendation_runtime.py`):
   - Owns the shared in-memory runtime catalog cache used by both `/chat` and
     `/recommendations/query`.

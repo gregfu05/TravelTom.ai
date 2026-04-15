@@ -19,6 +19,7 @@
 
 - Deterministic slot gating under different intents.
 - Provider planner/composer degradation behavior.
+- Planner-success flows that must preserve deterministic extraction results.
 - Session state updates and carry-forward query shaping.
 - Repair turns, meta turns, and empty-result flows.
 
@@ -33,6 +34,7 @@
 - Backend smoke tooling must stay runnable:
   - `pwsh ./scripts/smoke-api.ps1 -BaseUrl http://localhost:8000`
   - `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider disabled`
+  - `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider ollama -Email smoke@example.com`
 - Frontend static quality checks (`npm run typecheck`, `npm run build`) required for merge when frontend code changes.
 - E2E tests required for release.
 

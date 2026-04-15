@@ -1,5 +1,22 @@
 # Instructions Changelog
 
+## 2026-04-16
+
+- Refreshed the runtime docs after planner/composer diagnostics and Ollama
+  reliability fixes:
+  - `README.md` now merges the current backend-owned orchestration model with a
+    more visual overview, including architecture and chat-flow diagrams.
+  - `apps/api/README.md`, `02-backend/api-design.md`, and
+    `02-backend/services-and-modules.md` now reflect the shared PostgreSQL-backed
+    recommendation runtime, local/dev diagnostics headers, and the native Ollama
+    structured endpoint preference.
+  - `04-llm-orchestrator/orchestrator-overview.md`,
+    `07-infra-ops/local-dev.md`, `07-infra-ops/observability.md`,
+    `08-quality/testing-strategy.md`, and `docs/ollama-remote-deployment.md`
+    now document auth-aware smoke checks, degraded-mode visibility,
+    attempted-versus-used planner/composer signals, and the higher effective
+    local Ollama stage budgets.
+
 ## 2026-04-15
 
 - Re-documented the chat runtime after the deterministic-core repair:
