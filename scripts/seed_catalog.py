@@ -72,10 +72,14 @@ T = TypeVar("T")
 
 
 def _read_dataframe(file_path: Path) -> pd.DataFrame:
-    """Read a CSV file into a DataFrame."""
-    if file_path.suffix != ".csv":
-        raise ValueError(f"Only CSV files are supported, got: {file_path.suffix}")
-    return pd.read_csv(file_path)
+    """Read a dataset into a DataFrame (CSV or Parquet)."""
+    if file_path.suffix == ".csv":
+        return pd.read_csv(file_path)
+
+    if file_path.suffix == ".parquet":
+        return pd.read_parquet(file_path)
+
+    raise ValueError(f"Unsupported file format: {file_path.suffix}")
 
 
 def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
