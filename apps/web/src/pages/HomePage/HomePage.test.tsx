@@ -22,7 +22,7 @@ describe("HomePage", () => {
         .some((link) => link.getAttribute("href") === "/how-it-works"),
     ).toBe(true);
     expect(screen.getByLabelText("Travel planner snapshot")).toBeTruthy();
-    expect(screen.getByText("Lisbon, Portugal")).toBeTruthy();
+    expect(screen.getByText("Sunset Sailing in Lisbon")).toBeTruthy();
     expect(screen.getByText("Solaris Riverside Hotel")).toBeTruthy();
   });
 });

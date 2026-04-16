@@ -132,9 +132,10 @@ Local auth lifecycle notes:
 2. Start local Postgres and automatically apply Alembic migrations:
    `docker compose -f infra/docker/docker-compose.yml up --build`
    - Add `-d` if you want the stack to stay up in the background.
-3. Build cleaned snapshot (optional if already present): `python -m traveltom.cleaning.cleaning`
-   - If skipped and `business_SB_Cleaned.parquet` is missing, the seed script
-     copies `business_SB.parquet` into the cleaned path before seeding.
+3. Ensure the canonical cleaned seed snapshot exists at
+   `traveltom/datasets/composite/traveltom_clean.csv`.
+   - The active seed path reads that CSV directly.
+   - Legacy Parquet snapshots are not used by `scripts/seed_catalog.py`.
 4. Seed catalog with the compose overlay when you want full local bootstrap:
    `docker compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.seed.yml up --build`
    - This waits for Postgres health, runs migrations, then runs
