@@ -31,12 +31,10 @@ if str(API_ROOT) not in sys.path:
 from app.db.models.catalog_item import CatalogItem  # noqa
 from app.db.session import get_engine, get_session_factory  # noqa
 
-# The clean snapshot CI deletes to force the fallback, then checks it was recreated.
 DEFAULT_DATASET = (
     REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean2.csv"
 )
 
-# The authoritative raw CSV that is always committed and never deleted by CI.
 DEFAULT_RAW_DATASET = (
     REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean.csv"
 )
@@ -77,9 +75,13 @@ T = TypeVar("T")
 
 
 def _read_dataframe(file_path: Path) -> pd.DataFrame:
-    """Read a CSV file into a DataFrame."""
-    if file_path.suffix != ".csv":
-        raise ValueError(f"Only CSV files are supported, got: {file_path.suffix}")
+    """Read a CSV or Parquet file, detecting format by magic bytes not extension."""
+    with open(file_path, "rb") as fh:
+        magic = fh.read(4)
+
+    if magic == b"PAR1":
+        return pd.read_parquet(file_path)
+
     return pd.read_csv(file_path, encoding="latin-1", on_bad_lines="skip")
 
 
