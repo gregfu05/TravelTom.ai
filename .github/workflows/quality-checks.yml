@@ -86,9 +86,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Force missing cleaned snapshot
-        run: rm -f traveltom/datasets/composite/traveltom_clean2.csv
-
       - name: Ensure vector extension exists
         run: |
           python - <<'PY'
@@ -118,12 +115,11 @@ jobs:
         run: |
           set -euo pipefail
           PYTHONPATH=apps/api python scripts/seed_catalog.py --truncate --batch-size 1000 | tee seed.log
-          grep -q "copied from raw snapshot" seed.log
 
       - name: Verify seed row count
         if: steps.seed_catalog.outputs.seed_skipped != 'true'
         run: |
-          test -f traveltom/datasets/composite/traveltom_clean2.csv
+          test -f traveltom/datasets/composite/traveltom_clean.csv
           python - <<'PY'
           import asyncio
           import os
@@ -148,7 +144,7 @@ jobs:
 
       - name: Note skipped seed
         if: steps.seed_catalog.outputs.seed_skipped == 'true'
-        run: echo "Catalog seed skipped because traveltom_clean.csv is unavailable in CI checkout."
+        run: echo "Catalog seed skipped because traveltom/datasets/composite/traveltom_clean.csv is unavailable in CI checkout."
 
   frontend-quality:
     name: Frontend type-check and build

@@ -16,6 +16,16 @@ import scripts.seed_catalog as seed_catalog
 from scripts.seed_catalog import _item_type_from_tags
 
 
+def test_default_dataset_uses_canonical_composite_csv() -> None:
+    assert seed_catalog.DEFAULT_DATASET == (
+        Path(seed_catalog.REPO_ROOT)
+        / "traveltom"
+        / "datasets"
+        / "composite"
+        / "traveltom_clean.csv"
+    )
+
+
 def test_item_type_ignores_generic_hotels_and_travel_bucket() -> None:
     tags = ["Hotels & Travel", "Wine Tours"]
     assert _item_type_from_tags(tags) == "activity"
@@ -63,7 +73,6 @@ def test_main_async_skips_when_dataset_missing(capsys, tmp_path: Path) -> None:
         dataset=tmp_path / "traveltom_clean.csv",
         batch_size=500,
         min_review_count=10,
-        include_closed=False,
         truncate=False,
         dry_run=False,
     )
@@ -95,7 +104,6 @@ def test_main_async_dry_run_with_present_dataset(capsys, tmp_path: Path) -> None
         dataset=dataset_path,
         batch_size=500,
         min_review_count=10,
-        include_closed=False,
         truncate=False,
         dry_run=True,
     )
@@ -112,7 +120,6 @@ def test_main_returns_zero_when_dataset_missing(tmp_path: Path, monkeypatch) -> 
         dataset=tmp_path / "traveltom_clean.csv",
         batch_size=500,
         min_review_count=10,
-        include_closed=False,
         truncate=False,
         dry_run=False,
     )
@@ -129,7 +136,6 @@ def test_main_does_not_swallow_non_file_not_found_errors(
         dataset=tmp_path / "traveltom_clean.csv",
         batch_size=500,
         min_review_count=10,
-        include_closed=False,
         truncate=False,
         dry_run=False,
     )

@@ -3,7 +3,7 @@
 Usage examples (run from repo root):
   python scripts/seed_catalog.py
   python scripts/seed_catalog.py \
-    --dataset traveltom/datasets/traveltom_clean.csv
+    --dataset traveltom/datasets/composite/traveltom_clean.csv
   python scripts/seed_catalog.py --dry-run
   python scripts/seed_catalog.py --truncate
 """
@@ -17,7 +17,6 @@ import uuid
 from collections.abc import Iterator
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from shutil import copyfile
 from typing import Any, TypeVar
 
 import numpy as np
@@ -34,10 +33,6 @@ from app.db.models.catalog_item import CatalogItem  # noqa
 from app.db.session import get_engine, get_session_factory  # noqa
 
 DEFAULT_DATASET = (
-    REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean2.csv"
-)
-
-DEFAULT_RAW_DATASET = (
     REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean.csv"
 )
 
@@ -72,6 +67,7 @@ RESTAURANT_KEYWORDS = (
     "dinner",
     "breakfast",
 )
+FLIGHT_KEYWORDS = ("airline", "airport", "flight")
 
 T = TypeVar("T")
 
@@ -79,8 +75,6 @@ T = TypeVar("T")
 def _read_dataframe(file_path: Path) -> pd.DataFrame:
     if file_path.suffix == ".csv":
         return pd.read_csv(file_path)
-    if file_path.suffix == ".parquet":
-        return pd.read_parquet(file_path)
     raise ValueError("Only CSV datasets")
 
 
@@ -89,19 +83,6 @@ def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame | None, str]:
         if dataset_path.suffix != ".csv":
             raise ValueError("Only CSV datasets")
         return _read_dataframe(dataset_path), str(dataset_path)
-
-    if dataset_path == DEFAULT_DATASET:
-        if not DEFAULT_RAW_DATASET.exists():
-            return None, "missing dataset"
-
-        df = _read_dataframe(DEFAULT_RAW_DATASET)
-
-        dataset_path.parent.mkdir(parents=True, exist_ok=True)
-        copyfile(DEFAULT_RAW_DATASET, dataset_path)
-
-        print("copied from raw snapshot")
-
-        return df, "copied from raw snapshot"
 
     return None, f"Dataset not found: {dataset_path}"
 
@@ -144,9 +125,6 @@ def _split_tags(value: Any) -> list[str] | None:
     return [v.strip() for v in str(value).split(",") if v.strip()] or None
 
 
-HOTEL_KEYWORDS = ("hotel", "hostel", "resort", "lodging", "inn", "motel")
-FLIGHT_KEYWORDS = ("airline", "airport", "flight")
-
 # Tags that are too generic to signal a specific item type.
 _GENERIC_BUCKETS = {"hotels and travel", "travel"}
 
@@ -176,15 +154,6 @@ def _item_type(raw: dict[str, Any]) -> str:
     if et in {"flight", "airport", "airline"}:
         return "flight"
     return "destination"
-
-
-def _normalize_tag(value: str) -> str:
-    normalized = value.casefold().strip()
-    normalized = normalized.replace("&", " and ")
-    normalized = " ".join(normalized.split())
-    return normalized
-
-
 def _price_from_attributes(attributes: dict[str, Any]) -> Decimal | None:
     raw = attributes.get("RestaurantsPriceRange2")
     return _as_decimal(raw)
@@ -297,30 +266,6 @@ def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
         )
 
     return rows
-
-
-def _filter_source(
-    df: pd.DataFrame, include_closed: bool, min_review_count: int
-) -> pd.DataFrame:
-    working = df.copy()
-
-    if not include_closed and "is_open" in working.columns:
-        working = working[working["is_open"] == 1]
-    if min_review_count > 0:
-        if "review_count" in working.columns:
-            review_signal = pd.to_numeric(
-                working["review_count"], errors="coerce"
-            ).fillna(0)
-            working = working[review_signal >= min_review_count]
-        elif "review_count_norm" in working.columns:
-            review_signal = pd.to_numeric(
-                working["review_count_norm"], errors="coerce"
-            ).fillna(0)
-            working = working[review_signal >= 0]
-    if "business_id" in working.columns:
-        working = working.drop_duplicates(subset="business_id")
-
-    return working
 
 
 def _filter(df: pd.DataFrame, min_review_count: int) -> pd.DataFrame:
