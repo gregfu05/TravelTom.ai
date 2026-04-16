@@ -6,6 +6,7 @@ Ownership: Mixed.
 
 ## What Lives Here
 
+- `azure-deployment-readiness-ticket.md`: repo-native execution ticket for the current Azure dev-first deployment readiness pass, including required owner-provided env/config inputs.
 - `chat-feature-investigation-ticket.md`: investigation ticket for chat latency, naturalness, context persistence, and recommendation continuity.
 - `ollama-remote-deployment.md`: deployment notes for running Ollama remotely with env-driven backend configuration.
 - `azure-mlops-ranking-plan.md`: planning document for future Azure-based MLOps of the ranking model lifecycle.

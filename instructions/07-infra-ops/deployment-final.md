@@ -37,10 +37,11 @@
 2. Build and push container images.
 3. Provision infra via Bicep.
 4. Run database migrations.
-5. Deploy a green revision with the target model version.
-6. Run smoke checks and metric gate checks on green.
-7. Shift traffic from blue to green.
-8. Keep the previous blue revision available for fast rollback.
+5. Seed `catalog_items` if the target environment is still empty.
+6. Deploy a green revision with the target model version.
+7. Run smoke checks and metric gate checks on green, including chat runtime coverage.
+8. Shift traffic from blue to green.
+9. Keep the previous blue revision available for fast rollback.
 
 GitHub Actions implementation:
 - `Publish Images`
@@ -68,6 +69,8 @@ Required smoke checks after green deploy:
 - API health: `GET /api/v1/health` returns `{"status":"ok"}`.
 - Recommendation query: `POST /api/v1/recommendations/query` returns a valid
   `ranking_version` and `results` array.
+- Chat runtime: `/api/v1/chat` passes auth-aware greeting, slot-gating,
+  recommendation, and repair-turn smoke coverage.
 - Frontend routes load without runtime errors:
   - `/`
   - `/planner`
@@ -79,6 +82,7 @@ Required smoke checks after green deploy:
 Smoke commands:
 - `pwsh ./scripts/smoke-api.ps1 -BaseUrl https://<api-url>`
 - `pwsh ./scripts/smoke-web.ps1 -BaseUrl https://<web-url>`
+- `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl https://<api-url> -Provider ollama -AccessToken <token>`
 
 ## Runtime configuration
 
@@ -116,6 +120,8 @@ Frontend runtime/build vars:
 
 Workflow behavior:
 
+- `Deploy Dev` now runs migrations before image rollout and seeds `catalog_items`
+  when the target database is still empty.
 - `Deploy Dev` and `Deploy Prod` capture the active API and web revisions before
   mutation and reactivate them automatically if the deploy job fails after image update.
 - `ML Promote Dev` captures the current promoted-model env values before mutation
