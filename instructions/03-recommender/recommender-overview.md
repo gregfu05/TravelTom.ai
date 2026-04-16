@@ -2,7 +2,7 @@
 
 ## Runtime source of truth
 
-- Active API runtime: `traveltom/recommendor/recommendor_v1.py`
+- Active API runtime: `traveltom/recommendor/recommendor_v3.py`
 - Runtime data source: PostgreSQL `catalog_items`
 - Shared runtime adapter: `apps/api/app/services/recommendation_runtime.py`
 - Endpoints using that runtime:
@@ -15,7 +15,8 @@ the live API path.
 
 ## Runtime behavior
 
-- Reads the seeded catalog from `catalog_items`.
+- Reads the seeded catalog from `catalog_items` and normalizes it into the
+  v3 retrieval/ranking shape at runtime.
 - Applies hard destination filtering from `RecommendationQuery.constraints.destination`.
 - Applies hard item-type filtering from `RecommendationQuery.filters.item_type`.
 - Uses deterministic scoring and tie-breaking.

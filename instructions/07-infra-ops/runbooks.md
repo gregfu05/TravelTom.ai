@@ -27,7 +27,7 @@
 
 - Always run `alembic upgrade head` before deploy.
 - Use `alembic downgrade -1` for rollback.
-- `Deploy Prod` runs migrations before revision smoke tests.
+- `Deploy Dev` and `Deploy Prod` run migrations before revision smoke tests.
 
 ## Incident checklist
 
@@ -52,12 +52,17 @@
 
 - API: `pwsh ./scripts/smoke-api.ps1 -BaseUrl https://<api-url>`
 - Web: `pwsh ./scripts/smoke-web.ps1 -BaseUrl https://<web-url>`
+- Chat: `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl https://<api-url> -Provider ollama -AccessToken <token>`
 
 Expected checks:
 
 - API smoke:
   - `/api/v1/health`
   - `/api/v1/recommendations/query`
+- Chat smoke:
+  - `/api/v1/chat`
+  - local auth signup/login when a token is not pre-supplied
+  - planner/composer diagnostic headers on representative turns
 - Web smoke:
   - `/`
   - `/planner`
@@ -106,8 +111,11 @@ Rollback sequence:
 
 - `Deploy Dev` / `Deploy Prod`
   - confirm required GitHub environment vars are populated
+  - confirm the target database URL secret is populated
   - confirm target image tag exists in ACR
   - confirm the previous active revision names were captured in workflow logs
+- `Deploy Dev`
+  - confirm `catalog_items` is seeded when the dev database starts empty
 - `ML Evaluate Dev`
   - confirm candidate artifact and manifest exist
   - confirm candidate manifest validation passed

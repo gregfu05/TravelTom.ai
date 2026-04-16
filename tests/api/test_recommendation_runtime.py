@@ -55,6 +55,8 @@ def test_preload_recommendation_catalog_loads_runtime_catalog(monkeypatch) -> No
 
     assert not catalog.empty
     assert get_recommendation_catalog_store().source_label == "catalog_items"
+    assert "entity_type_norm" in catalog.columns
+    assert str(catalog.iloc[0]["entity_type"]) == "hotel"
 
 
 def test_runtime_recommendation_tool_uses_preloaded_catalog_without_reloading(
@@ -79,7 +81,9 @@ def test_runtime_recommendation_tool_uses_preloaded_catalog_without_reloading(
     assert load_calls["count"] == 1
     assert response.results
     assert response.results[0].item_type == "hotel"
+    assert response.ranking_version.startswith("recommender-v3:")
     assert response.results[0].features.get("city") == "Rome"
+    assert response.results[0].features.get("entity_type") == "hotel"
 
 
 def test_runtime_recommendation_tool_reloads_when_cached_catalog_is_empty(
@@ -104,3 +108,4 @@ def test_runtime_recommendation_tool_reloads_when_cached_catalog_is_empty(
 
     assert load_calls["count"] == 2
     assert response.results
+    assert response.ranking_version.startswith("recommender-v3:")

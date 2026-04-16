@@ -107,11 +107,12 @@ Azure workflow safety expectations:
 - Build and publish container images.
 - Deploy to Azure Container Apps using blue-green revisions.
 - Run migrations as a deployment step.
+- Seed `catalog_items` on the first dev rollout when the target database is empty.
 - Shift traffic only after green revision checks pass.
 
 Implemented workflow split:
 - `Publish Images`: builds and pushes immutable API and web images to ACR after `Quality Checks`
-- `Deploy Dev`: updates Container Apps in the dev environment and runs smoke checks
+- `Deploy Dev`: runs migrations, seeds the runtime catalog if empty, updates Container Apps in the dev environment, and runs API, web, and chat smoke checks
 - `Deploy Prod`: approval-gated deployment with migrations and smoke checks
 - `Rollback Container Apps`: manually reactivate a known-good revision
 

@@ -65,10 +65,12 @@ python -m pytest tests/api tests/orchestrator tests/test_health.py -q
 
 - `/api/v1/chat` and `/api/v1/recommendations/query` both use the shared
   recommendation runtime in `apps/api/app/services/recommendation_runtime.py`.
-- The active recommendation runtime reads PostgreSQL `catalog_items`.
+- The active recommendation runtime reads PostgreSQL `catalog_items` and adapts
+  that runtime catalog into the `recommendor_v3` retrieval/ranking shape.
 - `traveltom/recommendor/recommendor_v1.py`,
   `traveltom/recommendor/recommendor_v2.py`, and
-  `traveltom/recommendor/recommendor_v3.py` remain historical or experimental references.
+  `traveltom/recommendor/recommendor_v3.py` are available in repo, with
+  `recommendor_v3.py` now serving as the active runtime recommendation path.
 - The health endpoint is intentionally split by responsibility:
   - API router in `apps/api/app/api/v1/health.py`
   - Response schema in `apps/api/app/schemas/api/health.py`

@@ -1,5 +1,19 @@
 # Instructions Changelog
 
+## 2026-04-17
+
+- Hardened the dev Azure deployment path and aligned runtime docs with the
+  active recommender implementation:
+  - `Deploy Dev` now documents and expects migrations before rollout, catalog
+    seeding when the target dev database is empty, and auth-aware chat smoke in
+    addition to API and web smoke coverage.
+  - `07-infra-ops/deployment-final.md`, `07-infra-ops/runbooks.md`, and
+    `08-quality/ci-cd.md` now describe the stronger dev rollout path and the
+    required target-database secret input.
+  - `03-recommender/recommender-overview.md` and
+    `02-backend/services-and-modules.md` now align the documented live API
+    recommendation path with `recommendor_v3`.
+
 ## 2026-04-16
 
 - Re-aligned seed and local-dev docs with the current dataset contract:

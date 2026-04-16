@@ -15,7 +15,10 @@ Ownership: Backend/Data.
 
 ## Current Runtime Note
 
-The API runtime currently points its deterministic recommendation tool at `recommendor_v3.py`. This is the file to inspect first when recommendation ranking behavior changes.
+The API runtime currently points its deterministic recommendation tool at
+`recommendor_v3.py`, with the shared API runtime adapter normalizing
+PostgreSQL-backed `catalog_items` rows into the v3 retrieval/ranking shape.
+This is the file to inspect first when recommendation ranking behavior changes.
 
 ## Related Docs
 
