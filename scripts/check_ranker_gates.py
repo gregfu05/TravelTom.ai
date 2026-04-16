@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 
@@ -40,13 +41,13 @@ def main() -> None:
         raise SystemExit("Offline gates failed.")
 
 
-def _coverage_gate_passed(metrics: dict[str, object]) -> bool:
+def _coverage_gate_passed(metrics: Mapping[str, object]) -> bool:
     return _metric_as_float(metrics, "coverage_at_k_rate") >= 0.95
 
 
 def _ranking_gate_passed(
-    candidate: dict[str, object],
-    baseline: dict[str, object] | None,
+    candidate: Mapping[str, object],
+    baseline: Mapping[str, object] | None,
 ) -> bool:
     candidate_ndcg = _metric_as_float(candidate, "candidate_ndcg_at_k")
     candidate_map = _metric_as_float(candidate, "candidate_map_at_k")
@@ -69,7 +70,7 @@ def _ranking_gate_passed(
     )
 
 
-def _ml_fallback_gate_passed(metrics: dict[str, object]) -> bool:
+def _ml_fallback_gate_passed(metrics: Mapping[str, object]) -> bool:
     if "ml_queries_with_fallback" not in metrics:
         return False
     fallback_queries = _metric_as_int(metrics, "ml_queries_with_fallback")
@@ -81,7 +82,7 @@ def _read_json(path: Path) -> dict[str, object]:
 
 
 def _metric_as_int(
-    metrics: dict[str, object],
+    metrics: Mapping[str, object],
     key: str,
     *,
     fallback_key: str | None = None,
@@ -90,7 +91,7 @@ def _metric_as_int(
 
 
 def _metric_as_float(
-    metrics: dict[str, object],
+    metrics: Mapping[str, object],
     key: str,
     *,
     fallback_key: str | None = None,

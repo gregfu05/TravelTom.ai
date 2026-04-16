@@ -29,8 +29,9 @@ Preview without writing:
 python scripts/seed_catalog.py --dry-run
 ```
 
-The seed script defaults to `traveltom/datasets/business_SB_Cleaned.parquet`.
-If the cleaned file is missing, it is copied from `traveltom/datasets/business_SB.parquet` before seeding.
+The seed script defaults to `traveltom/datasets/composite/traveltom_clean.csv`.
+Parquet-era Santa Barbara snapshots remain legacy artifacts and are not used by
+the active seed path.
 
 ### Smoke checks
 

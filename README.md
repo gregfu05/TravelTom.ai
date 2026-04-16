@@ -120,6 +120,10 @@ python scripts/seed_catalog.py --truncate
 uvicorn app.main:app --reload --app-dir apps/api
 ```
 
+`scripts/seed_catalog.py` reads the canonical cleaned snapshot at
+`traveltom/datasets/composite/traveltom_clean.csv`. Legacy Parquet artifacts
+remain offline-only and are not part of the active seed path.
+
 ## Local Chat Modes
 
 - Default local mode: `ORCHESTRATOR_LLM_PROVIDER=ollama`

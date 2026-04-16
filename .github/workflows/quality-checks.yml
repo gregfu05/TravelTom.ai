@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with: 
+          lfs: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -70,6 +72,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with: 
+          lfs: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -110,16 +114,12 @@ jobs:
         id: seed_catalog
         run: |
           set -euo pipefail
-          python scripts/seed_catalog.py --truncate --batch-size 1000 | tee seed.log
-          if grep -q "Dataset not found. Skipping catalog_items seed." seed.log; then
-            echo "seed_skipped=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "seed_skipped=false" >> "$GITHUB_OUTPUT"
-          fi
+          PYTHONPATH=apps/api python scripts/seed_catalog.py --truncate --batch-size 1000 | tee seed.log
 
       - name: Verify seed row count
         if: steps.seed_catalog.outputs.seed_skipped != 'true'
         run: |
+          test -f traveltom/datasets/composite/traveltom_clean.csv
           python - <<'PY'
           import asyncio
           import os
@@ -144,7 +144,7 @@ jobs:
 
       - name: Note skipped seed
         if: steps.seed_catalog.outputs.seed_skipped == 'true'
-        run: echo "Catalog seed skipped because traveltom_clean.csv is unavailable in CI checkout."
+        run: echo "Catalog seed skipped because traveltom/datasets/composite/traveltom_clean.csv is unavailable in CI checkout."
 
   frontend-quality:
     name: Frontend type-check and build

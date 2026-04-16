@@ -1,9 +1,9 @@
-"""Seed `catalog_items` from the TravelTom clean CSV dataset.
+"""Seed `catalog_items` from the Yelp business CSV dataset.
 
 Usage examples (run from repo root):
   python scripts/seed_catalog.py
   python scripts/seed_catalog.py \
-    --dataset traveltom/datasets/traveltom_clean.csv
+    --dataset traveltom/datasets/composite/traveltom_clean.csv
   python scripts/seed_catalog.py --dry-run
   python scripts/seed_catalog.py --truncate
 """
@@ -17,7 +17,7 @@ import uuid
 from collections.abc import Iterator
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import numpy as np
 import pandas as pd
@@ -29,10 +29,13 @@ API_ROOT = REPO_ROOT / "apps" / "api"
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
-from app.db.models.catalog_item import CatalogItem  # noqa: E402
-from app.db.session import get_engine, get_session_factory  # noqa: E402
+from app.db.models.catalog_item import CatalogItem  # noqa
+from app.db.session import get_engine, get_session_factory  # noqa
 
-DEFAULT_DATASET = REPO_ROOT / "traveltom" / "datasets" / "traveltom_clean.csv"
+DEFAULT_DATASET = (
+    REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean.csv"
+)
+
 BUSINESS_ID_NAMESPACE = uuid.UUID("56f6e980-b2c0-4be2-a238-7176bf5a4fa7")
 
 HOTEL_KEYWORDS = (
@@ -64,202 +67,107 @@ RESTAURANT_KEYWORDS = (
     "dinner",
     "breakfast",
 )
+FLIGHT_KEYWORDS = ("airline", "airport", "flight")
 
 T = TypeVar("T")
 
 
+def _read_dataframe(file_path: Path) -> pd.DataFrame:
+    if file_path.suffix == ".csv":
+        return pd.read_csv(file_path)
+    raise ValueError("Only CSV datasets")
+
+
+def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame | None, str]:
+    if dataset_path.exists():
+        if dataset_path.suffix != ".csv":
+            raise ValueError("Only CSV datasets")
+        return _read_dataframe(dataset_path), str(dataset_path)
+
+    return None, f"Dataset not found: {dataset_path}"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Seed catalog_items from TravelTom clean CSV."
+        description="Seed catalog_items from cleaned dataset."
     )
-    parser.add_argument(
-        "--dataset",
-        type=Path,
-        default=DEFAULT_DATASET,
-        help="Path to source CSV dataset (defaults to traveltom_clean.csv).",
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=500,
-        help="Rows per upsert batch.",
-    )
-    parser.add_argument(
-        "--min-review-count",
-        type=int,
-        default=10,
-        help="Drop rows below this review count.",
-    )
-    parser.add_argument(
-        "--include-closed",
-        action="store_true",
-        help="Include businesses with is_open != 1.",
-    )
-    parser.add_argument(
-        "--truncate",
-        action="store_true",
-        help="Delete all existing catalog_items rows before insert/upsert.",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print what would be inserted without writing to the database.",
-    )
-    args = parser.parse_args()
-    if args.batch_size <= 0:
-        parser.error("--batch-size must be > 0")
-    if args.min_review_count < 0:
-        parser.error("--min-review-count must be >= 0")
-    return args
+    parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
+    parser.add_argument("--batch-size", type=int, default=500)
+    parser.add_argument("--min-review-count", type=int, default=0)
+    parser.add_argument("--truncate", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    return parser.parse_args()
 
 
 def _chunks(items: list[T], size: int) -> Iterator[list[T]]:
-    for start in range(0, len(items), size):
-        yield items[start : start + size]
+    for i in range(0, len(items), size):
+        yield items[i : i + size]
 
 
 def _as_decimal(value: Any) -> Decimal | None:
-    if value is None or pd.isna(value):
-        return None
     try:
+        if value is None or pd.isna(value):
+            return None
         return Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
 
 
-def _split_tags(categories: Any) -> list[str] | None:
-    if isinstance(categories, (list, tuple, set, np.ndarray, pd.Series)):
-        tags = [str(part).strip() for part in categories if str(part).strip()]
-        return tags or None
-    if categories is None:
+def _safe_str(value: Any) -> str | None:
+    if value is None or pd.isna(value):
         return None
-    if pd.isna(categories):
+    return str(value)
+
+
+def _split_tags(value: Any) -> list[str] | None:
+    if value is None or pd.isna(value):
         return None
-    tags = [part.strip() for part in str(categories).split(",") if part.strip()]
-    return tags or None
+    return [v.strip() for v in str(value).split(",") if v.strip()] or None
 
 
-def _coerce_attributes(value: Any) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return value
-    return {}
-
-
-def _coerce_hours(value: Any) -> dict[str, Any] | None:
-    if isinstance(value, dict):
-        return value
-    return None
-
-
-def _coerce_flag(value: Any) -> bool:
+def _json_safe(value: Any) -> Any:
     if value is None:
-        return False
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)) and not pd.isna(value):
-        return float(value) > 0
-    if isinstance(value, str):
-        lowered = value.strip().casefold()
-        return lowered in {"1", "true", "yes", "y"}
-    return False
-
-
-def _synthetic_business_id(raw: dict[str, Any], index: int) -> str:
-    name = str(raw.get("name") or "").strip().casefold()
-    city = str(raw.get("city") or "").strip().casefold()
-    country = str(raw.get("country") or "").strip().casefold()
-    latitude = str(raw.get("latitude") or "").strip()
-    longitude = str(raw.get("longitude") or "").strip()
-    return "|".join((name, city, country, latitude, longitude, str(index)))
-
-
-def _entity_type_from_row(raw: dict[str, Any]) -> str:
-    entity_type = str(raw.get("entity_type") or "").strip().casefold()
-    if entity_type:
-        if entity_type.endswith("s"):
-            entity_type = entity_type[:-1]
-        return entity_type
-    if _coerce_flag(raw.get("entity_type_flight")):
-        return "flight"
-    if _coerce_flag(raw.get("entity_type_hotel")):
-        return "hotel"
-    if _coerce_flag(raw.get("entity_type_restaurant")):
-        return "restaurant"
-    if _coerce_flag(raw.get("entity_type_attraction")):
-        return "attraction"
-    return "destination"
-
-
-def _source_from_row(raw: dict[str, Any]) -> str | None:
-    source = str(raw.get("source") or "").strip()
-    if source:
-        return source
-    if _coerce_flag(raw.get("source_tbo_hotels")):
-        return "tbo_hotels"
-    if _coerce_flag(raw.get("source_tripadvisor")):
-        return "tripadvisor"
-    if _coerce_flag(raw.get("source_openstreetmap")):
-        return "openstreetmap"
-    return None
-
-
-def _description_from_row(raw: dict[str, Any]) -> str | None:
-    for key in ("description", "description_clean"):
-        value = raw.get(key)
-        if value is None or pd.isna(value):
-            continue
-        text = str(value).strip()
-        if text:
-            return text
-    return None
-
-
-def _rating_from_row(raw: dict[str, Any]) -> Decimal | None:
-    rating = _as_decimal(raw.get("stars"))
-    if rating is not None:
-        return rating
-
-    stars_norm = raw.get("stars_norm")
-    if stars_norm is None or pd.isna(stars_norm):
         return None
-    try:
-        # TravelTom clean snapshots may provide normalized z-scores only.
-        value = float(stars_norm)
-    except (TypeError, ValueError):
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, np.generic):
+        return _json_safe(value.item())
+    if pd.isna(value):
         return None
+    return value
 
-    # Map common z-score range to a rough [0, 5] star scale.
-    clipped = min(max(value, -2.5), 2.5)
-    scaled = ((clipped + 2.5) / 5.0) * 5.0
-    return _as_decimal(round(scaled, 2))
+
+# Tags that are too generic to signal a specific item type.
+_GENERIC_BUCKETS = {"hotels and travel", "travel"}
+
+
+def _normalize_tag(value: str) -> str:
+    return " ".join(value.lower().replace("&", " and ").split())
 
 
 def _item_type_from_tags(tags: list[str] | None) -> str:
     if not tags:
         return "activity"
-
-    normalized_tags = {_normalize_tag(tag) for tag in tags}
-    if any(tag in HOTEL_KEYWORDS for tag in normalized_tags):
+    normalized = [_normalize_tag(tag) for tag in tags]
+    filtered = [t for t in normalized if t not in _GENERIC_BUCKETS]
+    if any(any(k in tag for k in FLIGHT_KEYWORDS) for tag in filtered):
+        return "flight"
+    if any(any(k in tag for k in HOTEL_KEYWORDS) for tag in filtered):
         return "hotel"
-    if any(tag in RESTAURANT_KEYWORDS for tag in normalized_tags):
+    if any(any(k in tag for k in RESTAURANT_KEYWORDS) for tag in filtered):
         return "restaurant"
     return "activity"
 
 
-def _item_type_from_row(raw: dict[str, Any], tags: list[str] | None) -> str:
-    entity_type = _entity_type_from_row(raw)
-    if entity_type in {"hotel", "flight"}:
-        return entity_type
-    if entity_type in {"restaurant", "attraction", "destination"}:
-        return "destination"
-    return _item_type_from_tags(tags)
-
-
-def _normalize_tag(value: str) -> str:
-    normalized = value.casefold().strip()
-    normalized = normalized.replace("&", " and ")
-    normalized = " ".join(normalized.split())
-    return normalized
+def _item_type(raw: dict[str, Any]) -> str:
+    et = str(raw.get("entity_type") or "").lower()
+    if et in {"hotel", "lodging"}:
+        return "hotel"
+    if et in {"flight", "airport", "airline"}:
+        return "flight"
+    return "destination"
 
 
 def _price_from_attributes(attributes: dict[str, Any]) -> Decimal | None:
@@ -300,119 +208,100 @@ def _compute_popularity(raw: dict[str, Any]) -> float | None:
 
 
 def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
+    """
+    Convert a DataFrame into a list of dicts ready for upsert.
+
+    Rows with a missing or null ``business_id`` are skipped.  A
+    ``ValueError`` is raised early if the column is absent entirely so the
+    error is obvious rather than surfacing as a ``KeyError`` mid-loop.
+    """
+    if "business_id" not in df.columns:
+        raise ValueError(
+            "Missing required column: business_id\n"
+            f"Available columns: {list(df.columns)}"
+        )
+
     rows: list[dict[str, Any]] = []
 
-    for index, raw in enumerate(df.to_dict(orient="records")):
-        business_id = str(raw.get("business_id") or _synthetic_business_id(raw, index))
-        tags = (
-            _split_tags(raw.get("categories_list"))
-            or _split_tags(raw.get("categories"))
-            or _split_tags(raw.get("categories_clean"))
-        )
-        if tags is None and isinstance(raw.get("categories_clean"), str):
-            tags = _split_tags(str(raw.get("categories_clean")).replace(";", ","))
+    for raw in df.to_dict(orient="records"):
+        business_id = raw.get("business_id")
 
-        inferred_attributes = {
-            key.removeprefix("attr_"): bool(value)
-            for key, value in raw.items()
-            if key.startswith("attr_") and value is not None and not pd.isna(value)
-        }
-        attributes = _coerce_attributes(raw.get("attributes"))
-        if inferred_attributes:
-            attributes = {**attributes, **inferred_attributes}
+        # Skip rows with a missing or NaN business_id safely.
+        if business_id is None or pd.isna(business_id):
+            continue
 
-        category_flags = _extract_category_flags(raw)
-        popularity = _compute_popularity(raw)
-        entity_type = _entity_type_from_row(raw)
-        item_type = _item_type_from_row(raw, tags)
-        source = _source_from_row(raw)
-        description = _description_from_row(raw)
-
-        location_country = (
-            str(raw["country"])
-            if raw.get("country") is not None and not pd.isna(raw.get("country"))
-            else (
-                str(raw["country_name"])
-                if raw.get("country_name") is not None
-                and not pd.isna(raw.get("country_name"))
-                else None
-            )
-        )
+        business_id = str(business_id)
 
         rows.append(
             {
                 "id": uuid.uuid5(BUSINESS_ID_NAMESPACE, business_id),
-                "item_type": item_type,
-                "name": str(raw.get("name") or business_id),
-                "description": description,
-                "location_city": (
-                    str(raw["city"])
-                    if raw.get("city") is not None and not pd.isna(raw.get("city"))
-                    else None
+                "item_type": _item_type(raw),
+                "name": _safe_str(raw.get("name")) or business_id,
+                "description": _safe_str(
+                    raw.get("description_clean") or raw.get("description")
                 ),
-                "location_country": location_country,
+                "location_city": _safe_str(raw.get("city")),
+                "location_country": _safe_str(raw.get("country")) or "US",
                 "latitude": _as_decimal(raw.get("latitude")),
                 "longitude": _as_decimal(raw.get("longitude")),
-                "price": _price_from_attributes(attributes),
-                "rating": _rating_from_row(raw),
-                "tags": tags,
-                "metadata_json": {
-                    "business_id": business_id,
-                    "address": raw.get("address"),
-                    "state": raw.get("state"),
-                    "postal_code": raw.get("postal_code"),
-                    "categories": raw.get("categories"),
-                    "review_count": (
-                        int(raw["review_count"])
-                        if raw.get("review_count") is not None
-                        and not pd.isna(raw.get("review_count"))
-                        else None
+                "price": None,
+                "rating": _as_decimal(raw.get("stars")),
+                "tags": _split_tags(raw.get("categories_clean")),
+                "metadata_json": cast(
+                    dict[str, Any],
+                    _json_safe(
+                        {
+                            "business_id": business_id,
+                            "address": raw.get("address"),
+                            "state": raw.get("state"),
+                            "postal_code": raw.get("postal_code"),
+                            "categories": raw.get("categories"),
+                            "review_count": (
+                                int(raw["review_count"])
+                                if raw.get("review_count") is not None
+                                and not pd.isna(raw.get("review_count"))
+                                else None
+                            ),
+                            "is_open": (
+                                int(raw["is_open"])
+                                if raw.get("is_open") is not None
+                                and not pd.isna(raw.get("is_open"))
+                                else None
+                            ),
+                            "source": raw.get("source"),
+                            "entity_type": raw.get("entity_type"),
+                            "popularity": (
+                                float(raw["popularity"])
+                                if raw.get("popularity") is not None
+                                and not pd.isna(raw.get("popularity"))
+                                else None
+                            ),
+                            "quality_score": raw.get("quality_score"),
+                            "stars_norm": raw.get("stars_norm"),
+                            "review_count_norm": raw.get("review_count_norm"),
+                            "popularity_norm": raw.get("popularity_norm"),
+                        }
                     ),
-                    "is_open": (
-                        int(raw["is_open"])
-                        if raw.get("is_open") is not None
-                        and not pd.isna(raw.get("is_open"))
-                        else None
-                    ),
-                    "popularity": popularity,
-                    "attributes": attributes or None,
-                    "hours": _coerce_hours(raw.get("hours")),
-                    "category_flags": category_flags,
-                    "entity_type": entity_type,
-                    "source": source,
-                },
+                ),
             }
         )
+
     return rows
 
 
-def _filter_source(
-    df: pd.DataFrame, include_closed: bool, min_review_count: int
-) -> pd.DataFrame:
+def _filter(df: pd.DataFrame, min_review_count: int) -> pd.DataFrame:
     working = df.copy()
 
-    if not include_closed and "is_open" in working.columns:
-        working = working[working["is_open"] == 1]
-    if min_review_count > 0:
-        if "review_count" in working.columns:
-            review_signal = pd.to_numeric(
-                working["review_count"], errors="coerce"
-            ).fillna(0)
-            working = working[review_signal >= min_review_count]
-        elif "review_count_norm" in working.columns:
-            review_signal = pd.to_numeric(
-                working["review_count_norm"], errors="coerce"
-            ).fillna(0)
-            working = working[review_signal >= 0]
     if "business_id" in working.columns:
         working = working.drop_duplicates(subset="business_id")
+
+    if "review_count" in working.columns and min_review_count > 0:
+        working = working[working["review_count"].fillna(0) >= min_review_count]
 
     return working
 
 
-async def _upsert_rows(
-    rows: list[dict[str, Any]], batch_size: int, truncate: bool
-) -> int:
+async def _upsert(rows: list[dict[str, Any]], batch_size: int, truncate: bool) -> int:
     session_factory = get_session_factory()
 
     async with session_factory() as session:
@@ -421,7 +310,7 @@ async def _upsert_rows(
 
         for batch in _chunks(rows, batch_size):
             stmt = insert(CatalogItem).values(batch)
-            upsert_stmt = stmt.on_conflict_do_update(
+            stmt = stmt.on_conflict_do_update(
                 index_elements=[CatalogItem.id],
                 set_={
                     "item_type": stmt.excluded.item_type,
@@ -438,55 +327,33 @@ async def _upsert_rows(
                     "updated_at": func.now(),
                 },
             )
-            await session.execute(upsert_stmt)
+            await session.execute(stmt)
 
         await session.commit()
+
         result = await session.execute(select(func.count()).select_from(CatalogItem))
         return int(result.scalar_one())
 
 
-def _print_summary(rows: list[dict[str, Any]]) -> None:
-    by_type: dict[str, int] = {"destination": 0, "hotel": 0, "flight": 0}
-    for row in rows:
-        by_type[row["item_type"]] = by_type.get(row["item_type"], 0) + 1
-
-    print(f"Prepared rows: {len(rows)}")
-    print("Item types:")
-    print(f"  destination: {by_type.get('destination', 0)}")
-    print(f"  hotel: {by_type.get('hotel', 0)}")
-    print(f"  flight: {by_type.get('flight', 0)}")
-
-
 async def main_async(args: argparse.Namespace) -> None:
-    dataset_path = args.dataset.resolve()
-    if not dataset_path.exists():
-        print(f"Dataset: {dataset_path}")
+    df, label = _load_source_dataset(args.dataset)
+
+    print(f"Dataset: {label}")
+
+    if df is None:
         print("Dataset not found. Skipping catalog_items seed.")
         return
 
-    source, source_label = _load_source_dataset(dataset_path)
-    filtered = _filter_source(
-        source,
-        include_closed=args.include_closed,
-        min_review_count=args.min_review_count,
-    )
-    rows = _prepare_rows(filtered)
-
-    print(f"Dataset: {source_label}")
-    print(f"Input rows: {len(source)}")
-    print(f"Rows after filters: {len(filtered)}")
-    _print_summary(rows)
+    df = _filter(df, args.min_review_count)
+    rows = _prepare_rows(df)
+    print(f"Rows to insert: {len(rows)}")
 
     if args.dry_run:
         print("Dry-run enabled. No database changes made.")
         return
 
-    final_count = await _upsert_rows(
-        rows=rows,
-        batch_size=args.batch_size,
-        truncate=args.truncate,
-    )
-    print(f"catalog_items row count after load: {final_count}")
+    count = await _upsert(rows, args.batch_size, args.truncate)
+    print(f"Final row count: {count}")
 
     engine = get_engine()
     await engine.dispose()
@@ -496,18 +363,6 @@ def main() -> int:
     args = parse_args()
     asyncio.run(main_async(args))
     return 0
-
-
-def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
-    if not dataset_path.exists():
-        raise FileNotFoundError(f"Dataset not found: {dataset_path}")
-
-    suffix = dataset_path.suffix.casefold()
-    if suffix != ".csv":
-        raise ValueError(
-            "Only CSV datasets are supported for seeding. " f"Received: {dataset_path}"
-        )
-    return pd.read_csv(dataset_path, low_memory=False), str(dataset_path)
 
 
 if __name__ == "__main__":

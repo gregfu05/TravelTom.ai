@@ -34,6 +34,8 @@ the live API path.
 
 - `scripts/seed_catalog.py` remains the supported ingestion path for loading
   cleaned data into `catalog_items`.
+- The canonical cleaned seed dataset is
+  `traveltom/datasets/composite/traveltom_clean.csv`.
 - `traveltom/datasets/*` and legacy dataset-path settings are offline inputs for
   cleaning, training, or seeding workflows.
 

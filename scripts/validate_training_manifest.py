@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 REQUIRED_MANIFEST_FIELDS = (
@@ -39,7 +40,7 @@ def main() -> None:
 
 def validate_manifest(
     *,
-    manifest: dict[str, object],
+    manifest: Mapping[str, object],
     expected_model_version: str = "",
     expected_feature_schema_version: str = "",
 ) -> list[str]:

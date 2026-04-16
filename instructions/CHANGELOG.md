@@ -2,6 +2,14 @@
 
 ## 2026-04-16
 
+- Re-aligned seed and local-dev docs with the current dataset contract:
+  - `scripts/seed_catalog.py` now treats
+    `traveltom/datasets/composite/traveltom_clean.csv` as the canonical seed
+    input and no longer documents or depends on Parquet-era fallback behavior.
+  - `README.md`, `scripts/README.md`, `03-recommender/recommender-overview.md`,
+    `07-infra-ops/local-dev.md`, and `traveltom/datasets/README.md` now
+    describe the canonical CSV seed path and mark legacy Parquet artifacts as
+    offline-only.
 - Refreshed the runtime docs after planner/composer diagnostics and Ollama
   reliability fixes:
   - `README.md` now merges the current backend-owned orchestration model with a
