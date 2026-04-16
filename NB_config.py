@@ -6,7 +6,6 @@ import seaborn as sns
 
 warnings.filterwarnings("ignore")
 
-
 plt.style.use("seaborn-v0_8")
 sns.set_palette("husl")
 plt.rcParams["figure.figsize"] = (14, 5)
