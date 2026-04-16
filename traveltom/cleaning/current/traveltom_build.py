@@ -13,11 +13,12 @@ import json
 import logging
 import sys
 import time
+from typing import Any, cast
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import requests
+import requests  # type: ignore[import-untyped]
 from tqdm import tqdm
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -817,7 +818,7 @@ def norm_destinations() -> list[dict]:
         elif cat in ["city"]:
             etype = "attraction"
 
-        attrs = {}
+        attrs: dict[str, float | str] = {}
         if cost and not pd.isna(cost):
             attrs["avg_cost_usd"] = float(cost)
         if season and not pd.isna(season):
@@ -962,7 +963,9 @@ OVERPASS_QUERIES = {
 }
 
 
-def parse_osm_element(el: dict, city: str, meta: dict, etype: str) -> dict:
+def parse_osm_element(
+    el: dict[str, Any], city: str, meta: dict[str, Any], etype: str
+) -> dict[str, Any] | None:
     """Convert one OSM element to unified row."""
     tags = el.get("tags", {})
     lat = el.get("lat") or (el.get("center") or {}).get("lat")
@@ -1081,7 +1084,7 @@ def stage_cities_meta() -> pd.DataFrame:
 
     rows = []
     for city, meta in CITIES.items():
-        s, w, n, e = meta["bb"]
+        s, w, n, e = cast(tuple[float, float, float, float], meta["bb"])
         rows.append(
             {
                 "city": city,
