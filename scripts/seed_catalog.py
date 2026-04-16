@@ -20,8 +20,6 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 import pandas as pd
-from app.db.models.catalog_item import CatalogItem
-from app.db.session import get_engine, get_session_factory
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 
@@ -30,12 +28,17 @@ API_ROOT = REPO_ROOT / "apps" / "api"
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
+from app.db.models.catalog_item import CatalogItem  # noqa
+from app.db.session import get_engine, get_session_factory  # noqa
+
+# The clean snapshot CI deletes to force the fallback, then checks it was recreated.
 DEFAULT_DATASET = (
-    REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean.csv"
+    REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean2.csv"
 )
 
+# The authoritative raw CSV that is always committed and never deleted by CI.
 DEFAULT_RAW_DATASET = (
-    REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean2.csv"
+    REPO_ROOT / "traveltom" / "datasets" / "composite" / "traveltom_clean.csv"
 )
 
 BUSINESS_ID_NAMESPACE = uuid.UUID("56f6e980-b2c0-4be2-a238-7176bf5a4fa7")
@@ -74,14 +77,10 @@ T = TypeVar("T")
 
 
 def _read_dataframe(file_path: Path) -> pd.DataFrame:
-    """Read a dataset into a DataFrame (CSV or Parquet)."""
-    if file_path.suffix == ".csv":
-        return pd.read_csv(file_path, encoding="latin-1")
-
-    if file_path.suffix == ".parquet":
-        return pd.read_parquet(file_path)
-
-    raise ValueError(f"Unsupported file format: {file_path.suffix}")
+    """Read a CSV file into a DataFrame."""
+    if file_path.suffix != ".csv":
+        raise ValueError(f"Only CSV files are supported, got: {file_path.suffix}")
+    return pd.read_csv(file_path, encoding="latin-1", on_bad_lines="skip")
 
 
 def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
@@ -95,7 +94,7 @@ def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
     if dataset_path.exists():
         return _read_dataframe(dataset_path), str(dataset_path)
 
-    # --- fallback path -------------
+    # --- fallback path ---------------------------------------------------
     if not DEFAULT_RAW_DATASET.exists():
         raise FileNotFoundError(f"Raw dataset not found: {DEFAULT_RAW_DATASET}")
 
@@ -152,6 +151,7 @@ def _split_tags(value: Any) -> list[str] | None:
 HOTEL_KEYWORDS = ("hotel", "hostel", "resort", "lodging", "inn", "motel")
 FLIGHT_KEYWORDS = ("airline", "airport", "flight")
 
+# Tags that are too generic to signal a specific item type.
 _GENERIC_BUCKETS = {"hotels and travel", "travel"}
 
 
@@ -259,6 +259,7 @@ def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
     for raw in df.to_dict(orient="records"):
         business_id = raw.get("business_id")
 
+        # Skip rows with a missing or NaN business_id safely.
         if business_id is None or pd.isna(business_id):
             continue
 
@@ -406,6 +407,7 @@ async def _upsert(rows: list[dict[str, Any]], batch_size: int, truncate: bool) -
 
 
 async def main_async(args: argparse.Namespace) -> None:
+    # Single load — fallback + "copied from raw snapshot" print happen inside.
     df, label = _load_source_dataset(args.dataset)
     print(f"Dataset: {label}")
 
