@@ -154,6 +154,8 @@ def _item_type(raw: dict[str, Any]) -> str:
     if et in {"flight", "airport", "airline"}:
         return "flight"
     return "destination"
+
+
 def _price_from_attributes(attributes: dict[str, Any]) -> Decimal | None:
     raw = attributes.get("RestaurantsPriceRange2")
     return _as_decimal(raw)
