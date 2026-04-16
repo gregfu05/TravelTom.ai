@@ -17,7 +17,7 @@ import uuid
 from collections.abc import Iterator
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import numpy as np
 import pandas as pd
@@ -123,6 +123,20 @@ def _split_tags(value: Any) -> list[str] | None:
     if value is None or pd.isna(value):
         return None
     return [v.strip() for v in str(value).split(",") if v.strip()] or None
+
+
+def _json_safe(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, np.generic):
+        return _json_safe(value.item())
+    if pd.isna(value):
+        return None
+    return value
 
 
 # Tags that are too generic to signal a specific item type.
@@ -233,37 +247,42 @@ def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
                 "price": None,
                 "rating": _as_decimal(raw.get("stars")),
                 "tags": _split_tags(raw.get("categories_clean")),
-                "metadata_json": {
-                    "business_id": business_id,
-                    "address": raw.get("address"),
-                    "state": raw.get("state"),
-                    "postal_code": raw.get("postal_code"),
-                    "categories": raw.get("categories"),
-                    "review_count": (
-                        int(raw["review_count"])
-                        if raw.get("review_count") is not None
-                        and not pd.isna(raw.get("review_count"))
-                        else None
+                "metadata_json": cast(
+                    dict[str, Any],
+                    _json_safe(
+                        {
+                            "business_id": business_id,
+                            "address": raw.get("address"),
+                            "state": raw.get("state"),
+                            "postal_code": raw.get("postal_code"),
+                            "categories": raw.get("categories"),
+                            "review_count": (
+                                int(raw["review_count"])
+                                if raw.get("review_count") is not None
+                                and not pd.isna(raw.get("review_count"))
+                                else None
+                            ),
+                            "is_open": (
+                                int(raw["is_open"])
+                                if raw.get("is_open") is not None
+                                and not pd.isna(raw.get("is_open"))
+                                else None
+                            ),
+                            "source": raw.get("source"),
+                            "entity_type": raw.get("entity_type"),
+                            "popularity": (
+                                float(raw["popularity"])
+                                if raw.get("popularity") is not None
+                                and not pd.isna(raw.get("popularity"))
+                                else None
+                            ),
+                            "quality_score": raw.get("quality_score"),
+                            "stars_norm": raw.get("stars_norm"),
+                            "review_count_norm": raw.get("review_count_norm"),
+                            "popularity_norm": raw.get("popularity_norm"),
+                        }
                     ),
-                    "is_open": (
-                        int(raw["is_open"])
-                        if raw.get("is_open") is not None
-                        and not pd.isna(raw.get("is_open"))
-                        else None
-                    ),
-                    "source": raw.get("source"),
-                    "entity_type": raw.get("entity_type"),
-                    "popularity": (
-                        float(raw["popularity"])
-                        if raw.get("popularity") is not None
-                        and not pd.isna(raw.get("popularity"))
-                        else None
-                    ),
-                    "quality_score": raw.get("quality_score"),
-                    "stars_norm": raw.get("stars_norm"),
-                    "review_count_norm": raw.get("review_count_norm"),
-                    "popularity_norm": raw.get("popularity_norm"),
-                },
+                ),
             }
         )
 

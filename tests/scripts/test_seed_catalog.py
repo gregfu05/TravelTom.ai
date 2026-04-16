@@ -115,6 +115,37 @@ def test_main_async_dry_run_with_present_dataset(capsys, tmp_path: Path) -> None
     assert "Dry-run enabled. No database changes made." in captured
 
 
+def test_prepare_rows_normalizes_nan_metadata_values() -> None:
+    df = pd.DataFrame(
+        [
+            {
+                "business_id": "hotel-1",
+                "name": "Test Hotel",
+                "city": "Santa Barbara",
+                "country": "US",
+                "stars": 4.5,
+                "review_count": 25,
+                "entity_type": "hotel",
+                "quality_score": float("nan"),
+                "stars_norm": float("nan"),
+                "review_count_norm": float("nan"),
+                "popularity_norm": float("nan"),
+                "address": float("nan"),
+            }
+        ]
+    )
+
+    rows = seed_catalog._prepare_rows(df)
+
+    assert len(rows) == 1
+    metadata = rows[0]["metadata_json"]
+    assert metadata["quality_score"] is None
+    assert metadata["stars_norm"] is None
+    assert metadata["review_count_norm"] is None
+    assert metadata["popularity_norm"] is None
+    assert metadata["address"] is None
+
+
 def test_main_returns_zero_when_dataset_missing(tmp_path: Path, monkeypatch) -> None:
     args = argparse.Namespace(
         dataset=tmp_path / "traveltom_clean.csv",
