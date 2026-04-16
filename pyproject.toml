@@ -40,7 +40,7 @@ dev = [
   "httpx>=0.28",
   "mypy==1.20.1",
   "pytest==9.0.3",
-  "ruff==0.15.9",
+  "ruff==0.15.10",
 ]
 ranking-ml = [
   "lightgbm>=4.3",
