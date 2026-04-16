@@ -4,57 +4,44 @@ from __future__ import annotations
 
 import threading
 from functools import lru_cache
-from pathlib import Path
 from typing import Callable
 
 import pandas as pd
 
-from app.core.config import Settings, get_settings
+from app.core.config import Settings
 from app.schemas.tools.recommendations import (
     RecommendationQuery,
     RecommendationToolResponse,
 )
-from traveltom.recommendor.recommendor_v3 import (
-    prepare_catalog_for_v3,
-)
-from traveltom.recommendor.recommendor_v3 import (
-    recommendation_tool as recommendation_tool_v3,
-)
+from traveltom.recommendor import recommendor_v1
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_RECOMMENDER_DATASET_PATH = (
-    REPO_ROOT / "traveltom" / "datasets" / "traveltom_clean.csv"
-)
+_CATALOG_SOURCE_LABEL = "catalog_items"
 
 
 class RecommendationCatalogStore:
-    """Thread-safe in-memory holder for the prepared recommender catalog."""
+    """Thread-safe in-memory holder for the prepared runtime catalog."""
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._catalog: pd.DataFrame | None = None
-        self._dataset_path: Path | None = None
+        self._source_label: str | None = None
 
     def is_loaded(self) -> bool:
         with self._lock:
             return self._catalog is not None
 
-    def preload_from_csv(self, dataset_path: Path) -> pd.DataFrame:
-        resolved_path = dataset_path.expanduser().resolve()
+    def preload(self, *, force_reload: bool = False) -> pd.DataFrame:
         with self._lock:
-            if self._catalog is not None and self._dataset_path == resolved_path:
+            if self._catalog is not None and not force_reload:
                 return self._catalog
 
-        if not resolved_path.exists():
-            raise FileNotFoundError(
-                f"Recommendation dataset not found: {resolved_path}"
-            )
+        if force_reload:
+            _clear_v1_catalog_cache()
 
-        raw_catalog = pd.read_csv(resolved_path, low_memory=False)
-        prepared_catalog = prepare_catalog_for_v3(catalog=raw_catalog)
+        loaded_catalog = recommendor_v1._load_catalog()
         with self._lock:
-            self._catalog = prepared_catalog
-            self._dataset_path = resolved_path
+            self._catalog = loaded_catalog
+            self._source_label = _CATALOG_SOURCE_LABEL
             return self._catalog
 
     def get_catalog(self) -> pd.DataFrame:
@@ -66,22 +53,12 @@ class RecommendationCatalogStore:
     def clear(self) -> None:
         with self._lock:
             self._catalog = None
-            self._dataset_path = None
+            self._source_label = None
 
     @property
-    def dataset_path(self) -> Path | None:
+    def source_label(self) -> str | None:
         with self._lock:
-            return self._dataset_path
-
-
-def _resolve_dataset_path(settings: Settings) -> Path:
-    configured_path = settings.recommender_dataset_path.strip()
-    if not configured_path:
-        return DEFAULT_RECOMMENDER_DATASET_PATH
-    configured = Path(configured_path).expanduser()
-    if configured.is_absolute():
-        return configured
-    return (REPO_ROOT / configured).resolve()
+            return self._source_label
 
 
 @lru_cache(maxsize=1)
@@ -90,36 +67,46 @@ def get_recommendation_catalog_store() -> RecommendationCatalogStore:
 
 
 def preload_recommendation_catalog(settings: Settings | None = None) -> pd.DataFrame:
-    active_settings = settings or get_settings()
+    del settings
     store = get_recommendation_catalog_store()
-    return store.preload_from_csv(_resolve_dataset_path(active_settings))
+    return store.preload(force_reload=True)
 
 
 def get_runtime_recommendation_tool(
     *,
     settings: Settings | None = None,
 ) -> Callable[[RecommendationQuery], RecommendationToolResponse]:
-    active_settings = settings or get_settings()
+    del settings
     store = get_recommendation_catalog_store()
-    dataset_path = _resolve_dataset_path(active_settings)
 
     def _tool(query: RecommendationQuery) -> RecommendationToolResponse:
-        store.preload_from_csv(dataset_path)
-        return recommendation_tool_v3(
+        if not store.is_loaded():
+            store.preload()
+
+        catalog = store.get_catalog()
+        if catalog.empty:
+            catalog = store.preload(force_reload=True)
+
+        return recommendor_v1.recommendation_tool(
             query=query,
-            catalog=store.get_catalog(),
-            catalog_prepared=True,
+            catalog=catalog,
         )
 
     return _tool
 
 
 def clear_recommendation_catalog_store() -> None:
+    _clear_v1_catalog_cache()
     get_recommendation_catalog_store().clear()
 
 
+def _clear_v1_catalog_cache() -> None:
+    cache_clear = getattr(recommendor_v1._load_catalog, "cache_clear", None)
+    if callable(cache_clear):
+        cache_clear()
+
+
 __all__ = [
-    "DEFAULT_RECOMMENDER_DATASET_PATH",
     "RecommendationCatalogStore",
     "clear_recommendation_catalog_store",
     "get_recommendation_catalog_store",

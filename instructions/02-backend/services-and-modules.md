@@ -79,16 +79,17 @@ apps/api/
     payloads.
 - TravelTom agent service (`app/services/travel_tom_agent.py`):
   - Owns the route-facing backend agent abstraction used by `/chat` and `/recommendations/query`.
-  - Owns provider-backed structured planner calls for `/chat`.
-  - Owns the shared chat `create_agent` runtime for `/chat` and the
-    deterministic `create_agent` runtime for `direct_recommendation` mode.
-  - Owns `@tool` registration for the shared deterministic recommendation tool.
-  - Delegates planner validation, deterministic state preparation, transcript
-    normalization, and fallback logic to `OrchestratorService`.
-  - Wraps deterministic recommendation execution without changing recommender logic.
+  - Owns provider-backed structured planner/composer calls for `/chat`.
+  - Applies stage-level provider circuit-breaking.
+  - Emits local/dev planner/composer diagnostics and degraded-mode status.
+  - Delegates deterministic state preparation, routing, recommendation
+    execution, and response shaping to `OrchestratorService`.
+  - Calls the shared deterministic recommendation runtime directly for
+    `/recommendations/query`.
 - Orchestrator turn preparer (`app/services/orchestrator/turn_preparer.py`):
   - Owns deterministic hint extraction, planner invocation/validation,
     normalized planner output shaping, and recommendation slot gating.
+  - Does not apply hidden per-session planner cooldowns.
 - Orchestrator decision engine (`app/services/orchestrator/decision_engine.py`):
   - Owns the direct-response versus chat-agent routing decision after a turn is prepared.
 - Orchestrator recommendation runner (`app/services/orchestrator/recommendation_runner.py`):
@@ -98,16 +99,22 @@ apps/api/
   - Owns normalized recommendation outcome handling for results, empty results,
     and duplicate-only follow-up suppression.
 - Orchestrator model provider (`app/services/orchestrator/llm_provider.py`):
-  - Owns chat-model construction for OpenAI and Ollama chat-agent calls.
-  - Owns deterministic in-process models for disabled chat fallback and direct
-    recommendation mode.
-  - Treats provider-backed chat as the intended local natural-language runtime;
-    disabled remains the safe fallback/test path.
+  - Retains provider/model helper coverage and health-oriented compatibility
+    helpers used by tests and legacy support code.
+  - The route-facing chat runtime now uses structured planner/composer clients
+    directly instead of a free-form chat-agent model path.
 - Structured orchestrator providers (`app/services/orchestrator/providers/*.py`):
   - Own JSON-only planner/composer HTTP clients for OpenAI and Ollama.
-  - Keep structured planner transport separate from LangChain chat-agent runtime.
-  - On Ollama, prefer the OpenAI-compatible structured endpoint with schema
-    response formatting and a larger planner timeout budget than the chat-agent path.
+  - Keep structured planner/composer transport separate from deterministic
+    recommendation execution.
+  - On Ollama, prefer the native schema-constrained `/api/chat` flow before the
+    OpenAI-compatible endpoint, with additional payload-shape validation before
+    accepting structured output.
+- Recommendation runtime (`app/services/recommendation_runtime.py`):
+  - Owns the shared in-memory runtime catalog cache used by both `/chat` and
+    `/recommendations/query`.
+  - Loads the live runtime catalog from PostgreSQL-backed `recommendor_v1`.
+  - Does not depend on CSV boot paths at API runtime.
 - Recommender service:
   - Owns retrieval and ranking logic.
   - Deterministic outputs with versioned scoring.

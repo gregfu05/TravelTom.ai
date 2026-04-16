@@ -39,13 +39,22 @@ pwsh ./scripts/smoke-api.ps1 -BaseUrl http://localhost:8000
 pwsh ./scripts/smoke-web.ps1 -BaseUrl http://localhost:5173
 ```
 
-## Notes
+## Smoke checks
 
-- Keep one-off developer helpers here instead of scattering them across runtime folders.
-- If a script becomes part of the official delivery workflow, mirror the behavior in `instructions/` or the relevant infra README.
+API health plus deterministic recommendation endpoint:
 
-## Related Docs
+```bash
+pwsh ./scripts/smoke-api.ps1 -BaseUrl http://localhost:8000
+```
 
-- `../README.md`
-- `../instructions/03-recommender/`
-- `../instructions/07-infra-ops/`
+Conversational runtime checks across greeting, slot gating, follow-up carry-forward,
+repair turns, and direct recommendation execution:
+
+```bash
+pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider disabled
+pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider ollama
+```
+
+If you need a stable auth credential for repeated runs, pass `-Password`
+explicitly or set `TRAVELTOM_SMOKE_PASSWORD`. Otherwise the script generates a
+one-off password for the temporary smoke account it creates.

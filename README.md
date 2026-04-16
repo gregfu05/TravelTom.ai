@@ -1,204 +1,223 @@
 # TravelTom.ai
 
-TravelTom.ai is a full-stack travel planning application that combines a deterministic recommendation pipeline with an LLM orchestration layer. The LLM can decide when to ask follow-up questions or run tools, but the actual recommendation items come from grounded retrieval and ranking code, not model free-form generation.
+TravelTom is a full-stack travel planner with a deterministic recommendation
+core and an optional LLM-assisted chat layer. The backend owns recommendation
+execution, state updates, and safety checks; planner/composer model stages are
+bounded helpers, not sources of truth.
 
-## Why This Repo Exists
+## At a Glance
 
-- Demo the product: a planner that can keep trip context, ask for missing details, and return grounded travel recommendations.
-- Support contributors: the repo is split into runtime apps, infra, tests, and implementation instructions so the system can be extended without guessing where logic belongs.
-- Preserve experimentation safely: production runtime code lives under `apps/`, while older prototypes and data-prep workflows remain under `traveltom/`.
+| Area | Current Runtime |
+| --- | --- |
+| Chat orchestration | Backend-owned, deterministic first |
+| Recommendation source | PostgreSQL `catalog_items` |
+| LLM usage | Optional structured planner + grounded response composer |
+| Local default | `ORCHESTRATOR_LLM_PROVIDER=ollama` |
+| Deterministic fallback | Always available |
+| Auth | TravelTom local bearer auth implemented end to end |
 
-## System At A Glance
+## What This Repo Is
+
+TravelTom delivers a travel-planning chat experience backed by deterministic
+retrieval and ranking. Recommendations are grounded in validated backend data,
+and the conversation layer is designed to stay correct even when provider-backed
+LLM stages are slow, unavailable, or disabled.
+
+## Highlights
+
+- Deterministic recommendations with ranking explanations.
+- Backend-owned chat orchestration with strict state validation.
+- Optional provider-assisted planning and grounded response composition.
+- Local/dev diagnostics for planner/composer usage and degraded-mode fallback.
+- First-class documentation in `instructions/`.
+- Local-first development with Docker, Alembic, seed data, auth, and smoke tooling.
+- Azure deployment scaffolding for Container Apps, PostgreSQL, Key Vault, and App Insights.
+
+## Visual Overview
 
 ```mermaid
 flowchart LR
-  User[Traveler] --> Web[React web app]
-  Web --> API[FastAPI API]
-  API --> Auth[Auth + rate limit]
-  API --> Orch[LLM orchestrator]
-  Orch --> Tool[Deterministic recommendation tool]
-  Tool --> Ranker[Recommender v3 ranking pipeline]
-  Ranker --> Data[(TravelTom datasets)]
-  API --> DB[(PostgreSQL)]
-  Orch --> Model[OpenAI or Ollama provider]
-```
-
-TravelTom is intentionally split into two decision layers:
-
-- Conversational orchestration: interprets the user turn, preserves session state, and decides whether to clarify or search.
-- Deterministic recommendation execution: retrieves and ranks grounded results using code and data that can be tested independently of the LLM.
-
-## Request Flow
-
-```mermaid
-sequenceDiagram
-  participant U as User
-  participant W as Web App
-  participant A as API
-  participant O as Orchestrator
-  participant R as Recommender v3
-
-  U->>W: Send planner message
-  W->>A: POST /api/v1/chat
-  A->>O: Validate request + hydrate session state
-  O->>O: Decide clarify vs tool call
-  alt Recommendation needed
-    O->>R: recommendation_query
-    R-->>O: Ranked grounded results
-    O-->>A: Assistant message + recommendations + updated state
-  else Clarification needed
-    O-->>A: Clarifying question + updated state
+  subgraph Client
+    UI[React Web App]
   end
-  A-->>W: JSON response
-  W-->>U: Render chat + recommendations rail
+
+  subgraph Backend[FastAPI API Service]
+    API[API Gateway]
+    SEC[Auth and Rate Limit]
+    ORCH[Deterministic Orchestrator]
+    PLAN[Structured Planner]
+    COMP[Grounded Composer]
+    REC[Recommendation Runtime]
+    PERSIST[Chat Persistence]
+  end
+
+  subgraph Data
+    PG[(PostgreSQL)]
+  end
+
+  subgraph External
+    OLLAMA[Ollama]
+    OPENAI[OpenAI Compatible Endpoint]
+  end
+
+  UI --> API
+  API --> SEC
+  SEC --> ORCH
+  ORCH --> PLAN
+  ORCH --> REC
+  ORCH --> PERSIST
+  REC --> PG
+  PERSIST --> PG
+  PLAN --> OLLAMA
+  PLAN --> OPENAI
+  REC --> COMP
+  COMP --> OLLAMA
+  COMP --> OPENAI
 ```
 
-## Repository Map
+## Chat Runtime
 
 ```mermaid
 flowchart TD
-  Root[Repo root]
-  Root --> Apps[apps/ runtime services]
-  Root --> Instructions[instructions/ architecture and delivery docs]
-  Root --> Infra[infra/ local and Azure deployment]
-  Root --> Tests[tests/ unit and integration coverage]
-  Root --> Scripts[scripts/ data and verification tooling]
-  Root --> Legacy[traveltom/ experiments and historical pipelines]
-  Root --> Docs[docs/ supporting project notes]
+  U[User Message] --> E[Deterministic Extraction]
+  E --> P{Planner Healthy?}
+  P -- No --> G[Deterministic Guardrails]
+  P -- Yes --> SP[Structured Plan]
+  SP --> G
+  G --> R{Ready To Search?}
+  R -- No --> C[Clarification Response]
+  R -- Yes --> Q[Build RecommendationQuery]
+  Q --> X[Deterministic Recommendation Execution]
+  X --> M{Composer Healthy?}
+  M -- No --> D[Deterministic Grounded Copy]
+  M -- Yes --> GC[Grounded Composed Copy]
 ```
 
-## Runtime vs Legacy Boundaries
+## Runtime Shape
 
-- `apps/` is the runtime surface. If you are changing API behavior, frontend behavior, schemas, routers, or persistence boundaries, start here.
-- `traveltom/` contains experiments, data cleaning code, and recommender pipeline code that the runtime still imports in some places. Treat it as legacy-but-important, not as the primary app boundary.
-- `instructions/` is the implementation source of truth for architecture, constraints, and delivery standards.
-- `docs/` contains supporting notes, investigations, and planning artifacts that are useful but not the main architectural contract.
+- `apps/api`: FastAPI backend, chat persistence, recommender runtime, auth, telemetry.
+- `apps/web`: React/Vite frontend.
+- `traveltom/recommendor`: deterministic ranking and ML ranker experiments.
+- `instructions/`: repo source-of-truth docs.
+- `scripts/`: seeding, smoke tests, and operational helpers.
 
-## Quick Start
+## Local Backend Quickstart
 
-### Backend
+1. Create and activate a virtual environment.
+2. Install dependencies.
+3. Copy `.env.example` to `.env`.
+4. Run Postgres and migrations.
+5. Seed `catalog_items`.
+6. Start the API.
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -e .[dev]
-Copy-Item .env.example .env
+python -m venv venv
+venv\Scripts\activate
+pip install -e .
+copy .env.example .env
 alembic -c apps/api/alembic.ini upgrade head
+python scripts/seed_catalog.py --truncate
 uvicorn app.main:app --reload --app-dir apps/api
 ```
 
-If you want the legacy local catalog seed path as well:
+## Local Chat Modes
 
-```bash
-python scripts/seed_catalog.py --truncate
+- Default local mode: `ORCHESTRATOR_LLM_PROVIDER=ollama`
+- Deterministic-only mode: `ORCHESTRATOR_LLM_PROVIDER=disabled`
+- OpenAI mode: `ORCHESTRATOR_LLM_PROVIDER=openai`
+
+The active recommendation runtime reads from seeded PostgreSQL `catalog_items`.
+`RECOMMENDER_DATASET_PATH` is not used by `/api/v1/chat` or
+`/api/v1/recommendations/query`; it remains an offline or legacy setting.
+
+## Local Auth And Smoke Flow
+
+If `AUTH_ENABLED=true`, use TravelTom local bearer auth:
+
+```text
+POST /api/v1/auth/signup
+POST /api/v1/auth/login
+Authorization: Bearer <token>
 ```
 
-### Frontend
+The chat smoke runtime script now supports auth-aware checks and validates local
+diagnostics headers such as:
+
+- `X-TravelTom-Planner-Status`
+- `X-TravelTom-Planner-Used`
+- `X-TravelTom-Composer-Status`
+- `X-TravelTom-Composer-Used`
+- `X-TravelTom-Orchestration-Degraded`
+- `X-TravelTom-Fallback-Reason`
+
+`scripts/smoke-chat-runtime.ps1` generates a one-off password when `-Password`
+is omitted. Set `TRAVELTOM_SMOKE_PASSWORD` or pass `-Password` explicitly if you
+want a stable credential for repeated auth smoke runs.
+## Recommender Runtime
+
+- Active API runtime: shared recommendation runtime via
+  `apps/api/app/services/recommendation_runtime.py`
+- Runtime data source: PostgreSQL `catalog_items`
+- Deterministic direct endpoint: `/api/v1/recommendations/query`
+- Orchestrator endpoint: `/api/v1/chat`
+
+## Verification
+
+Run the backend test suite:
 
 ```bash
-cd apps/web
-npm install
-npm run dev
+venv\Scripts\python.exe -m pytest tests -q
 ```
 
-The Vite app proxies `/api/v1/*` to `VITE_API_PROXY_TARGET`, which defaults to `http://localhost:8000` in local development.
-
-### Docker Compose Path
-
-If you want the local full stack with Postgres, migrations, API, and web app:
-
-```bash
-docker compose -f infra/docker/docker-compose.yml up --build
-```
-
-Add the seed overlay if you want the one-shot catalog seed job before API startup:
-
-```bash
-docker compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.seed.yml up --build
-```
-
-## What Lives Where
-
-| Area | Purpose | Start here |
-| --- | --- | --- |
-| `apps/api` | FastAPI application, auth, schemas, services, persistence | `apps/api/README.md` |
-| `apps/web` | React planner UI, routes, API client, tests | `apps/web/README.md` |
-| `infra/docker` | Local compose-based stack | `infra/docker/README.md` |
-| `infra/azure` | Azure deployment templates and scripts | `infra/azure/README.md` |
-| `scripts` | Seeding, smoke checks, ranker evaluation helpers | `scripts/README.md` |
-| `tests` | API, orchestrator, recommender, and script test coverage | `tests/README.md` |
-| `traveltom` | Legacy data prep, recommender pipeline, experiments | `traveltom/README.md` |
-| `instructions` | Architecture, quality rules, implementation plan | `instructions/README.md` |
-
-## Development Workflows
-
-### Common Commands
-
-Backend:
-
-```bash
-python -m pytest tests -q
-```
-
-Frontend:
-
-```bash
-cd apps/web
-npm run test
-npm run typecheck
-```
-
-Smoke checks:
+Run smoke checks against a running API:
 
 ```bash
 pwsh ./scripts/smoke-api.ps1 -BaseUrl http://localhost:8000
-pwsh ./scripts/smoke-web.ps1 -BaseUrl http://localhost:5173
+pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider disabled
+pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider ollama -Email smoke@example.com
 ```
 
-### Current Runtime Shape
+## Repository Layout
 
-- API entrypoint: `apps/api/app/main.py`
-- Route surface: `apps/api/app/api/v1/`
-- Shared backend schemas: `apps/api/app/schemas/`
-- Orchestrator and chat agent logic: `apps/api/app/services/orchestrator/` and `apps/api/app/services/travel_tom_agent.py`
-- Current frontend routes: `/`, `/planner`, `/why-traveltom`, `/how-it-works`, `/login`, `/signup`
-- Active deterministic ranker path: `traveltom/recommendor/recommendor_v3.py`
+- `apps/` runtime services (API + web)
+- `infra/` local and cloud infrastructure
+- `scripts/` data and tooling
+- `tests/` unit and integration tests
+- `instructions/` authoritative design and implementation docs
+- `traveltom/` recommender and experiment code
 
-## Documentation Map
+## Docs Map
 
-Read these in order if you are onboarding to the codebase:
+- Start here: `instructions/README.md`
+- Backend modules: `instructions/02-backend/`
+- Recommender runtime: `instructions/03-recommender/`
+- Chat orchestration: `instructions/04-llm-orchestrator/`
+- Frontend UX: `instructions/05-frontend/`
+- Local dev and ops: `instructions/07-infra-ops/`
+- Testing strategy: `instructions/08-quality/testing-strategy.md`
+- Azure runtime infra: `infra/azure/README.md`
 
-1. `instructions/README.md`
-2. `instructions/01-architecture/system-overview.md`
-3. `instructions/01-architecture/repo-structure.md`
-4. `instructions/09-implementation-plan/implementation-plan.md`
+## Deployment
 
-Use these focused entrypoints by task:
+- Production API container: `apps/api/Dockerfile`
+- Production web container: `apps/web/Dockerfile`
+- Azure infra modules: `infra/azure/`
+- Smoke checks:
+  - `pwsh ./scripts/smoke-api.ps1 -BaseUrl https://<api-url>`
+  - `pwsh ./scripts/smoke-web.ps1 -BaseUrl https://<web-url>`
+  - `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl https://<api-url> -Provider ollama -AccessToken <token>`
 
-- Backend/API work: `instructions/02-backend/`
-- Recommender work: `instructions/03-recommender/`
-- LLM orchestration work: `instructions/04-llm-orchestrator/`
-- Frontend work: `instructions/05-frontend/`
-- Infra and runbooks: `instructions/07-infra-ops/`
-- Ticket authoring: `instructions/08-quality/agent-ticket-template.md`
+## Configuration Rules
 
-Supporting docs live here:
-
-- `docs/README.md`
-- `examples/README.md`
-- `infra/azure/README.md`
-- `infra/docker/README.md`
-
-## Documentation Conventions
-
-- Use local `README.md` files for orientation, ownership, entrypoints, and common commands.
-- Use `instructions/` for architecture rules, implementation guidance, and project standards.
-- Prefer Mermaid diagrams over external screenshots for system visuals.
-- Keep runtime docs aligned with the real code layout. If behavior changes, update docs in the same change.
+- Never hard-code environment-specific values in code.
+- Store local settings in `.env` and keep `.env.example` updated.
+- Restart the API after changing orchestrator, auth, or provider env vars so
+  cached dependencies reload.
 
 ## Status
 
-The project is in active MVP build-out. The repository already has production-shaped boundaries, but several areas still preserve prototype lineage and active design iteration.
+MVP build-out in progress, with backend-owned orchestration and local/dev
+diagnostics now aligned with the current runtime.
 
 ## License
 

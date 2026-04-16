@@ -41,9 +41,9 @@ def test_eval_missing_core_slots() -> None:
 
     assert captured_query["value"] is None
     message = response.assistant_message.casefold()
-    assert "destination" in message
-    assert "hotel" in message
+    assert "city" in message
     assert response.state["conversation"]["last_requested_slots"] == ["destination"]
+    assert response.state["conversation"]["last_recommendation_item_type"] == "hotel"
 
 
 def test_eval_complete_request_progressively_asks_for_budget_when_missing() -> None:

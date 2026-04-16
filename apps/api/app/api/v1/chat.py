@@ -6,7 +6,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,7 +27,7 @@ from app.schemas.api.chat import (
     ChatSessionResponse,
 )
 from app.schemas.auth import AuthenticatedPrincipal
-from app.schemas.orchestrator import OrchestratorResponse
+from app.schemas.orchestrator import OrchestratorDiagnostics, OrchestratorResponse
 from app.schemas.state import SessionState
 from app.services.chat_persistence import (
     load_session_state,
@@ -50,6 +50,7 @@ def get_chat_uow(db: AsyncSession = Depends(get_db)) -> ChatUnitOfWork:
 async def chat(
     request: ChatRequest,
     http_request: Request,
+    http_response: Response,
     _: None = Depends(enforce_chat_rate_limit),
     principal: AuthenticatedPrincipal | None = Depends(require_authenticated_principal),
     settings: Settings = Depends(get_settings),
@@ -112,6 +113,11 @@ async def chat(
                     user_message=request.message,
                     session_state=state,
                     recent_messages=recent_messages,
+                )
+                _set_orchestration_debug_headers(
+                    response=http_response,
+                    settings=settings,
+                    diagnostics=orchestration.diagnostics,
                 )
 
                 persisted_state = SessionState.model_validate(orchestration.state)
@@ -278,6 +284,37 @@ def _to_chat_response(
         itinerary=orchestration.itinerary,
         state=orchestration.state,
     )
+
+
+def _set_orchestration_debug_headers(
+    *,
+    response: Response,
+    settings: Settings,
+    diagnostics: OrchestratorDiagnostics,
+) -> None:
+    """Expose machine-readable orchestration diagnostics in local/dev only."""
+
+    if not settings.is_local_environment:
+        return
+
+    response.headers["X-TravelTom-Provider"] = diagnostics.provider or "unknown"
+    response.headers["X-TravelTom-Planner-Attempted"] = str(
+        diagnostics.planner_attempted
+    ).lower()
+    response.headers["X-TravelTom-Planner-Used"] = str(diagnostics.planner_used).lower()
+    response.headers["X-TravelTom-Planner-Status"] = diagnostics.planner_status
+    response.headers["X-TravelTom-Composer-Attempted"] = str(
+        diagnostics.composer_attempted
+    ).lower()
+    response.headers["X-TravelTom-Composer-Used"] = str(
+        diagnostics.composer_used
+    ).lower()
+    response.headers["X-TravelTom-Composer-Status"] = diagnostics.composer_status
+    response.headers["X-TravelTom-Orchestration-Degraded"] = str(
+        diagnostics.degraded
+    ).lower()
+    if diagnostics.fallback_reason is not None:
+        response.headers["X-TravelTom-Fallback-Reason"] = diagnostics.fallback_reason
 
 
 def _to_chat_session_response(
