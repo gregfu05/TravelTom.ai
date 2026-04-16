@@ -17,8 +17,10 @@ import uuid
 from collections.abc import Iterator
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from shutil import copyfile
 from typing import Any, TypeVar
 
+import numpy as np
 import pandas as pd
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -75,41 +77,33 @@ T = TypeVar("T")
 
 
 def _read_dataframe(file_path: Path) -> pd.DataFrame:
-    """Read a CSV or Parquet file, detecting format by magic bytes not extension."""
-    with open(file_path, "rb") as fh:
-        magic = fh.read(4)
-
-    if magic == b"PAR1":
+    if file_path.suffix == ".csv":
+        return pd.read_csv(file_path)
+    if file_path.suffix == ".parquet":
         return pd.read_parquet(file_path)
+    raise ValueError("Only CSV datasets")
 
-    return pd.read_csv(file_path, encoding="latin-1", on_bad_lines="skip")
 
-
-def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
-    """
-    Load the dataset at *dataset_path*.
-
-    If the file is missing the function falls back to DEFAULT_RAW_DATASET,
-    copies it to *dataset_path* so subsequent runs are fast,
-    and prints the sentinel string that CI greps for.
-    """
+def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame | None, str]:
     if dataset_path.exists():
+        if dataset_path.suffix != ".csv":
+            raise ValueError("Only CSV datasets")
         return _read_dataframe(dataset_path), str(dataset_path)
 
-    # --- fallback path ---------------------------------------------------
-    if not DEFAULT_RAW_DATASET.exists():
-        raise FileNotFoundError(f"Raw dataset not found: {DEFAULT_RAW_DATASET}")
+    if dataset_path == DEFAULT_DATASET:
+        if not DEFAULT_RAW_DATASET.exists():
+            return None, "missing dataset"
 
-    df = _read_dataframe(DEFAULT_RAW_DATASET)
+        df = _read_dataframe(DEFAULT_RAW_DATASET)
 
-    from shutil import copyfile
+        dataset_path.parent.mkdir(parents=True, exist_ok=True)
+        copyfile(DEFAULT_RAW_DATASET, dataset_path)
 
-    dataset_path.parent.mkdir(parents=True, exist_ok=True)
-    copyfile(DEFAULT_RAW_DATASET, dataset_path)
+        print("copied from raw snapshot")
 
-    print("copied from raw snapshot")
+        return df, "copied from raw snapshot"
 
-    return df, "copied from raw snapshot"
+    return None, f"Dataset not found: {dataset_path}"
 
 
 def parse_args() -> argparse.Namespace:
@@ -162,31 +156,17 @@ def _normalize_tag(value: str) -> str:
 
 
 def _item_type_from_tags(tags: list[str] | None) -> str:
-    """
-    Classify a list of tags into "hotel", "flight", or "destination".
-
-    Generic tags like "Hotels & Travel" (normalises to "hotels and travel")
-    are ignored so they don't accidentally match the hotel keywords.
-
-    Examples
-    --------
-    ["Hotels", "Restaurants"] → "hotel"
-    ["Airports", "Travel"]    → "flight"
-    ["Hotels & Travel"]       → "destination"   # generic-only → falls through
-    """
     if not tags:
-        return "destination"
-
+        return "activity"
     normalized = [_normalize_tag(tag) for tag in tags]
     filtered = [t for t in normalized if t not in _GENERIC_BUCKETS]
-
     if any(any(k in tag for k in FLIGHT_KEYWORDS) for tag in filtered):
         return "flight"
-
     if any(any(k in tag for k in HOTEL_KEYWORDS) for tag in filtered):
         return "hotel"
-
-    return "destination"
+    if any(any(k in tag for k in RESTAURANT_KEYWORDS) for tag in filtered):
+        return "restaurant"
+    return "activity"
 
 
 def _item_type(raw: dict[str, Any]) -> str:
@@ -270,15 +250,6 @@ def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
         rows.append(
             {
                 "id": uuid.uuid5(BUSINESS_ID_NAMESPACE, business_id),
-                "item_type": item_type,
-                "name": str(raw.get("name") or business_id),
-                "description": description,
-                "location_city": (
-                    str(raw["city"])
-                    if raw.get("city") is not None and not pd.isna(raw.get("city"))
-                    else None
-                ),
-                "location_country": location_country,
                 "item_type": _item_type(raw),
                 "name": _safe_str(raw.get("name")) or business_id,
                 "description": _safe_str(
@@ -309,20 +280,8 @@ def _prepare_rows(df: pd.DataFrame) -> list[dict[str, Any]]:
                         and not pd.isna(raw.get("is_open"))
                         else None
                     ),
-                    "popularity": popularity,
-                    "attributes": attributes or None,
-                    "hours": _coerce_hours(raw.get("hours")),
-                    "category_flags": category_flags,
-                    "entity_type": entity_type,
-                    "source": source,
                     "source": raw.get("source"),
                     "entity_type": raw.get("entity_type"),
-                    "review_count": (
-                        int(raw["review_count"])
-                        if raw.get("review_count") is not None
-                        and not pd.isna(raw.get("review_count"))
-                        else None
-                    ),
                     "popularity": (
                         float(raw["popularity"])
                         if raw.get("popularity") is not None
@@ -362,6 +321,8 @@ def _filter_source(
         working = working.drop_duplicates(subset="business_id")
 
     return working
+
+
 def _filter(df: pd.DataFrame, min_review_count: int) -> pd.DataFrame:
     working = df.copy()
 
@@ -409,16 +370,20 @@ async def _upsert(rows: list[dict[str, Any]], batch_size: int, truncate: bool) -
 
 
 async def main_async(args: argparse.Namespace) -> None:
-    # Single load — fallback + "copied from raw snapshot" print happen inside.
     df, label = _load_source_dataset(args.dataset)
+
     print(f"Dataset: {label}")
+
+    if df is None:
+        print("Dataset not found. Skipping catalog_items seed.")
+        return
 
     df = _filter(df, args.min_review_count)
     rows = _prepare_rows(df)
     print(f"Rows to insert: {len(rows)}")
 
     if args.dry_run:
-        print("Dry run complete.")
+        print("Dry-run enabled. No database changes made.")
         return
 
     count = await _upsert(rows, args.batch_size, args.truncate)
@@ -431,39 +396,7 @@ async def main_async(args: argparse.Namespace) -> None:
 def main() -> int:
     args = parse_args()
     asyncio.run(main_async(args))
-
-
-def _read_dataframe(file_path: Path) -> pd.DataFrame:
-    """Read a DataFrame from various file formats."""
-    if file_path.suffix == ".csv":
-        return pd.read_csv(file_path)
-    elif file_path.suffix == ".parquet":
-        return pd.read_parquet(file_path)
-    else:
-        raise ValueError(f"Unsupported file format: {file_path.suffix}")
-
-
-def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame, str]:
-    if dataset_path.exists():
-        return _read_dataframe(dataset_path), str(dataset_path)
-
-    default_clean_path = DEFAULT_DATASET.resolve()
-    if dataset_path != default_clean_path:
-        raise FileNotFoundError(f"Dataset not found: {dataset_path}")
-
-    if not DEFAULT_RAW_DATASET.exists():
-        raise FileNotFoundError(
-            f"Dataset not found: {dataset_path} and raw fallback missing: "
-            f"{DEFAULT_RAW_DATASET.resolve()}"
-        )
-
-    # Fast bootstrap fallback: mirror raw snapshot to the cleaned path.
-    default_clean_path.parent.mkdir(parents=True, exist_ok=True)
-    copyfile(DEFAULT_RAW_DATASET, default_clean_path)
-    return (
-        _read_dataframe(default_clean_path),
-        f"{default_clean_path} (copied from raw snapshot)",
-    )
+    return 0
 
 
 if __name__ == "__main__":
