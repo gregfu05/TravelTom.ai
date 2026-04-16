@@ -113,7 +113,8 @@ apps/api/
 - Recommendation runtime (`app/services/recommendation_runtime.py`):
   - Owns the shared in-memory runtime catalog cache used by both `/chat` and
     `/recommendations/query`.
-  - Loads the live runtime catalog from PostgreSQL-backed `recommendor_v1`.
+  - Loads the live runtime catalog from PostgreSQL `catalog_items` and adapts
+    it into the `recommendor_v3` retrieval/ranking shape.
   - Does not depend on CSV boot paths at API runtime.
 - Recommender service:
   - Owns retrieval and ranking logic.

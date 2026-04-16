@@ -13,9 +13,15 @@ from app.schemas.tools.recommendations import (
     RecommendationQuery,
     RecommendationToolResponse,
 )
-from traveltom.recommendor import recommendor_v1
+from traveltom.recommendor import recommendor_v1, recommendor_v3
 
 _CATALOG_SOURCE_LABEL = "catalog_items"
+_ENTITY_TYPE_BY_ITEM_TYPE = {
+    "hotel": "hotel",
+    "restaurant": "restaurant",
+    "activity": "attraction",
+    "flight": "flight",
+}
 
 
 class RecommendationCatalogStore:
@@ -38,7 +44,7 @@ class RecommendationCatalogStore:
         if force_reload:
             _clear_v1_catalog_cache()
 
-        loaded_catalog = recommendor_v1._load_catalog()
+        loaded_catalog = _load_runtime_catalog_for_v3()
         with self._lock:
             self._catalog = loaded_catalog
             self._source_label = _CATALOG_SOURCE_LABEL
@@ -87,9 +93,10 @@ def get_runtime_recommendation_tool(
         if catalog.empty:
             catalog = store.preload(force_reload=True)
 
-        return recommendor_v1.recommendation_tool(
+        return recommendor_v3.recommendation_tool(
             query=query,
             catalog=catalog,
+            catalog_prepared=True,
         )
 
     return _tool
@@ -104,6 +111,58 @@ def _clear_v1_catalog_cache() -> None:
     cache_clear = getattr(recommendor_v1._load_catalog, "cache_clear", None)
     if callable(cache_clear):
         cache_clear()
+
+
+def _load_runtime_catalog_for_v3() -> pd.DataFrame:
+    """Load the PostgreSQL-backed runtime catalog and normalize it for v3."""
+
+    raw_catalog = recommendor_v1._load_catalog()
+    if raw_catalog.empty:
+        return pd.DataFrame()
+
+    working = raw_catalog.copy()
+
+    if "entity_type" not in working.columns and "item_type" in working.columns:
+        working["entity_type"] = (
+            working["item_type"]
+            .astype("string")
+            .fillna("")
+            .str.strip()
+            .str.lower()
+            .map(_ENTITY_TYPE_BY_ITEM_TYPE)
+            .fillna("destination")
+        )
+
+    if "categories" not in working.columns and "tags" in working.columns:
+        working["categories"] = working["tags"].apply(_tags_to_categories)
+    elif "tags" in working.columns:
+        empty_categories = working["categories"].isna() | (
+            working["categories"].astype("string").fillna("").str.strip() == ""
+        )
+        working.loc[empty_categories, "categories"] = working.loc[
+            empty_categories, "tags"
+        ].apply(_tags_to_categories)
+
+    if "description" not in working.columns:
+        working["description"] = ""
+    if "source" not in working.columns:
+        working["source"] = _CATALOG_SOURCE_LABEL
+    if "country" not in working.columns:
+        working["country"] = ""
+    if "country_name" not in working.columns:
+        working["country_name"] = ""
+    if "state" not in working.columns:
+        working["state"] = ""
+    if "continent" not in working.columns:
+        working["continent"] = ""
+
+    return recommendor_v3.prepare_catalog_for_v3(catalog=working)
+
+
+def _tags_to_categories(value: object) -> str:
+    if isinstance(value, list):
+        return ",".join(str(item).strip() for item in value if str(item).strip())
+    return ""
 
 
 __all__ = [
