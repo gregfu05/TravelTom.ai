@@ -76,7 +76,7 @@ T = TypeVar("T")
 def _read_dataframe(file_path: Path) -> pd.DataFrame:
     """Read a dataset into a DataFrame (CSV or Parquet)."""
     if file_path.suffix == ".csv":
-        return pd.read_csv(file_path)
+        return pd.read_csv(file_path, encoding="latin-1")
 
     if file_path.suffix == ".parquet":
         return pd.read_parquet(file_path)
