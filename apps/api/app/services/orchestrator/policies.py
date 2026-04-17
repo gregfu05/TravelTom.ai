@@ -85,7 +85,7 @@ _CORE_SLOT_QUESTIONS = {
     "budget": "What budget range should I use?",
 }
 _ITEM_TYPE_REQUIRED_SLOT_ORDER = {
-    "hotel": ("destination", "dates", "budget"),
+    "hotel": ("destination", "dates"),
     "restaurant": ("destination",),
     "activity": ("destination",),
 }

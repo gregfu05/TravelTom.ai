@@ -973,12 +973,69 @@ class OrchestratorService:
             if isinstance(composed_message, str):
                 normalized = composed_message.strip()
                 if normalized:
+                    if not self._is_safe_composer_message(
+                        session_state=session_state,
+                        user_message=user_message,
+                        outcome=outcome,
+                        candidate_message=normalized,
+                    ):
+                        if diagnostics is not None:
+                            diagnostics.composer_status = (
+                                "rejected_misaligned_clarification"
+                            )
+                        return fallback_message
                     if diagnostics is not None:
                         diagnostics.composer_used = True
                     return normalized
             return fallback_message
 
         return fallback_message
+
+    def _is_safe_composer_message(
+        self,
+        *,
+        session_state: SessionState,
+        user_message: str,
+        outcome: Literal[
+            "clarification", "results", "empty_results", "invalid_request"
+        ],
+        candidate_message: str,
+    ) -> bool:
+        if outcome != "clarification":
+            return True
+        if is_greeting(user_message) or is_social_turn(user_message):
+            return True
+
+        clarification_kind = clarification_kind_for_state(session_state)
+        normalized_candidate = candidate_message.casefold()
+        requested_slots = list(session_state.conversation.last_requested_slots)
+
+        if clarification_kind == "search_type":
+            return all(
+                token in normalized_candidate
+                for token in ("hotel", "restaurant", "activity")
+            )
+
+        if clarification_kind != "core_slot" or not requested_slots:
+            return True
+
+        expected_slot = requested_slots[0]
+        slot_cues: dict[str, tuple[str, ...]] = {
+            "destination": ("destination", "city", "place"),
+            "dates": ("date", "dates", "when"),
+            "budget": ("budget", "price", "cost", "range"),
+        }
+        conflicting_cues = {
+            slot: cues for slot, cues in slot_cues.items() if slot != expected_slot
+        }
+
+        if not any(cue in normalized_candidate for cue in slot_cues[expected_slot]):
+            return False
+        return not any(
+            cue in normalized_candidate
+            for cues in conflicting_cues.values()
+            for cue in cues
+        )
 
     def _orchestrator_response_from_recommendation_outcome(
         self,

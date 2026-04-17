@@ -128,6 +128,53 @@ def test_day_first_date_reply_does_not_overwrite_existing_destination() -> None:
     assert updated.constraints.dates.end.isoformat() == "2026-05-20"
 
 
+def test_shared_month_day_first_date_reply_fills_dates_without_overwriting_destination() -> (
+    None
+):
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-day-first-shared-month",
+            "constraints": {"destination": "Milan"},
+            "entities": {"destinations": ["Milan"]},
+            "conversation": {
+                "last_requested_slots": ["dates"],
+                "last_user_intent": "recommend",
+            },
+        }
+    )
+
+    updated = apply_message_state_updates(
+        message="from the 20th to the 25th of April",
+        session_state=state,
+        today=date(2026, 4, 17),
+    )
+
+    assert updated.constraints.destination == "Milan"
+    assert updated.constraints.dates is not None
+    assert updated.constraints.dates.start.isoformat() == "2026-04-20"
+    assert updated.constraints.dates.end.isoformat() == "2026-04-25"
+
+
+@pytest.mark.parametrize(
+    ("message",),
+    [
+        ("from the 20th to the 25th of April",),
+        ("to the",),
+    ],
+)
+def test_low_confidence_fragments_do_not_persist_as_destinations(message: str) -> None:
+    state = SessionState(session_id="sess-low-confidence-destination")
+
+    updated = apply_message_state_updates(
+        message=message,
+        session_state=state,
+        today=date(2026, 4, 17),
+    )
+
+    assert updated.constraints.destination is None
+    assert updated.entities.destinations == []
+
+
 def test_extracts_bare_budget_reply_with_symbol_when_budget_slot_requested() -> None:
     state = SessionState.model_validate(
         {

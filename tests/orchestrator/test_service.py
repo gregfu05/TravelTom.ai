@@ -1614,6 +1614,27 @@ def test_orchestrator_day_first_dates_fill_advances_past_dates_slot() -> None:
             },
         }
     )
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        captured_query["value"] = query
+        return RecommendationToolResponse.model_validate(
+            {
+                "ranking_version": "heuristic-v1",
+                "results": [
+                    {
+                        "item_id": "hotel-sb-day-first",
+                        "item_type": "hotel",
+                        "score": 0.9,
+                        "rank": 1,
+                        "features": {"name": "Day First Hotel"},
+                        "explanation": "Grounded hotel after parsing day-first dates.",
+                    }
+                ],
+            }
+        )
 
     response = service.handle_message(
         user_message="Let's go for something like 10th of May to 20th of May",
@@ -1629,6 +1650,7 @@ def test_orchestrator_day_first_dates_fill_advances_past_dates_slot() -> None:
         agent_executor=lambda _messages: {
             "messages": [AIMessage(content="What budget range should I use?")]
         },
+        recommendation_executor=recommendation_executor,
     )
 
     assert response.state["constraints"]["dates"] == {
@@ -1636,8 +1658,133 @@ def test_orchestrator_day_first_dates_fill_advances_past_dates_slot() -> None:
         "end": "2026-05-20",
     }
     assert response.state["constraints"]["destination"] == "Santa Barbara"
-    assert response.state["conversation"]["last_requested_slots"] == ["budget"]
-    assert "budget" in response.assistant_message.casefold()
+    assert captured_query["value"] is not None
+    assert response.state["conversation"]["last_requested_slots"] == []
+    assert response.recommendations[0].item_id == "hotel-sb-day-first"
+
+
+def test_orchestrator_shared_month_day_first_dates_trigger_hotel_results_without_budget() -> (
+    None
+):
+    service = OrchestratorService()
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-shared-month-hotel-results",
+            "constraints": {"destination": "Milan"},
+            "conversation": {
+                "last_requested_slots": ["dates"],
+                "last_user_intent": "recommend",
+                "last_recommendation_item_type": "hotel",
+                "last_recommendation_query": "recommend hotels in Milan",
+            },
+        }
+    )
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        captured_query["value"] = query
+        return RecommendationToolResponse.model_validate(
+            {
+                "ranking_version": "heuristic-v1",
+                "results": [
+                    {
+                        "item_id": "hotel-milan-1",
+                        "item_type": "hotel",
+                        "score": 0.94,
+                        "rank": 1,
+                        "features": {"name": "Milan Central Hotel"},
+                        "explanation": "Grounded hotel for the requested Milan dates.",
+                    }
+                ],
+            }
+        )
+
+    response = service.handle_message(
+        user_message="from the 20th to the 25th of April",
+        session_state=state,
+        recent_messages=[
+            TranscriptMessage(
+                role="assistant",
+                content="What travel dates should I use for these hotel recommendations?",
+            )
+        ],
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+        recommendation_executor=recommendation_executor,
+    )
+
+    query = captured_query["value"]
+    assert query is not None
+    assert query.constraints.destination == "Milan"
+    assert query.constraints.dates is not None
+    assert query.constraints.dates.start.isoformat() == "2026-04-20"
+    assert query.constraints.dates.end.isoformat() == "2026-04-25"
+    assert query.constraints.budget is None
+    assert response.recommendations[0].item_id == "hotel-milan-1"
+    assert response.state["conversation"]["last_requested_slots"] == []
+
+
+def test_orchestrator_madrid_hotel_request_reuses_dates_and_runs_without_budget() -> None:
+    service = OrchestratorService()
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-madrid-hotel-results",
+            "constraints": {
+                "destination": "Milan",
+                "dates": {"start": "2026-04-20", "end": "2026-04-25"},
+            },
+            "conversation": {
+                "last_requested_slots": ["budget"],
+                "last_user_intent": "recommend",
+                "last_recommendation_item_type": "hotel",
+                "last_recommendation_query": "recommend hotels in Milan",
+            },
+        }
+    )
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        captured_query["value"] = query
+        return RecommendationToolResponse.model_validate(
+            {
+                "ranking_version": "heuristic-v1",
+                "results": [
+                    {
+                        "item_id": "hotel-madrid-1",
+                        "item_type": "hotel",
+                        "score": 0.95,
+                        "rank": 1,
+                        "features": {"name": "Madrid Grand Stay"},
+                        "explanation": "Grounded hotel for Madrid with carried dates.",
+                    }
+                ],
+            }
+        )
+
+    response = service.handle_message(
+        user_message="Provide top 5 hotels in Madrid",
+        session_state=state,
+        recent_messages=[
+            TranscriptMessage(
+                role="assistant",
+                content="What budget range should I use for these hotel recommendations?",
+            )
+        ],
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+        recommendation_executor=recommendation_executor,
+    )
+
+    query = captured_query["value"]
+    assert query is not None
+    assert query.constraints.destination == "Madrid"
+    assert query.constraints.dates is not None
+    assert query.constraints.budget is None
+    assert response.recommendations[0].item_id == "hotel-madrid-1"
+    assert response.state["constraints"]["destination"] == "Madrid"
+    assert response.state["conversation"]["last_requested_slots"] == []
 
 
 def test_orchestrator_bare_budget_reply_executes_recommendation_after_budget_slot() -> (
@@ -1989,6 +2136,46 @@ def test_orchestrator_uses_grounded_response_composer_after_tool_result() -> Non
     assert captured_prompts
     assert "Lisbon Stay" in captured_prompts[0]
     assert "Raw transcript copy" not in response.assistant_message
+
+
+def test_orchestrator_rejects_misaligned_composer_clarification_copy() -> None:
+    service = OrchestratorService()
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-composer-guardrail",
+            "constraints": {"destination": "Milan"},
+            "conversation": {
+                "last_requested_slots": ["dates"],
+                "last_user_intent": "recommend",
+                "last_recommendation_item_type": "hotel",
+                "last_recommendation_query": "recommend hotels in Milan",
+            },
+        }
+    )
+
+    response = service.handle_message(
+        user_message="Hotel",
+        session_state=state,
+        recent_messages=[
+            TranscriptMessage(
+                role="assistant",
+                content="What travel dates should I plan around?",
+            )
+        ],
+        agent_executor=lambda _messages: {"messages": []},
+        response_composer=lambda _prompt: (
+            "What specific activities or interests would you like to prioritize in Milan?"
+        ),
+    )
+
+    assert response.assistant_message == (
+        "What travel dates should I use for these hotel recommendations?"
+    )
+    assert response.state["conversation"]["last_requested_slots"] == ["dates"]
+    assert response.diagnostics.composer_status == (
+        "rejected_misaligned_clarification"
+    )
+    assert response.diagnostics.composer_used is False
 
 
 def test_orchestrator_slot_filling_reaches_recommendation_on_final_turn() -> None:
