@@ -68,7 +68,8 @@
 - Recommendation items only come from validated `RecommendationToolResponse`.
 - The backend, not the model, decides when to search.
 - Model-authored tool arguments are not required for `/api/v1/chat`.
-- Hotel searches require destination, dates, and budget.
+- Hotel searches require destination and dates for first-pass retrieval.
+- Budget remains an optional hotel refinement input.
 - Restaurant and activity searches require destination.
 - Follow-up turns preserve carried query and item-type state in
   `SessionState.conversation`.

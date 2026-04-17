@@ -42,7 +42,8 @@
   - Route: `/planner`
   - Empty state
   - Empty-state chips encourage either:
-    - hotel prompts with destination, dates, and budget, or
+    - hotel prompts with destination and dates, with budget as an optional
+      refinement, or
     - restaurant/activity prompts with destination
   - Conversation progression supports:
     - natural greeting

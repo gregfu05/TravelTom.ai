@@ -56,10 +56,13 @@ Composer hard rules:
 - Greetings and social turns do not mutate trip slots.
 - Meta questions stay conversational.
 - Repair turns do not auto-trigger a new search.
-- Hotel slot gating waits for destination, dates, and budget.
+- Hotel slot gating waits for destination and dates. Budget is an optional
+  refinement input for first-pass hotel retrieval.
 - Restaurant and activity slot gating wait for destination.
 - Follow-up phrases such as `show me more` and `cheaper` reuse carried query state.
 - Interest extraction is token-aware and negation-aware.
+- Composer-authored clarification text must align with the backend-computed
+  missing slot or fall back to deterministic copy.
 - Natural one-shot requests such as
   `Hotels in Lisbon from 2026-05-10 to 2026-05-20 under 2000 EUR`
   must work without planner help.

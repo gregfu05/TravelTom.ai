@@ -53,9 +53,9 @@ export function PlannerConversation({
           </div>
           <h2 className="chat-welcome-heading">Start with a trip idea</h2>
           <p className="chat-welcome-sub">
-            Share a destination, then add dates and budget for hotels, or jump
-            straight into restaurants and activities for a place you already
-            have in mind.
+            Share a destination, then add dates for hotels, or jump straight
+            into restaurants and activities for a place you already have in
+            mind. Add budget when you want tighter hotel price filtering.
           </p>
           <div className="suggestion-chips">
             {SUGGESTION_CHIPS.map((chip) => (

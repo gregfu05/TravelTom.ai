@@ -1,5 +1,13 @@
 # Instructions Changelog
 
+## Unreleased
+
+- Updated orchestrator and frontend guidance so hotel searches become
+  search-ready with destination and dates, while budget is treated as an
+  optional refinement input.
+- Documented clarification-copy guardrails that reject model-written prompts
+  when they drift away from the backend-computed missing slot.
+
 ## 2026-04-17
 
 - Hardened the dev Azure deployment path and aligned runtime docs with the

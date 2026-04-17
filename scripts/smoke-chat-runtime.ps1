@@ -250,6 +250,58 @@ if ($Provider -ne "disabled") {
         -Context "Complete recommendation turn did not use the response composer"
 }
 
+$transcriptSession = New-SessionId "smoke-transcript"
+$null = Invoke-ChatTurn `
+    -SessionId $transcriptSession `
+    -Message "I want to go to Milan" `
+    -Token $token
+$transcriptDates = Invoke-ChatTurn `
+    -SessionId $transcriptSession `
+    -Message "from the 20th to the 25th of April" `
+    -Token $token
+Assert-True `
+    ($transcriptDates.Body.state.constraints.destination -eq "Milan") `
+    "Shared-month date reply overwrote the destination"
+Assert-True `
+    ($null -ne $transcriptDates.Body.state.constraints.dates) `
+    "Shared-month date reply did not persist dates"
+$transcriptHotel = Invoke-ChatTurn `
+    -SessionId $transcriptSession `
+    -Message "Hotel" `
+    -Token $token
+Assert-True `
+    ($transcriptHotel.Body.state.constraints.destination -eq "Milan") `
+    "Hotel follow-up did not preserve Milan as the destination"
+Assert-True `
+    ($transcriptHotel.Body.state.conversation.last_requested_slots.Count -eq 0) `
+    "Hotel follow-up should not block on budget after dates are known"
+Assert-True `
+    ($null -ne $transcriptHotel.Body.recommendations) `
+    "Hotel follow-up did not return a recommendations array"
+
+$madridSession = New-SessionId "smoke-madrid"
+$null = Invoke-ChatTurn `
+    -SessionId $madridSession `
+    -Message "I want to go to Milan" `
+    -Token $token
+$null = Invoke-ChatTurn `
+    -SessionId $madridSession `
+    -Message "20th of April to 25th of April" `
+    -Token $token
+$madrid = Invoke-ChatTurn `
+    -SessionId $madridSession `
+    -Message "Provide top 5 hotels in Madrid" `
+    -Token $token
+Assert-True `
+    ($madrid.Body.state.constraints.destination -eq "Madrid") `
+    "Madrid hotel request did not update destination"
+Assert-True `
+    ($null -ne $madrid.Body.state.constraints.dates) `
+    "Madrid hotel request did not retain carried dates"
+Assert-True `
+    ($madrid.Body.state.conversation.last_requested_slots.Count -eq 0) `
+    "Madrid hotel request should not re-block on budget"
+
 $preferenceSession = New-SessionId "smoke-preferences"
 $null = Invoke-ChatTurn `
     -SessionId $preferenceSession `

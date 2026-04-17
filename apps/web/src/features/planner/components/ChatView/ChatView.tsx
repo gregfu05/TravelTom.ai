@@ -419,8 +419,9 @@ export function ChatView() {
               </button>
             </div>
             <p className="chat-form-hint">
-              For hotels, include destination, dates, and budget. For
-              restaurants or activities, destination is enough to get started.
+              For hotels, include destination and dates. Add budget if you want
+              tighter price filtering. For restaurants or activities,
+              destination is enough to get started.
             </p>
           </form>
         </div>
