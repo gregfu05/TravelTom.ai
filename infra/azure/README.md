@@ -19,7 +19,7 @@ Use a feature branch and open a PR for review.
 ```bash
 git switch main
 git pull --ff-only
-git switch -c feature/infra-ollama-service
+git switch -c fix/<short-scope-name>
 ```
 
 Keep commits small and frequent:
@@ -103,6 +103,17 @@ Use the helper script to avoid long manual commands:
 
 - `infra/azure/scripts/deploy-env.sh`
 
+If you already have a shared Ollama deployment, you can point the API at it and
+skip provisioning the internal GPU Ollama app:
+
+```bash
+export EXTERNAL_OLLAMA_BASE_URL='https://travel-tom-ollama.redcliff-ec369dbd.westeurope.azurecontainerapps.io'
+```
+
+When `EXTERNAL_OLLAMA_BASE_URL` is set, the full-stack deployment reuses that
+endpoint for `OLLAMA_BASE_URL` and omits the internal Ollama Container App plus
+its GPU workload profile requirement.
+
 ### Validate
 
 ```bash
@@ -165,12 +176,16 @@ ACR_LOGIN_SERVER=$(az acr show -n "$ACR_NAME" -g traveltom-dev-rg --query loginS
 
 az acr login --name "$ACR_NAME"
 
-docker build -f apps/api/Dockerfile -t "$ACR_LOGIN_SERVER/traveltom-api:dev" .
+docker build --platform linux/amd64 -f apps/api/Dockerfile -t "$ACR_LOGIN_SERVER/traveltom-api:dev" .
 docker push "$ACR_LOGIN_SERVER/traveltom-api:dev"
 
-docker build -f apps/web/Dockerfile -t "$ACR_LOGIN_SERVER/traveltom-web:dev" .
+docker build --platform linux/amd64 -f apps/web/Dockerfile -t "$ACR_LOGIN_SERVER/traveltom-web:dev" .
 docker push "$ACR_LOGIN_SERVER/traveltom-web:dev"
 ```
+
+If you bootstrap from Apple Silicon locally, keep the explicit `--platform linux/amd64`
+flag. Azure Container Apps won't run arm64-only images built from a default Mac Docker
+context.
 
 Re-deploy with image overrides:
 
@@ -179,6 +194,46 @@ API_IMAGE="$ACR_LOGIN_SERVER/traveltom-api:dev" \
 WEB_IMAGE="$ACR_LOGIN_SERVER/traveltom-web:dev" \
 infra/azure/scripts/deploy-env.sh dev deploy
 ```
+
+## GitHub Actions Configuration
+
+The GitHub workflows only work after these environment-level values are set.
+
+`azure-dev` secrets:
+
+- `AZURE_CLIENT_ID`
+- `AZURE_TENANT_ID`
+- `AZURE_SUBSCRIPTION_ID`
+- `DEV_DATABASE_URL`
+- `DEV_FRONTEND_APPINSIGHTS_CONNECTION_STRING` (optional)
+
+`azure-dev` vars:
+
+- `AZURE_CONTAINER_REGISTRY_NAME`
+- `AZURE_RESOURCE_GROUP_DEV`
+- `AZURE_CONTAINER_APP_API_DEV`
+- `AZURE_CONTAINER_APP_WEB_DEV`
+- `DEV_API_BASE_URL`
+
+`azure-prod` secrets:
+
+- `AZURE_CLIENT_ID`
+- `AZURE_TENANT_ID`
+- `AZURE_SUBSCRIPTION_ID`
+- `PROD_DATABASE_URL`
+
+`azure-prod` vars:
+
+- `AZURE_CONTAINER_REGISTRY_NAME`
+- `AZURE_RESOURCE_GROUP_PROD`
+- `AZURE_CONTAINER_APP_API_PROD`
+- `AZURE_CONTAINER_APP_WEB_PROD`
+
+Important:
+
+- `travel-tom-rg` is the standalone Ollama path shown above. It currently does not include the API or web Container Apps unless you provision them separately.
+- The `Deploy Dev` workflow only rolls existing Container Apps forward. It does not create `api` or `web` apps from scratch.
+- If you point `AZURE_RESOURCE_GROUP_DEV` at `travel-tom-rg`, the app names in `AZURE_CONTAINER_APP_API_DEV` and `AZURE_CONTAINER_APP_WEB_DEV` must already exist there.
 
 ## Verify Ollama and API
 
@@ -249,6 +304,7 @@ Internet
 | `ollamaCpu` | Ollama CPU cores |
 | `ollamaMemory` | Ollama memory |
 | `ollamaKeepAlive` | Ollama model keep-alive |
+| `externalOllamaBaseUrl` | Optional shared/external Ollama endpoint for the API |
 | `postgresAdminLogin` | PostgreSQL admin username |
 | `postgresAdminPassword` | PostgreSQL admin password (secure) |
 | `corsAllowedOrigins` | API CORS origins |
@@ -267,6 +323,7 @@ Internet
 
 - API and web Container Apps receive `AcrPull` role assignments automatically via managed identity.
 - API runtime now receives `DATABASE_URL` via Container App secret reference instead of a plain env value.
+- Set `EXTERNAL_OLLAMA_BASE_URL` when you want the API to reuse an existing standalone Ollama service such as `travel-tom-ollama` in `travel-tom-rg`.
 - When `enableMlops=true`, the API Container App receives blob read access to the
   MLOps storage account so it can fetch promoted ranker artifacts at startup.
 - Keep `main.dev.bicepparam` and `main.prod.bicepparam` as baseline defaults; override via script env vars when testing alternatives.

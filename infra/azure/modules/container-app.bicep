@@ -68,7 +68,6 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: containerAppEnvironmentId
     configuration: {
       activeRevisionsMode: 'Multiple'
-      revisionSuffix: empty(revisionSuffix) ? null : revisionSuffix
       ingress: {
         external: ingressExternal
         targetPort: targetPort
@@ -92,6 +91,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
       }]
     }
     template: {
+      revisionSuffix: empty(revisionSuffix) ? null : revisionSuffix
       containers: [
         {
           name: appName

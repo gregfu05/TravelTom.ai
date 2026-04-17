@@ -46,6 +46,12 @@ param ollamaMemory string = environment == 'prod' ? '16Gi' : '8Gi'
 @description('How long Ollama keeps models in memory after requests.')
 param ollamaKeepAlive string = environment == 'prod' ? '30m' : '10m'
 
+@description('Optional externally managed Ollama base URL to use instead of deploying an internal Ollama app.')
+param externalOllamaBaseUrl string = ''
+
+@description('Optional existing Container Apps environment name to reuse instead of creating a new one.')
+param existingContainerAppEnvironmentName string = ''
+
 @description('PostgreSQL admin username.')
 param postgresAdminLogin string
 
@@ -63,6 +69,7 @@ param openaiBaseUrl string = 'https://api.openai.com/v1'
 @description('Optional OpenAI API key.')
 param openaiApiKey string = ''
 
+@secure()
 @description('Optional local auth token secret for current auth flow.')
 param localAuthTokenSecret string = ''
 
@@ -77,6 +84,9 @@ param managedByTag string = 'codex'
 
 @description('Optional owner/team tag applied to all Azure resources.')
 param ownerTag string = 'traveltom'
+
+@description('Whether to persist deployment secrets into Key Vault during bootstrap.')
+param bootstrapKeyVaultSecrets bool = false
 
 @description('Public network access setting for the container registry.')
 @allowed([
@@ -98,6 +108,9 @@ param keyVaultPublicNetworkAccess string = environment == 'prod' ? 'Disabled' : 
   'Disabled'
 ])
 param postgresPublicNetworkAccess string = 'Enabled'
+
+@description('Azure location for PostgreSQL Flexible Server.')
+param postgresLocation string = location
 
 @description('Whether to allow Azure services firewall access to Postgres.')
 param postgresAllowAzureServicesFirewall bool = environment == 'prod' ? false : true
@@ -149,14 +162,18 @@ param promotedMlModelArtifactUri string = ''
 @description('Promoted ranker model version label for the current environment.')
 param promotedMlModelVersion string = ''
 
+@description('Optional PostgreSQL server name override.')
+param postgresServerNameOverride string = ''
+
 var resourceToken = toLower(uniqueString(resourceGroup().id, environment))
 var resourcePrefix = '${prefix}-${environment}'
 var acrName = take(replace('${prefix}${environment}${resourceToken}', '-', ''), 50)
 var lawName = '${resourcePrefix}-law'
 var appInsightsName = '${resourcePrefix}-appi'
 var keyVaultName = take(replace('${resourcePrefix}-kv-${resourceToken}', '-', ''), 24)
-var storageAccountName = take(replace('${prefix}${environment}st${resourceToken}', '-', ''), 24)
-var postgresServerName = '${resourcePrefix}-psql'
+var postgresServerName = empty(trim(postgresServerNameOverride))
+  ? '${resourcePrefix}-psql'
+  : trim(postgresServerNameOverride)
 var postgresDatabaseName = 'traveltom'
 var containerEnvName = '${resourcePrefix}-cae'
 var apiAppName = '${resourcePrefix}-api'
@@ -166,6 +183,15 @@ var mlopsStorageAccountName = take(replace('${prefix}${environment}ml${resourceT
 var mlopsIdentityName = '${resourcePrefix}-mlops-id'
 var mlWorkspaceName = '${resourcePrefix}-mlw'
 var gpuWorkloadProfileName = 'gpu-t4'
+var deployInternalOllama = empty(trim(externalOllamaBaseUrl))
+var reuseExistingContainerEnv = !empty(trim(existingContainerAppEnvironmentName))
+var hasOpenAiApiKey = !empty(trim(openaiApiKey))
+var resolvedOllamaBaseUrl = deployInternalOllama
+  ? 'http://${ollamaApp.outputs.fqdn}'
+  : trim(externalOllamaBaseUrl)
+var containerAppEnvironmentId = reuseExistingContainerEnv
+  ? existingContainerEnv.id
+  : containerEnv.id
 var commonTags = {
   app: 'traveltom'
   environment: environment
@@ -213,11 +239,13 @@ module keyVault './modules/keyvault.bicep' = {
     location: location
     publicNetworkAccess: keyVaultPublicNetworkAccess
     tags: commonTags
-    secrets: {
-      OPENAI_API_KEY: openaiApiKey
-      LOCAL_AUTH_TOKEN_SECRET: localAuthTokenSecret
-      POSTGRES_ADMIN_PASSWORD: postgresAdminPassword
-    }
+    secrets: bootstrapKeyVaultSecrets
+      ? {
+          OPENAI_API_KEY: openaiApiKey
+          LOCAL_AUTH_TOKEN_SECRET: localAuthTokenSecret
+          POSTGRES_ADMIN_PASSWORD: postgresAdminPassword
+        }
+      : {}
   }
 }
 
@@ -225,7 +253,7 @@ module postgres './modules/postgres.bicep' = {
   name: 'postgres'
   params: {
     serverName: postgresServerName
-    location: location
+    location: postgresLocation
     administratorLogin: postgresAdminLogin
     administratorPassword: postgresAdminPassword
     databaseName: postgresDatabaseName
@@ -261,7 +289,11 @@ module mlopsIdentity './modules/managed-identity.bicep' = if (enableMlops) {
   }
 }
 
-resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
+resource existingContainerEnv 'Microsoft.App/managedEnvironments@2024-03-01' existing = if (reuseExistingContainerEnv) {
+  name: existingContainerAppEnvironmentName
+}
+
+resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = if (!reuseExistingContainerEnv) {
   name: containerEnvName
   location: location
   tags: commonTags
@@ -273,16 +305,23 @@ resource containerEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
         sharedKey: monitoring.outputs.logAnalyticsSharedKey
       }
     }
-    workloadProfiles: [
-      {
-        name: 'Consumption'
-        workloadProfileType: 'Consumption'
-      }
-      {
-        name: gpuWorkloadProfileName
-        workloadProfileType: 'Consumption-GPU-T4'
-      }
-    ]
+    workloadProfiles: deployInternalOllama
+      ? [
+          {
+            name: 'Consumption'
+            workloadProfileType: 'Consumption'
+          }
+          {
+            name: gpuWorkloadProfileName
+            workloadProfileType: 'Consumption-GPU-T4'
+          }
+        ]
+      : [
+          {
+            name: 'Consumption'
+            workloadProfileType: 'Consumption'
+          }
+        ]
   }
 }
 
@@ -296,7 +335,7 @@ module mlWorkspace './modules/aml-workspace.bicep' = if (enableMlops) {
     workspaceName: mlWorkspaceName
     location: location
     applicationInsightsId: monitoring.outputs.appInsightsId
-    keyVaultId: keyVault.id
+    keyVaultId: keyVault.outputs.id
     storageAccountId: mlopsStorage.outputs.id
     containerRegistryId: containerRegistryForMl.id
     publicNetworkAccess: mlWorkspacePublicNetworkAccess
@@ -304,12 +343,12 @@ module mlWorkspace './modules/aml-workspace.bicep' = if (enableMlops) {
   }
 }
 
-module ollamaApp './modules/ollama-app.bicep' = {
+module ollamaApp './modules/ollama-app.bicep' = if (deployInternalOllama) {
   name: 'ollama-app'
   params: {
     appName: ollamaAppName
     location: location
-    containerAppEnvironmentId: containerEnv.id
+    containerAppEnvironmentId: containerAppEnvironmentId
     image: ollamaImage
     workloadProfileName: gpuWorkloadProfileName
     modelNames: [
@@ -329,92 +368,104 @@ module apiApp './modules/container-app.bicep' = {
   params: {
     appName: apiAppName
     location: location
-    containerAppEnvironmentId: containerEnv.id
+    containerAppEnvironmentId: containerAppEnvironmentId
     image: apiImage
     targetPort: 8000
     minReplicas: 0
     maxReplicas: environment == 'prod' ? 2 : 1
     registryServer: acr.outputs.loginServer
-    envVars: [
-      {
-        name: 'APP_ENV'
-        value: environment
-      }
-      {
-        name: 'DATABASE_URL'
-        secretRef: 'database-url'
-      }
-      {
-        name: 'CORS_ALLOWED_ORIGINS'
-        value: corsAllowedOrigins
-      }
-      {
-        name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-        value: monitoring.outputs.appInsightsConnectionString
-      }
-      {
-        name: 'TELEMETRY_SERVICE_NAME'
-        value: 'traveltom-api'
-      }
-      {
-        name: 'JSON_LOGS_ENABLED'
-        value: 'true'
-      }
-      {
-        name: 'ORCHESTRATOR_LLM_PROVIDER'
-        value: 'ollama'
-      }
-      {
-        name: 'OLLAMA_BASE_URL'
-        value: 'http://${ollamaApp.outputs.fqdn}'
-      }
-      {
-        name: 'OLLAMA_PLANNING_MODEL'
-        value: ollamaPlanningModel
-      }
-      {
-        name: 'OLLAMA_RESPONSE_MODEL'
-        value: ollamaResponseModel
-      }
-      {
-        name: 'OPENAI_BASE_URL'
-        value: openaiBaseUrl
-      }
-      {
-        name: 'ORCHESTRATOR_OPENAI_API_KEY'
-        secretRef: 'openai-api-key'
-      }
-      {
-        name: 'LOCAL_AUTH_TOKEN_SECRET'
-        secretRef: 'local-auth-token-secret'
-      }
-      {
-        name: 'TRAVELTOM_ML_RANKER_ARTIFACT_URI'
-        value: promotedMlModelArtifactUri
-      }
-      {
-        name: 'TRAVELTOM_ML_RANKER_PROMOTED_VERSION'
-        value: promotedMlModelVersion
-      }
-      {
-        name: 'TRAVELTOM_ML_RANKER_CACHE_DIR'
-        value: '/tmp/traveltom-ml-cache'
-      }
-    ]
-    secrets: [
-      {
-        name: 'database-url'
-        value: 'postgresql+asyncpg://${postgresAdminLogin}:${postgresAdminPassword}@${postgres.outputs.fqdn}:5432/${postgresDatabaseName}?ssl=require'
-      }
-      {
-        name: 'openai-api-key'
-        value: openaiApiKey
-      }
-      {
-        name: 'local-auth-token-secret'
-        value: localAuthTokenSecret
-      }
-    ]
+    envVars: concat(
+      [
+        {
+          name: 'APP_ENV'
+          value: environment
+        }
+        {
+          name: 'DATABASE_URL'
+          secretRef: 'database-url'
+        }
+        {
+          name: 'CORS_ALLOWED_ORIGINS'
+          value: corsAllowedOrigins
+        }
+        {
+          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+          value: monitoring.outputs.appInsightsConnectionString
+        }
+        {
+          name: 'TELEMETRY_SERVICE_NAME'
+          value: 'traveltom-api'
+        }
+        {
+          name: 'JSON_LOGS_ENABLED'
+          value: 'true'
+        }
+        {
+          name: 'ORCHESTRATOR_LLM_PROVIDER'
+          value: 'ollama'
+        }
+        {
+          name: 'OLLAMA_BASE_URL'
+          value: resolvedOllamaBaseUrl
+        }
+        {
+          name: 'OLLAMA_PLANNING_MODEL'
+          value: ollamaPlanningModel
+        }
+        {
+          name: 'OLLAMA_RESPONSE_MODEL'
+          value: ollamaResponseModel
+        }
+        {
+          name: 'OPENAI_BASE_URL'
+          value: openaiBaseUrl
+        }
+        {
+          name: 'LOCAL_AUTH_TOKEN_SECRET'
+          secretRef: 'local-auth-token-secret'
+        }
+        {
+          name: 'TRAVELTOM_ML_RANKER_ARTIFACT_URI'
+          value: promotedMlModelArtifactUri
+        }
+        {
+          name: 'TRAVELTOM_ML_RANKER_PROMOTED_VERSION'
+          value: promotedMlModelVersion
+        }
+        {
+          name: 'TRAVELTOM_ML_RANKER_CACHE_DIR'
+          value: '/tmp/traveltom-ml-cache'
+        }
+      ],
+      hasOpenAiApiKey
+        ? [
+            {
+              name: 'ORCHESTRATOR_OPENAI_API_KEY'
+              secretRef: 'openai-api-key'
+            }
+          ]
+        : []
+    )
+    secrets: concat(
+      [
+        {
+          name: 'database-url'
+          value: 'postgresql+asyncpg://${postgresAdminLogin}:${postgresAdminPassword}@${postgres.outputs.fqdn}:5432/${postgresDatabaseName}?ssl=require'
+        }
+        {
+          name: 'local-auth-token-secret'
+          value: localAuthTokenSecret
+        }
+      ],
+      hasOpenAiApiKey
+        ? [
+            {
+              name: 'openai-api-key'
+              value: openaiApiKey
+            }
+          ]
+        : []
+    )
     ingressExternal: true
     livenessPath: '/api/v1/health'
     readinessPath: '/api/v1/health'
@@ -430,7 +481,7 @@ module webApp './modules/container-app.bicep' = {
   params: {
     appName: webAppName
     location: location
-    containerAppEnvironmentId: containerEnv.id
+    containerAppEnvironmentId: containerAppEnvironmentId
     image: webImage
     targetPort: 8080
     minReplicas: 0
@@ -466,7 +517,7 @@ resource mlopsStorageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' exis
 }
 
 resource apiAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(containerRegistry.id, apiApp.outputs.principalId, acrPullRoleDefinitionId)
+  name: guid(containerRegistry.id, apiAppName, acrPullRoleDefinitionId)
   scope: containerRegistry
   properties: {
     roleDefinitionId: acrPullRoleDefinitionId
@@ -476,7 +527,7 @@ resource apiAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-
 }
 
 resource webAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(containerRegistry.id, webApp.outputs.principalId, acrPullRoleDefinitionId)
+  name: guid(containerRegistry.id, webAppName, acrPullRoleDefinitionId)
   scope: containerRegistry
   properties: {
     roleDefinitionId: acrPullRoleDefinitionId
@@ -486,7 +537,7 @@ resource webAcrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-
 }
 
 resource mlopsStorageContributorRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableMlops) {
-  name: guid(mlopsStorage.outputs.id, mlopsIdentity.outputs.principalId, storageBlobDataContributorRoleDefinitionId)
+  name: guid(mlopsStorageAccount.id, mlopsIdentityName, storageBlobDataContributorRoleDefinitionId)
   scope: mlopsStorageAccount
   properties: {
     roleDefinitionId: storageBlobDataContributorRoleDefinitionId
@@ -496,7 +547,7 @@ resource mlopsStorageContributorRoleAssignment 'Microsoft.Authorization/roleAssi
 }
 
 resource apiMlopsStorageReaderRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableMlops) {
-  name: guid(mlopsStorage.outputs.id, apiApp.outputs.principalId, storageBlobDataReaderRoleDefinitionId)
+  name: guid(mlopsStorageAccount.id, apiAppName, storageBlobDataReaderRoleDefinitionId)
   scope: mlopsStorageAccount
   properties: {
     roleDefinitionId: storageBlobDataReaderRoleDefinitionId
@@ -510,8 +561,10 @@ output apiAppName string = apiApp.name
 output apiUrl string = apiApp.outputs.latestRevisionFqdn
 output webAppName string = webApp.name
 output webUrl string = webApp.outputs.latestRevisionFqdn
-output ollamaAppName string = ollamaApp.name
-output ollamaInternalFqdn string = ollamaApp.outputs.fqdn
+output ollamaAppName string = deployInternalOllama ? ollamaApp.name : ''
+output ollamaInternalFqdn string = deployInternalOllama ? ollamaApp.outputs.fqdn : ''
+output ollamaBaseUrl string = resolvedOllamaBaseUrl
+output containerAppEnvironmentName string = reuseExistingContainerEnv ? existingContainerEnv.name : containerEnv.name
 output applicationInsightsConnectionString string = monitoring.outputs.appInsightsConnectionString
 output keyVaultName string = keyVault.name
 output postgresServerFqdn string = postgres.outputs.fqdn

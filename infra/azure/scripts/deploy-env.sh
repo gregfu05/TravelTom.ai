@@ -22,6 +22,14 @@ Optional environment variables:
   OLLAMA_CPU
   OLLAMA_MEMORY
   OLLAMA_KEEP_ALIVE
+  EXTERNAL_OLLAMA_BASE_URL
+  EXISTING_CONTAINER_APP_ENVIRONMENT_NAME
+  CORS_ALLOWED_ORIGINS
+  FRONTEND_API_BASE_URL
+  FRONTEND_APPINSIGHTS_CONNECTION_STRING
+  BOOTSTRAP_KEYVAULT_SECRETS
+  POSTGRES_LOCATION
+  POSTGRES_SERVER_NAME_OVERRIDE
   ENABLE_MLOPS
   PROMOTED_ML_MODEL_ARTIFACT_URI
   PROMOTED_ML_MODEL_VERSION
@@ -139,6 +147,30 @@ if [[ -n "${OLLAMA_MEMORY:-}" ]]; then
 fi
 if [[ -n "${OLLAMA_KEEP_ALIVE:-}" ]]; then
   DEPLOYMENT_ARGS+=("--parameters" "ollamaKeepAlive=${OLLAMA_KEEP_ALIVE}")
+fi
+if [[ -n "${EXTERNAL_OLLAMA_BASE_URL:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "externalOllamaBaseUrl=${EXTERNAL_OLLAMA_BASE_URL}")
+fi
+if [[ -n "${EXISTING_CONTAINER_APP_ENVIRONMENT_NAME:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "existingContainerAppEnvironmentName=${EXISTING_CONTAINER_APP_ENVIRONMENT_NAME}")
+fi
+if [[ -n "${CORS_ALLOWED_ORIGINS:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "corsAllowedOrigins=${CORS_ALLOWED_ORIGINS}")
+fi
+if [[ -n "${FRONTEND_API_BASE_URL:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "frontendApiBaseUrl=${FRONTEND_API_BASE_URL}")
+fi
+if [[ -n "${FRONTEND_APPINSIGHTS_CONNECTION_STRING:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "frontendAppInsightsConnectionString=${FRONTEND_APPINSIGHTS_CONNECTION_STRING}")
+fi
+if [[ -n "${BOOTSTRAP_KEYVAULT_SECRETS:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "bootstrapKeyVaultSecrets=${BOOTSTRAP_KEYVAULT_SECRETS}")
+fi
+if [[ -n "${POSTGRES_LOCATION:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "postgresLocation=${POSTGRES_LOCATION}")
+fi
+if [[ -n "${POSTGRES_SERVER_NAME_OVERRIDE:-}" ]]; then
+  DEPLOYMENT_ARGS+=("--parameters" "postgresServerNameOverride=${POSTGRES_SERVER_NAME_OVERRIDE}")
 fi
 if [[ -n "${ENABLE_MLOPS:-}" ]]; then
   DEPLOYMENT_ARGS+=("--parameters" "enableMlops=${ENABLE_MLOPS}")

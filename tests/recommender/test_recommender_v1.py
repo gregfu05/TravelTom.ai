@@ -661,3 +661,27 @@ def test_recommendation_tool_refreshes_cached_empty_catalog(
     assert loader.calls == 2
     assert response.results
     assert response.results[0].item_id == "rest-2"
+
+
+def test_database_connect_kwargs_maps_ssl_query_to_asyncpg_ssl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Settings:
+        database_url = (
+            "postgresql+asyncpg://traveltomadmin:secret@db.example.com:5432/"
+            "traveltom?ssl=require"
+        )
+
+    recommendor_v1._database_connect_kwargs.cache_clear()
+    monkeypatch.setattr(recommendor_v1, "get_settings", lambda: _Settings())
+
+    kwargs = recommendor_v1._database_connect_kwargs()
+
+    assert kwargs == {
+        "user": "traveltomadmin",
+        "password": "secret",
+        "database": "traveltom",
+        "host": "db.example.com",
+        "port": 5432,
+        "ssl": True,
+    }

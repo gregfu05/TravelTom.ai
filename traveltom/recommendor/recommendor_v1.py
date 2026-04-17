@@ -6,6 +6,7 @@ import asyncio
 import json
 import re
 from functools import lru_cache
+from urllib.parse import parse_qsl, urlparse
 from typing import Any
 
 import asyncpg
@@ -209,7 +210,7 @@ def _load_catalog_from_database() -> pd.DataFrame:
 
 
 async def _fetch_catalog_rows() -> list[dict[str, Any]]:
-    connection = await asyncpg.connect(_database_url_for_asyncpg())
+    connection = await asyncpg.connect(**_database_connect_kwargs())
     try:
         rows = await connection.fetch("""
             SELECT
@@ -229,11 +230,28 @@ async def _fetch_catalog_rows() -> list[dict[str, Any]]:
 
 
 @lru_cache()
-def _database_url_for_asyncpg() -> str:
+def _database_connect_kwargs() -> dict[str, Any]:
     url = get_settings().database_url
-    if "+asyncpg" in url:
-        return url.replace("+asyncpg", "", 1)
-    return url
+    normalized_url = url.replace("+asyncpg", "", 1) if "+asyncpg" in url else url
+    parsed = urlparse(normalized_url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+
+    ssl_value = (query.pop("ssl", "") or query.pop("sslmode", "")).strip().lower()
+
+    connect_kwargs: dict[str, Any] = {
+        "user": parsed.username,
+        "password": parsed.password,
+        "database": parsed.path.lstrip("/"),
+        "host": parsed.hostname,
+        "port": parsed.port or 5432,
+    }
+    if ssl_value in {"require", "true", "1"}:
+        connect_kwargs["ssl"] = True
+    elif ssl_value in {"disable", "false", "0"}:
+        connect_kwargs["ssl"] = False
+
+    connect_kwargs.update(query)
+    return connect_kwargs
 
 
 def _prepare_catalog(catalog: pd.DataFrame) -> pd.DataFrame:

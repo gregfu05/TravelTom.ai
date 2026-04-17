@@ -141,6 +141,7 @@ on chat context or memory.
 ### Deployment decision inputs
 
 - whether to keep the current Azure Ollama path for dev
+- whether dev should reuse the shared Ollama service through `EXTERNAL_OLLAMA_BASE_URL`
 - whether dev should keep `enableMlops=true`
 - whether prod preparation should happen now or remain blocked until dev passes
 
@@ -155,6 +156,8 @@ on chat context or memory.
 - `AZURE_CLIENT_ID`
 - `AZURE_TENANT_ID`
 - `AZURE_SUBSCRIPTION_ID`
+- `DEV_DATABASE_URL`
+- optional `DEV_FRONTEND_APPINSIGHTS_CONNECTION_STRING`
 
 ### GitHub environment variables for `azure-dev`
 
@@ -179,10 +182,17 @@ on chat context or memory.
 - `AZURE_CONTAINER_APP_WEB_PROD`
 - `PROD_DATABASE_URL`
 
+### Current rollout note
+
+- `travel-tom-rg` matches the standalone Ollama path, not a ready-made full API/web deployment by itself
+- the GitHub `Deploy Dev` workflow expects existing API and web Container Apps in whatever resource group is configured through `AZURE_RESOURCE_GROUP_DEV`
+- any manual local bootstrap from Apple Silicon must build/push images with `--platform linux/amd64` or Azure Container Apps will reject the image manifest
+
 ### App/runtime config to confirm
 
 - real API public base URL
 - real frontend public URL(s) for CORS
+- shared Ollama base URL if reusing `travel-tom-ollama`
 - whether frontend App Insights should be enabled
 - whether local-auth remains the Azure dev auth path
 - whether the dev database should be seeded on first deploy

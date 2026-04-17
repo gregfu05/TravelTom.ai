@@ -42,6 +42,15 @@ resource database 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2023-06-0
   name: databaseName
 }
 
+resource allowedExtensions 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2023-06-01-preview' = {
+  parent: server
+  name: 'azure.extensions'
+  properties: {
+    value: 'vector'
+    source: 'user-override'
+  }
+}
+
 resource firewallRule 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2023-06-01-preview' = if (allowAzureServicesFirewall) {
   parent: server
   name: 'allow-azure-services'

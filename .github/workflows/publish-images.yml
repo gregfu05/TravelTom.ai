@@ -43,7 +43,6 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           DEV_API_BASE_URL: ${{ vars.DEV_API_BASE_URL }}
-          DEV_FRONTEND_APPINSIGHTS_CONNECTION_STRING: ${{ secrets.DEV_FRONTEND_APPINSIGHTS_CONNECTION_STRING }}
         run: |
           set -euo pipefail
           missing=()
@@ -51,7 +50,6 @@ jobs:
           [[ -z "$AZURE_TENANT_ID" ]] && missing+=("AZURE_TENANT_ID")
           [[ -z "$AZURE_SUBSCRIPTION_ID" ]] && missing+=("AZURE_SUBSCRIPTION_ID")
           [[ -z "$DEV_API_BASE_URL" ]] && missing+=("DEV_API_BASE_URL")
-          [[ -z "$DEV_FRONTEND_APPINSIGHTS_CONNECTION_STRING" ]] && missing+=("DEV_FRONTEND_APPINSIGHTS_CONNECTION_STRING")
           [[ -z "$REGISTRY_NAME" ]] && missing+=("AZURE_CONTAINER_REGISTRY_NAME")
 
           if [[ ${#missing[@]} -gt 0 ]]; then

@@ -1,5 +1,6 @@
 param keyVaultName string
 param location string
+@secure()
 param secrets object
 param publicNetworkAccess string = 'Enabled'
 param tags object = {}
@@ -22,11 +23,13 @@ resource vault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   }
 }
 
-resource secretItems 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = [for secretName in keys(secrets): {
-  name: '${vault.name}/${secretName}'
+resource secretItems 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = [for secret in items(secrets): {
+  name: '${vault.name}/${secret.key}'
   properties: {
-    value: string(secrets[secretName])
+    value: string(secret.value)
   }
 }]
 
+output id string = vault.id
+output name string = vault.name
 output vaultUri string = vault.properties.vaultUri
