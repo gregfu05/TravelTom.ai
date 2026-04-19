@@ -72,11 +72,11 @@ class Settings(BaseSettings):
         "http://localhost:5173 http://127.0.0.1:5173",
         validation_alias=AliasChoices("CORS_ALLOWED_ORIGINS"),
     )
-    orchestrator_llm_provider: Literal[
-        "disabled", "ollama", "phi35mini", "openai"
-    ] = Field(
-        "phi35mini",
-        validation_alias=AliasChoices("ORCHESTRATOR_LLM_PROVIDER"),
+    orchestrator_llm_provider: Literal["disabled", "ollama", "phi35mini", "openai"] = (
+        Field(
+            "phi35mini",
+            validation_alias=AliasChoices("ORCHESTRATOR_LLM_PROVIDER"),
+        )
     )
     orchestrator_llm_timeout_seconds: float = Field(
         20.0,

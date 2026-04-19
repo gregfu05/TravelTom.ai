@@ -146,7 +146,9 @@ def build_chat_model(
 
     if provider == "phi35mini":
         normalized_phi35mini_base_url = normalize_ollama_base_url(phi35mini_base_url)
-        phi35mini_endpoint_mode = get_ollama_endpoint_mode(normalized_phi35mini_base_url)
+        phi35mini_endpoint_mode = get_ollama_endpoint_mode(
+            normalized_phi35mini_base_url
+        )
         model_discovery_timeout_seconds = _resolve_ollama_health_timeout_seconds(
             llm_timeout_seconds
         )

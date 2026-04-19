@@ -1663,9 +1663,8 @@ def test_orchestrator_day_first_dates_fill_advances_past_dates_slot() -> None:
     assert response.recommendations[0].item_id == "hotel-sb-day-first"
 
 
-def test_orchestrator_shared_month_day_first_dates_trigger_hotel_results_without_budget() -> (
-    None
-):
+def test_orchestrator_shared_month_day_first_dates_trigger_hotel_results_without_budget(
+) -> None:
     service = OrchestratorService()
     state = SessionState.model_validate(
         {
@@ -1707,7 +1706,10 @@ def test_orchestrator_shared_month_day_first_dates_trigger_hotel_results_without
         recent_messages=[
             TranscriptMessage(
                 role="assistant",
-                content="What travel dates should I use for these hotel recommendations?",
+                content=(
+                    "What travel dates should I use for these hotel "
+                    "recommendations?"
+                ),
             )
         ],
         agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
@@ -1725,7 +1727,9 @@ def test_orchestrator_shared_month_day_first_dates_trigger_hotel_results_without
     assert response.state["conversation"]["last_requested_slots"] == []
 
 
-def test_orchestrator_madrid_hotel_request_reuses_dates_and_runs_without_budget() -> None:
+def test_orchestrator_madrid_hotel_request_reuses_dates_and_runs_without_budget() -> (
+    None
+):
     service = OrchestratorService()
     state = SessionState.model_validate(
         {
@@ -1770,7 +1774,10 @@ def test_orchestrator_madrid_hotel_request_reuses_dates_and_runs_without_budget(
         recent_messages=[
             TranscriptMessage(
                 role="assistant",
-                content="What budget range should I use for these hotel recommendations?",
+                content=(
+                    "What budget range should I use for these hotel "
+                    "recommendations?"
+                ),
             )
         ],
         agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
@@ -2164,7 +2171,8 @@ def test_orchestrator_rejects_misaligned_composer_clarification_copy() -> None:
         ],
         agent_executor=lambda _messages: {"messages": []},
         response_composer=lambda _prompt: (
-            "What specific activities or interests would you like to prioritize in Milan?"
+            "What specific activities or interests would you like to "
+            "prioritize in Milan?"
         ),
     )
 
@@ -2172,9 +2180,7 @@ def test_orchestrator_rejects_misaligned_composer_clarification_copy() -> None:
         "What travel dates should I use for these hotel recommendations?"
     )
     assert response.state["conversation"]["last_requested_slots"] == ["dates"]
-    assert response.diagnostics.composer_status == (
-        "rejected_misaligned_clarification"
-    )
+    assert response.diagnostics.composer_status == ("rejected_misaligned_clarification")
     assert response.diagnostics.composer_used is False
 
 
