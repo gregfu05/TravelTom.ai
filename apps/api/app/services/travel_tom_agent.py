@@ -482,6 +482,21 @@ def get_travel_tom_agent() -> TravelTomAgent:
             timeout_seconds=composer_timeout_seconds,
             temperature=settings.ollama_temperature,
         )
+    elif settings.orchestrator_llm_provider == "phi35mini":
+        planner_client = OllamaStructuredClient(
+            base_url=settings.phi35mini_base_url,
+            planning_model_name=settings.phi35mini_planning_model,
+            response_model_name=settings.phi35mini_response_model,
+            timeout_seconds=planner_timeout_seconds,
+            temperature=settings.phi35mini_temperature,
+        )
+        composer_client = OllamaStructuredClient(
+            base_url=settings.phi35mini_base_url,
+            planning_model_name=settings.phi35mini_planning_model,
+            response_model_name=settings.phi35mini_response_model,
+            timeout_seconds=composer_timeout_seconds,
+            temperature=settings.phi35mini_temperature,
+        )
     elif settings.orchestrator_llm_provider == "openai":
         api_key = (settings.openai_api_key or "").strip()
         if not api_key:
@@ -528,7 +543,7 @@ def _resolve_structured_stage_timeout_seconds(
 ) -> float:
     """Give local Ollama enough time for structured planner/composer turns."""
 
-    if provider_name != "ollama" or not local_environment:
+    if provider_name not in {"ollama", "phi35mini"} or not local_environment:
         return timeout_seconds
     if stage_name == "composer":
         return max(timeout_seconds, _LOCAL_OLLAMA_MIN_COMPOSER_TIMEOUT_SECONDS)

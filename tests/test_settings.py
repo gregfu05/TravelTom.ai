@@ -47,7 +47,7 @@ def test_settings_are_cached(monkeypatch) -> None:
     get_settings.cache_clear()
 
 
-def test_settings_default_to_ollama_for_local_chat(monkeypatch) -> None:
+def test_settings_default_to_phi35mini_for_local_chat(monkeypatch) -> None:
     get_settings.cache_clear()
     monkeypatch.setenv(
         "DATABASE_URL",
@@ -57,7 +57,7 @@ def test_settings_default_to_ollama_for_local_chat(monkeypatch) -> None:
 
     settings = get_settings()
 
-    assert settings.orchestrator_llm_provider == "ollama"
+    assert settings.orchestrator_llm_provider == "phi35mini"
     get_settings.cache_clear()
 
 
@@ -82,4 +82,26 @@ def test_settings_read_ml_ranker_runtime_overrides(monkeypatch) -> None:
     )
     assert settings.traveltom_ml_ranker_promoted_version == "ranker-v3-dev"
     assert settings.traveltom_ml_ranker_cache_dir == "/tmp/traveltom-ml-cache"
+    get_settings.cache_clear()
+
+
+def test_settings_accept_phi35mini_provider_and_env(monkeypatch) -> None:
+    get_settings.cache_clear()
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://traveltom:traveltom@localhost:5432/phi_db",
+    )
+    monkeypatch.setenv("ORCHESTRATOR_LLM_PROVIDER", "phi35mini")
+    monkeypatch.setenv("PHI35MINI_BASE_URL", "http://127.0.0.1:11435")
+    monkeypatch.setenv("PHI35MINI_PLANNING_MODEL", "phi3.5:mini-instruct")
+    monkeypatch.setenv("PHI35MINI_RESPONSE_MODEL", "phi3.5:mini-instruct")
+    monkeypatch.setenv("PHI35MINI_TEMPERATURE", "0.2")
+
+    settings = get_settings()
+
+    assert settings.orchestrator_llm_provider == "phi35mini"
+    assert settings.phi35mini_base_url == "http://127.0.0.1:11435"
+    assert settings.phi35mini_planning_model == "phi3.5:mini-instruct"
+    assert settings.phi35mini_response_model == "phi3.5:mini-instruct"
+    assert settings.phi35mini_temperature == 0.2
     get_settings.cache_clear()

@@ -12,7 +12,7 @@ bounded helpers, not sources of truth.
 | Chat orchestration | Backend-owned, deterministic first |
 | Recommendation source | PostgreSQL `catalog_items` |
 | LLM usage | Optional structured planner + grounded response composer |
-| Local default | `ORCHESTRATOR_LLM_PROVIDER=ollama` |
+| Local default | `ORCHESTRATOR_LLM_PROVIDER=phi35mini` |
 | Deterministic fallback | Always available |
 | Auth | TravelTom local bearer auth implemented end to end |
 
@@ -126,9 +126,13 @@ remain offline-only and are not part of the active seed path.
 
 ## Local Chat Modes
 
-- Default local mode: `ORCHESTRATOR_LLM_PROVIDER=ollama`
+- Default local mode: `ORCHESTRATOR_LLM_PROVIDER=phi35mini`
+- Ollama mode: `ORCHESTRATOR_LLM_PROVIDER=ollama`
 - Deterministic-only mode: `ORCHESTRATOR_LLM_PROVIDER=disabled`
 - OpenAI mode: `ORCHESTRATOR_LLM_PROVIDER=openai`
+
+`phi35mini` uses the same local Ollama-compatible structured runtime path as the
+existing `ollama` provider, but is configured through `PHI35MINI_*` env vars.
 
 The active recommendation runtime reads from seeded PostgreSQL `catalog_items`.
 `RECOMMENDER_DATASET_PATH` is not used by `/api/v1/chat` or

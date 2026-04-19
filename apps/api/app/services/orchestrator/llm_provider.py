@@ -45,7 +45,7 @@ from app.services.orchestrator.service import (
     extract_runtime_state,
 )
 
-ProviderName = Literal["disabled", "ollama", "openai"]
+ProviderName = Literal["disabled", "ollama", "phi35mini", "openai"]
 logger = logging.getLogger(__name__)
 
 
@@ -56,6 +56,9 @@ def build_chat_model(
     ollama_chat_model: str,
     llm_timeout_seconds: float,
     ollama_temperature: float,
+    phi35mini_base_url: str,
+    phi35mini_chat_model: str,
+    phi35mini_temperature: float,
     openai_base_url: str,
     openai_api_key: str | None,
     openai_chat_model: str,
@@ -136,6 +139,80 @@ def build_chat_model(
             model=resolved_model_name,
             base_url=normalized_ollama_base_url,
             temperature=ollama_temperature,
+            num_predict=512,
+            validate_model_on_init=False,
+            client_kwargs={"timeout": llm_timeout_seconds},
+        )
+
+    if provider == "phi35mini":
+        normalized_phi35mini_base_url = normalize_ollama_base_url(phi35mini_base_url)
+        phi35mini_endpoint_mode = get_ollama_endpoint_mode(normalized_phi35mini_base_url)
+        model_discovery_timeout_seconds = _resolve_ollama_health_timeout_seconds(
+            llm_timeout_seconds
+        )
+
+        resolved_model_name = phi35mini_chat_model
+        logger.info(
+            "phi35mini_model_healthcheck_started",
+            extra={
+                "context": {
+                    "phi35mini_base_url": normalized_phi35mini_base_url,
+                    "endpoint_mode": phi35mini_endpoint_mode,
+                    "timeout_seconds": model_discovery_timeout_seconds,
+                }
+            },
+        )
+        with start_span(
+            "llm.healthcheck",
+            provider=provider,
+            model=phi35mini_chat_model,
+        ):
+            try:
+                available_model_names = get_ollama_available_model_names(
+                    base_url=normalized_phi35mini_base_url,
+                    timeout_seconds=model_discovery_timeout_seconds,
+                )
+            except Exception as exc:
+                available_model_names = []
+                logger.warning(
+                    "phi35mini_model_healthcheck_failed",
+                    extra={
+                        "context": {
+                            "phi35mini_base_url": normalized_phi35mini_base_url,
+                            "endpoint_mode": phi35mini_endpoint_mode,
+                            "timeout_seconds": model_discovery_timeout_seconds,
+                            "error": str(exc),
+                        }
+                    },
+                )
+            else:
+                logger.info(
+                    "phi35mini_model_healthcheck_succeeded",
+                    extra={
+                        "context": {
+                            "phi35mini_base_url": normalized_phi35mini_base_url,
+                            "endpoint_mode": phi35mini_endpoint_mode,
+                            "available_model_count": len(available_model_names),
+                        }
+                    },
+                )
+        if available_model_names:
+            matched_model_name = match_ollama_model_name(
+                phi35mini_chat_model,
+                available_model_names,
+            )
+            if matched_model_name is None:
+                available_models = ", ".join(sorted(available_model_names))
+                raise ValueError(
+                    "Configured Phi 3.5 mini chat model "
+                    f"'{phi35mini_chat_model}' was not found. Available models: "
+                    f"{available_models}"
+                )
+            resolved_model_name = matched_model_name
+        return ChatOllama(
+            model=resolved_model_name,
+            base_url=normalized_phi35mini_base_url,
+            temperature=phi35mini_temperature,
             num_predict=512,
             validate_model_on_init=False,
             client_kwargs={"timeout": llm_timeout_seconds},
