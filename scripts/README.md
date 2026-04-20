@@ -48,8 +48,13 @@ API health plus deterministic recommendation endpoint:
 pwsh ./scripts/smoke-api.ps1 -BaseUrl http://localhost:8000
 ```
 
-Conversational runtime checks across greeting, slot gating, follow-up carry-forward,
-repair turns, and direct recommendation execution:
+If auth is enabled locally, `smoke-api.ps1` can create a temporary account on
+its own, or you can pass `-AccessToken`, `-Email`, and `-Password`.
+
+Conversational runtime checks across greeting, slot gating, complete hotel
+search, same-session refinement continuity, empty-results recovery,
+follow-up carry-forward, generic search-type clarification, repair turns,
+unsupported-flight refusal, and direct recommendation execution:
 
 ```bash
 pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider disabled
@@ -59,3 +64,7 @@ pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider o
 If you need a stable auth credential for repeated runs, pass `-Password`
 explicitly or set `TRAVELTOM_SMOKE_PASSWORD`. Otherwise the script generates a
 one-off password for the temporary smoke account it creates.
+
+For the full scenario matrix, expected slot/state outcomes, and manual release
+checks that still sit outside automated smoke coverage, see
+`docs/chat-feature-audit.md`.

@@ -24,7 +24,8 @@
 - `apps/api/app/services/orchestrator/recommendation_runner.py`
   - Builds validated `RecommendationQuery` and runs deterministic search execution.
 - `apps/api/app/services/orchestrator/response_assembler.py`
-  - Converts grounded results into deterministic assistant copy.
+  - Converts grounded results into backend-owned assistant copy with controlled
+    deterministic variation.
 - `apps/api/app/services/orchestrator/policies.py`
   - Clarification rules, prompt builders, and deterministic guardrails.
 - `apps/api/app/services/orchestrator/extraction.py`
@@ -50,7 +51,7 @@
 6. If search-ready, backend code builds `RecommendationQuery` and executes the
    recommender directly.
 7. Result copy is assembled deterministically, with optional provider-backed
-   grounded composition when healthy.
+   grounded composition when healthy and validated against surfaced results.
 8. The API persists updated state, transcript messages, and the latest grounded
    recommendation snapshot.
 9. In local/dev, `/api/v1/chat` also returns planner/composer diagnostics in
@@ -74,6 +75,8 @@
 - Follow-up turns preserve carried query and item-type state in
   `SessionState.conversation`.
 - Empty-result and duplicate-only flows stay explicit and grounded.
+- Backend-owned copy can vary across a curated semantic-equivalent set while
+  preserving the same slot and recommendation semantics.
 
 ## Provider behavior
 
@@ -95,6 +98,8 @@
   - log it and continue with deterministic guardrails
 - Composer failure:
   - return deterministic grounded copy
+- Composer output that drifts from surfaced result names/order or invents
+  unsupported ranking rationale is rejected and replaced with backend-owned copy
 - Recommendation timeout/failure:
   - return safe deterministic fallback copy
 - Invalid state patch or tool payload:

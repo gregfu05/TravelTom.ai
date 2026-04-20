@@ -7,6 +7,35 @@
   optional refinement input.
 - Documented clarification-copy guardrails that reject model-written prompts
   when they drift away from the backend-computed missing slot.
+- Refreshed chat runtime docs and verification guidance after state-integrity
+  fixes:
+  - `04-llm-orchestrator/session-state-schema.md` now documents budget-optional
+    hotel slot gating and carried-query preservation for vague empty-result
+    follow-ups.
+  - `04-llm-orchestrator/prompts-and-guardrails.md` now documents
+    search-type-before-budget clarification, unsupported-flight state fencing,
+    and the inline-budget one-shot contract.
+  - `07-infra-ops/local-dev.md`, `08-quality/testing-strategy.md`, and
+    `scripts/README.md` now reflect the current provider defaults,
+    Docker-to-host Ollama note, auth-aware smoke usage, and the expanded chat
+    smoke matrix.
+- Added a repo-native chat audit matrix and aligned verification coverage
+  around it:
+  - `docs/chat-feature-audit.md` maps the required chat scenarios to expected
+    slot/state outcomes, current automated evidence, and remaining manual
+    release checks.
+  - `scripts/smoke-chat-runtime.ps1` now exercises same-session refinement
+    continuity and vague follow-up handling after empty results.
+  - `apps/web/e2e/planner-smoke.spec.ts` now includes a retry/recovery flow in
+    addition to the planner happy path.
+- Tightened orchestrator-side response composition without making fallback copy
+  feel rigid:
+  - `04-llm-orchestrator/prompts-and-guardrails.md` and
+    `04-llm-orchestrator/orchestrator-overview.md` now document stricter
+    grounded result-summary validation plus curated deterministic response
+    variants.
+  - `08-quality/testing-strategy.md` now calls out semantic assertions for
+    intentional copy variation and result-composer grounding checks.
 
 ## 2026-04-17
 

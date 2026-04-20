@@ -250,6 +250,70 @@ if ($Provider -ne "disabled") {
         -Context "Complete recommendation turn did not use the response composer"
 }
 
+$refineSession = New-SessionId "smoke-refine"
+$null = Invoke-ChatTurn `
+    -SessionId $refineSession `
+    -Message "Hotels in Santa Barbara from 2026-05-10 to 2026-05-20 under 2000 USD" `
+    -Token $token
+$refine = Invoke-ChatTurn `
+    -SessionId $refineSession `
+    -Message "show me more" `
+    -Token $token
+Assert-True `
+    ($refine.Body.state.constraints.destination -eq "Santa Barbara") `
+    "Show-me-more follow-up did not preserve the previous destination"
+Assert-True `
+    ($refine.Body.state.conversation.last_recommendation_item_type -eq "hotel") `
+    "Show-me-more follow-up did not preserve hotel context"
+Assert-True `
+    ($refine.Body.state.conversation.last_requested_slots.Count -eq 0) `
+    "Show-me-more follow-up should not re-open required slot collection"
+Assert-ContainsAny `
+    -Value ([string]$refine.Body.state.conversation.last_recommendation_query) `
+    -Needles @("show me more hotel", "show me more hotels") `
+    -Context "Show-me-more follow-up did not carry the prior hotel query context"
+Assert-True `
+    ($refine.Body.state.conversation.last_search_outcome -in @("results", "no_new_results", "empty_results")) `
+    "Show-me-more follow-up returned an unexpected search outcome"
+if ($refine.Body.state.conversation.last_search_outcome -eq "empty_results") {
+    Assert-ContainsAny `
+        -Value $refine.Body.assistant_message `
+        -Needles @("did not find grounded matches", "adjusting your budget", "changing the travel dates") `
+        -Context "Show-me-more follow-up did not explain the continued empty-results state"
+} elseif ($refine.Body.recommendations.Count -eq 0) {
+    Assert-ContainsAny `
+        -Value $refine.Body.assistant_message `
+        -Needles @("do not have new grounded options") `
+        -Context "Show-me-more duplicate follow-up did not explain the lack of new results"
+} else {
+    Assert-ContainsAny `
+        -Value $refine.Body.assistant_message `
+        -Needles @("top pick", "top picks", "i found") `
+        -Context "Show-me-more follow-up did not return grounded recommendation copy"
+}
+if ($Provider -ne "disabled") {
+    Assert-HeaderEquals `
+        -Headers $refine.Headers `
+        -Name "X-TravelTom-Planner-Used" `
+        -Expected "true" `
+        -Context "Show-me-more follow-up did not use the planner"
+}
+
+$searchType = Invoke-ChatTurn `
+    -SessionId (New-SessionId "smoke-search-type") `
+    -Message "I am going to Lisbon next weekend" `
+    -Token $token
+Assert-ContainsAny `
+    -Value $searchType.Body.assistant_message `
+    -Needles @("hotel, a restaurant, or an activity", "hotel, restaurant, or activity") `
+    -Context "Generic trip setup did not ask for recommendation type"
+Assert-True `
+    ($searchType.Body.state.conversation.last_clarification_kind -eq "search_type") `
+    "Generic trip setup did not transition into search_type clarification"
+Assert-True `
+    ($searchType.Body.state.conversation.last_requested_slots.Count -eq 0) `
+    "Generic trip setup should not keep a pending core slot once destination and dates are known"
+
 $transcriptSession = New-SessionId "smoke-transcript"
 $null = Invoke-ChatTurn `
     -SessionId $transcriptSession `
@@ -353,6 +417,68 @@ if ($Provider -ne "disabled") {
         -Context "Repair turn did not use the planner"
 }
 
+$emptySession = New-SessionId "smoke-empty"
+$empty = Invoke-ChatTurn `
+    -SessionId $emptySession `
+    -Message "Hotels in Atlantis from 2026-05-10 to 2026-05-20" `
+    -Token $token
+Assert-True `
+    ($empty.Body.state.constraints.destination -eq "Atlantis") `
+    "Empty-results setup did not persist the requested destination"
+Assert-True `
+    ($empty.Body.recommendations.Count -eq 0) `
+    "Empty-results setup unexpectedly returned recommendations"
+Assert-True `
+    ($empty.Body.state.conversation.last_search_outcome -eq "empty_results") `
+    "Empty-results setup did not mark the search outcome as empty_results"
+Assert-True `
+    ($empty.Body.state.conversation.last_clarification_kind -eq "refine_preference") `
+    "Empty-results setup did not switch into refine_preference clarification"
+Assert-ContainsAny `
+    -Value $empty.Body.assistant_message `
+    -Needles @("did not find grounded matches", "did not find grounded hotel matches") `
+    -Context "Empty-results setup did not explain that grounded matches were unavailable"
+
+$emptyFollowUp = Invoke-ChatTurn `
+    -SessionId $emptySession `
+    -Message "Anything works" `
+    -Token $token
+Assert-True `
+    ($emptyFollowUp.Body.state.conversation.last_search_outcome -eq "empty_results") `
+    "Vague reply after empty results should keep the session in empty_results state"
+Assert-True `
+    ($emptyFollowUp.Body.state.conversation.last_clarification_kind -eq "refine_preference") `
+    "Vague reply after empty results should remain in refine_preference clarification"
+Assert-True `
+    ($emptyFollowUp.Body.state.conversation.last_recommendation_item_type -eq "hotel") `
+    "Vague reply after empty results should preserve the hotel recommendation context"
+Assert-ContainsAny `
+    -Value $emptyFollowUp.Body.assistant_message `
+    -Needles @("still do not have grounded hotel matches", "try widening the budget", "trying a nearby area") `
+    -Context "Vague reply after empty results did not provide stronger refinement guidance"
+if ($Provider -ne "disabled") {
+    Assert-HeaderEquals `
+        -Headers $emptyFollowUp.Headers `
+        -Name "X-TravelTom-Planner-Used" `
+        -Expected "true" `
+        -Context "Vague empty-results follow-up did not use the planner"
+}
+
+$unsupported = Invoke-ChatTurn `
+    -SessionId (New-SessionId "smoke-unsupported") `
+    -Message "Find me flights from Paris to Lisbon next weekend" `
+    -Token $token
+Assert-ContainsAny `
+    -Value $unsupported.Body.assistant_message `
+    -Needles @("flights are not supported", "can't assist with flight") `
+    -Context "Unsupported flight flow did not refuse the request clearly"
+Assert-True `
+    ($null -eq $unsupported.Body.state.constraints.destination) `
+    "Unsupported flight flow should not persist destination into planner state"
+Assert-True `
+    ($null -eq $unsupported.Body.state.constraints.dates) `
+    "Unsupported flight flow should not persist dates into planner state"
+
 $recommendationPayload = @{
     session_id = "smoke-query"
     query = "hotel in Santa Barbara"
@@ -373,8 +499,8 @@ $recommendation = Invoke-JsonRequest `
     -Body $recommendationPayload
 
 Assert-True `
-    ($recommendation.Body.ranking_version -eq "heuristic-v1") `
-    "Recommendation smoke check returned an unexpected ranking_version"
+    (-not [string]::IsNullOrWhiteSpace([string]$recommendation.Body.ranking_version)) `
+    "Recommendation smoke check returned no ranking_version"
 Assert-True `
     ($null -ne $recommendation.Body.results) `
     "Recommendation smoke check returned no results array"

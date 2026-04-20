@@ -29,7 +29,7 @@ Services:
 - `CHAT_RATE_LIMIT_ENABLED` (optional; defaults to `false` in local/dev and
   `true` outside local/dev)
 - `CORS_ALLOWED_ORIGINS` (space- or comma-separated, default `http://localhost:5173 http://127.0.0.1:5173`)
-- `ORCHESTRATOR_LLM_PROVIDER=ollama|openai|disabled`
+- `ORCHESTRATOR_LLM_PROVIDER=phi35mini|ollama|openai|disabled`
 - `ORCHESTRATOR_LLM_TIMEOUT_SECONDS` (default `20`)
 - `ORCHESTRATOR_STRUCTURED_TIMEOUT_SECONDS` (default `20`; legacy shared planner/composer budget)
 - `ORCHESTRATOR_PLANNER_TIMEOUT_SECONDS` (optional stage override)
@@ -52,7 +52,7 @@ Store these in a local `.env` file (copy from `.env.example`) and do not hard-co
 Local chat runtime default:
 
 - `.env.example`, the checked-in local `.env`, and backend config default to
-  `ORCHESTRATOR_LLM_PROVIDER=ollama` so local chat uses provider-assisted
+  `ORCHESTRATOR_LLM_PROVIDER=phi35mini` so local chat uses provider-assisted
   planning/composition by default.
 - Set `ORCHESTRATOR_LLM_PROVIDER=disabled` only when you explicitly want the
   deterministic-only runtime/test path.
@@ -61,10 +61,14 @@ Local chat runtime default:
 - The live recommendation runtime reads PostgreSQL `catalog_items`, not
   `RECOMMENDER_DATASET_PATH`.
 
-To use the default local Ollama orchestration:
+When the API runs inside Docker but Ollama runs on the host machine, use
+`http://host.docker.internal:11434` for `OLLAMA_BASE_URL` or
+`PHI35MINI_BASE_URL` inside the container instead of `127.0.0.1`.
 
-1. Run Ollama locally and pull a model (for example `ollama pull llama3.1:8b`).
-2. Set `ORCHESTRATOR_LLM_PROVIDER=ollama` in `.env`.
+To use the default local provider orchestration:
+
+1. Run Ollama locally and pull the model required by your chosen provider alias.
+2. Set `ORCHESTRATOR_LLM_PROVIDER` in `.env` to `phi35mini` or `ollama`.
 3. Optionally raise `ORCHESTRATOR_PLANNER_TIMEOUT_SECONDS` and
    `ORCHESTRATOR_COMPOSER_TIMEOUT_SECONDS` above the shared structured timeout
    if the local model is slow.
@@ -150,6 +154,13 @@ Optional pre-check:
   - `pwsh ./scripts/smoke-api.ps1 -BaseUrl http://localhost:8000`
   - `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider disabled`
   - `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider ollama -Email smoke@example.com`
+  - The chat runtime smoke now covers greeting, slot gating, complete hotel
+    search, same-session refinement continuity, empty-results follow-up
+    recovery, generic search-type clarification, preference carry-forward,
+    repair turns, unsupported-flight refusal, and direct recommendation
+    execution.
+  - Use `docs/chat-feature-audit.md` as the source of truth for the current
+    release scenario matrix and the remaining manual planner checks.
 
 ## Troubleshooting
 

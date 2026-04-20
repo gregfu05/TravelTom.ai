@@ -49,6 +49,10 @@ Composer hard rules:
 - return JSON only in the composed-response schema
 - mention only grounded recommendation records
 - never invent items, prices, or destination facts
+- when naming multiple surfaced recommendations, keep surfaced order and do not
+  skip higher-ranked items inside the named subset
+- do not introduce score, ranking, or match-quality claims unless they are
+  directly grounded in the supplied recommendation data
 - if unsure, fall back to the deterministic message supplied by backend
 
 ## Deterministic guardrails
@@ -58,13 +62,23 @@ Composer hard rules:
 - Repair turns do not auto-trigger a new search.
 - Hotel slot gating waits for destination and dates. Budget is an optional
   refinement input for first-pass hotel retrieval.
+- Generic trip setup with destination and dates but no item type should ask for
+  recommendation type before any optional budget refinement.
 - Restaurant and activity slot gating wait for destination.
 - Follow-up phrases such as `show me more` and `cheaper` reuse carried query state.
+- Vague replies after empty or duplicate-only results should preserve the active
+  recommendation thread instead of discarding prior query context.
 - Interest extraction is token-aware and negation-aware.
+- Unsupported flight requests must not mutate persisted trip constraints, even
+  if provider planning is enabled.
 - Composer-authored clarification text must align with the backend-computed
   missing slot or fall back to deterministic copy.
+- Deterministic backend-owned copy may use a small curated set of semantically
+  equivalent variants so disabled/fallback runs stay natural without changing
+  slot policy or grounded meaning.
 - Natural one-shot requests such as
   `Hotels in Lisbon from 2026-05-10 to 2026-05-20 under 2000 EUR`
+  and `Santa Barbara May 10-20, 2000 EUR, hotels`
   must work without planner help.
 
 ## Provider degradation
