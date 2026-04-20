@@ -1,0 +1,45 @@
+- main [ref=e4]:
+  - generic [ref=e5]:
+    - link "TravelTom homepage" [ref=e6] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e7]: TT
+      - generic [ref=e8]: TravelTom.ai
+    - navigation "Primary" [ref=e9]:
+      - link "Planner" [ref=e10] [cursor=pointer]:
+        - /url: /planner
+      - link "Why TravelTom" [ref=e11] [cursor=pointer]:
+        - /url: /why-traveltom
+      - link "How It Works" [ref=e12] [cursor=pointer]:
+        - /url: /how-it-works
+    - generic [ref=e13]:
+      - generic [ref=e14]: API checking
+      - button "Logout" [ref=e15] [cursor=pointer]
+  - generic [ref=e16]:
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - img [ref=e20]
+        - generic [ref=e25]: Tom
+        - generic "Online" [ref=e26]
+      - generic [ref=e27]:
+        - paragraph [ref=e28]: Session session-
+        - button "New Session" [ref=e29] [cursor=pointer]
+    - generic [ref=e31]:
+      - log [ref=e32]:
+        - generic [ref=e33]:
+          - img [ref=e35]
+          - heading "Start with a trip idea" [level=2] [ref=e40]
+          - paragraph [ref=e41]: Share a destination, then add dates for hotels, or jump straight into restaurants and activities for a place you already have in mind. Add budget when you want tighter hotel price filtering.
+          - generic [ref=e42]:
+            - button "Beach destinations in Europe under 1500 EUR" [ref=e43] [cursor=pointer]
+            - button "City break ideas for 4 days in May" [ref=e44] [cursor=pointer]
+            - button "Hotels in Lisbon next weekend under 1500 EUR" [ref=e45] [cursor=pointer]
+            - button "Activities in Lisbon next weekend" [ref=e46] [cursor=pointer]
+            - button "Family-friendly destinations in June under 2000 USD" [ref=e47] [cursor=pointer]
+            - button "Romantic weekend in Italy under 1200 EUR" [ref=e48] [cursor=pointer]
+      - generic [ref=e49]:
+        - generic [ref=e50]: Message input
+        - generic [ref=e51]:
+          - textbox "Message input" [disabled] [ref=e52]:
+            - /placeholder: Share your destination, or add destination, dates, and budget...
+          - button "Restoring..." [disabled] [ref=e53] [cursor=pointer]
+        - paragraph [ref=e54]: For hotels, include destination and dates. Add budget if you want tighter price filtering. For restaurants or activities, destination is enough to get started.

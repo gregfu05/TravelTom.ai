@@ -179,7 +179,9 @@ class TurnPreparer:
             )
 
         normalized_plan_payload = self._sanitize_plan_payload(plan_payload)
-        if is_unsupported_flight_request(user_message) or is_unsupported_flight_route_reply(
+        if is_unsupported_flight_request(
+            user_message
+        ) or is_unsupported_flight_route_reply(
             message=user_message,
             session_state=previous_state,
         ):
@@ -374,7 +376,9 @@ class TurnPreparer:
         clarification_message = _normalize_text_value(plan.clarification_message)
         if should_call_recommendation_tool:
             clarification_message = None
-        elif is_unsupported_flight_request(user_message) or is_unsupported_flight_route_reply(
+        elif is_unsupported_flight_request(
+            user_message
+        ) or is_unsupported_flight_route_reply(
             message=user_message,
             session_state=previous_state,
         ):

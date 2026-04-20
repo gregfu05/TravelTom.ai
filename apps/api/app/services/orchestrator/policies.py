@@ -563,7 +563,9 @@ def build_tool_timeout_message(session_state: SessionState | None = None) -> str
     )
 
 
-def build_invalid_tool_payload_message(session_state: SessionState | None = None) -> str:
+def build_invalid_tool_payload_message(
+    session_state: SessionState | None = None,
+) -> str:
     """Build deterministic copy for invalid recommendation payloads."""
 
     return select_copy_variant(
@@ -1037,7 +1039,9 @@ def build_no_preference_after_empty_results_message(session_state: SessionState)
     item_type = session_state.conversation.last_recommendation_item_type
     if item_type == "hotel":
         destination = session_state.constraints.destination or "that destination"
-        date_clause = " with the current dates" if session_state.constraints.dates else ""
+        date_clause = (
+            " with the current dates" if session_state.constraints.dates else ""
+        )
         budget_clause = (
             " and budget" if session_state.constraints.budget is not None else ""
         )

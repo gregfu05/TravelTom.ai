@@ -852,7 +852,8 @@ def build_effective_recommendation_query_text(
     if not is_follow_up_refinement(normalized_message):
         if (
             prior_query
-            and session_state.conversation.last_clarification_kind == "refine_preference"
+            and session_state.conversation.last_clarification_kind
+            == "refine_preference"
             and session_state.conversation.last_search_outcome
             in {"empty_results", "no_new_results"}
             and is_vague_acceptance_reply(normalized_message)

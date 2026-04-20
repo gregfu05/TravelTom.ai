@@ -1658,8 +1658,9 @@ def test_orchestrator_day_first_dates_fill_advances_past_dates_slot() -> None:
     assert response.recommendations[0].item_id == "hotel-sb-day-first"
 
 
-def test_orchestrator_shared_month_day_first_dates_trigger_hotel_results_without_budget(
-) -> None:
+def test_orchestrator_shared_month_day_first_dates_trigger_hotel_results_without_budget() -> (
+    None
+):
     service = OrchestratorService()
     state = SessionState.model_validate(
         {
@@ -1702,8 +1703,7 @@ def test_orchestrator_shared_month_day_first_dates_trigger_hotel_results_without
             TranscriptMessage(
                 role="assistant",
                 content=(
-                    "What travel dates should I use for these hotel "
-                    "recommendations?"
+                    "What travel dates should I use for these hotel " "recommendations?"
                 ),
             )
         ],
@@ -1770,8 +1770,7 @@ def test_orchestrator_madrid_hotel_request_reuses_dates_and_runs_without_budget(
             TranscriptMessage(
                 role="assistant",
                 content=(
-                    "What budget range should I use for these hotel "
-                    "recommendations?"
+                    "What budget range should I use for these hotel " "recommendations?"
                 ),
             )
         ],

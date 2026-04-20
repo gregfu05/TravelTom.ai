@@ -128,8 +128,9 @@ def test_day_first_date_reply_does_not_overwrite_existing_destination() -> None:
     assert updated.constraints.dates.end.isoformat() == "2026-05-20"
 
 
-def test_shared_month_day_first_date_reply_fills_dates_without_overwriting_destination(
-) -> None:
+def test_shared_month_day_first_date_reply_fills_dates_without_overwriting_destination() -> (
+    None
+):
     state = SessionState.model_validate(
         {
             "session_id": "sess-day-first-shared-month",
