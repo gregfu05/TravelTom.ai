@@ -7,7 +7,13 @@ Ownership: Mixed.
 ## What Lives Here
 
 - `azure-deployment-readiness-ticket.md`: repo-native execution ticket for the current Azure dev-first deployment readiness pass, including required owner-provided env/config inputs.
-- `chat-feature-investigation-ticket.md`: investigation ticket for chat latency, naturalness, context persistence, and recommendation continuity.
+- `chat-production-usability-epic.md`: master epic for bringing the chat feature to a production-usable state, with release gates and child-ticket sequencing.
+- `chat-feature-audit.md`: scenario matrix for chat behavior, slot/state expectations, current automated coverage, and residual manual release checks.
+- `chat-contract-alignment-ticket.md`: ticket for aligning chat docs, tests, smoke expectations, and the supported scenario matrix.
+- `chat-state-integrity-ticket.md`: ticket for fixing extraction, slot persistence, and session-state integrity defects.
+- `chat-conversation-policy-ticket.md`: ticket for fixing clarification order, repair handling, and conversation naturalness.
+- `chat-provider-reliability-ticket.md`: ticket for hardening planner/composer runtime reliability and operational behavior.
+- `chat-release-verification-ticket.md`: ticket for expanding automated coverage and release verification for chat.
 - `ollama-remote-deployment.md`: deployment notes for running Ollama remotely with env-driven backend configuration.
 - `azure-mlops-ranking-plan.md`: planning document for future Azure-based MLOps of the ranking model lifecycle.
 

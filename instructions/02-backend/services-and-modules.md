@@ -73,8 +73,9 @@ apps/api/
     execution, and recommendation outcome normalization to focused
     collaborators under `app/services/orchestrator/`.
   - Owns the hybrid recommendation policy:
-    hotel searches wait for destination, dates, and budget, while restaurant
-    and activity searches require destination.
+    hotel searches wait for destination and dates, with budget treated as an
+    optional refinement input, while restaurant and activity searches require
+    destination.
   - Converts validated recommendation data into route-safe `OrchestratorResponse`
     payloads.
 - TravelTom agent service (`app/services/travel_tom_agent.py`):

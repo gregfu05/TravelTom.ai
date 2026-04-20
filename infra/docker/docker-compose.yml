@@ -55,10 +55,15 @@ services:
     environment:
       # Match migration DB routing and avoid localhost inside the container network.
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-traveltom}:${POSTGRES_PASSWORD:-traveltom}@postgres:5432/${POSTGRES_DB:-traveltom}"
+      # Reach the host Ollama daemon from inside the API container.
+      OLLAMA_BASE_URL: ${OLLAMA_DOCKER_BASE_URL:-http://host.docker.internal:11434}
+      PHI35MINI_BASE_URL: ${OLLAMA_DOCKER_BASE_URL:-http://host.docker.internal:11434}
     volumes:
       - ../..:/workspace
     ports:
       - "${API_PORT:-8000}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       migrate:
         condition: service_completed_successfully

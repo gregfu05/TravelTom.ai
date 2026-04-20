@@ -20,6 +20,8 @@ from app.services.orchestrator.extraction import (
     apply_structured_state_patch,
     build_effective_recommendation_query_text,
     extract_query_filters,
+    is_unsupported_flight_request,
+    is_unsupported_flight_route_reply,
     resolve_effective_item_type,
 )
 from app.services.orchestrator.policies import (
@@ -177,6 +179,13 @@ class TurnPreparer:
             )
 
         normalized_plan_payload = self._sanitize_plan_payload(plan_payload)
+        if is_unsupported_flight_request(
+            user_message
+        ) or is_unsupported_flight_route_reply(
+            message=user_message,
+            session_state=previous_state,
+        ):
+            normalized_plan_payload["state_patch"] = {}
         try:
             plan = LLMOrchestrationPlan.model_validate(normalized_plan_payload)
             planned_state = apply_structured_state_patch(
@@ -367,6 +376,13 @@ class TurnPreparer:
         clarification_message = _normalize_text_value(plan.clarification_message)
         if should_call_recommendation_tool:
             clarification_message = None
+        elif is_unsupported_flight_request(
+            user_message
+        ) or is_unsupported_flight_route_reply(
+            message=user_message,
+            session_state=previous_state,
+        ):
+            clarification_message = guardrail_plan.clarification_message
         elif clarification_message is None:
             clarification_message = (
                 guardrail_plan.clarification_message

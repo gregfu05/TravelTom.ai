@@ -110,11 +110,12 @@ Source of truth: `apps/api/app/schemas/state.py`
 - `conversation.last_recommendation_query` preserves the effective recommender
   query text so deterministic carry-forward can keep topical terms on later
   elliptical turns like `another option`, `cheaper`, or `lower cost`, and can
-  merge later slot-filling answers into the same active recommendation thread.
+  merge later slot-filling answers or vague empty-result relaxations into the
+  same active recommendation thread.
 - `conversation.last_recommendation_result_ids` preserves the most recently
   surfaced grounded item ids so follow-up turns like `show me more` can prefer
   unseen results and avoid replaying the same visible list as if it were new.
 - Required-slot logic is item-type aware:
-  - `hotel` requires destination, dates, and budget
+  - `hotel` requires destination and dates, with budget as an optional refinement
   - `restaurant` requires destination
   - `activity` requires destination

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
@@ -98,6 +99,15 @@ def _normalize_text_value(value: Any) -> str | None:
         return None
     normalized = value.strip()
     return normalized or None
+
+
+def _recommendation_display_name(item: RecommendationResult) -> str:
+    name = item.features.get("name")
+    if isinstance(name, str):
+        normalized = name.strip()
+        if normalized:
+            return normalized
+    return item.item_id
 
 
 def build_runtime_state_message(session_state: SessionState) -> str:
@@ -456,7 +466,7 @@ class OrchestratorService:
                 previous_state=previous_state,
                 session_state=session_state,
                 user_message=user_message,
-                assistant_message=build_tool_failure_message(),
+                assistant_message=build_tool_failure_message(session_state),
                 intent=conversation_intent,
                 diagnostics=diagnostics,
             )
@@ -613,7 +623,7 @@ class OrchestratorService:
                 previous_state=previous_state,
                 session_state=session_state,
                 user_message=user_message,
-                assistant_message=build_tool_timeout_message(),
+                assistant_message=build_tool_timeout_message(session_state),
                 intent=conversation_intent,
                 diagnostics=diagnostics,
             )
@@ -623,7 +633,7 @@ class OrchestratorService:
                 previous_state=previous_state,
                 session_state=session_state,
                 user_message=user_message,
-                assistant_message=build_invalid_tool_payload_message(),
+                assistant_message=build_invalid_tool_payload_message(session_state),
                 intent=conversation_intent,
                 diagnostics=diagnostics,
             )
@@ -633,7 +643,7 @@ class OrchestratorService:
                 previous_state=previous_state,
                 session_state=session_state,
                 user_message=user_message,
-                assistant_message=build_tool_failure_message(),
+                assistant_message=build_tool_failure_message(session_state),
                 intent=conversation_intent,
                 diagnostics=diagnostics,
             )
@@ -750,7 +760,7 @@ class OrchestratorService:
                 previous_state=previous_state,
                 session_state=session_state,
                 user_message=user_message,
-                assistant_message=build_tool_failure_message(),
+                assistant_message=build_tool_failure_message(session_state),
                 intent=conversation_intent,
                 diagnostics=diagnostics,
             )
@@ -832,7 +842,7 @@ class OrchestratorService:
                 previous_state=previous_state,
                 session_state=session_state,
                 user_message=user_message,
-                assistant_message=build_invalid_tool_payload_message(),
+                assistant_message=build_invalid_tool_payload_message(session_state),
                 intent=intent
                 or self._turn_intent(previous_state, user_message, session_state),
                 diagnostics=diagnostics,
@@ -843,7 +853,7 @@ class OrchestratorService:
                 previous_state=previous_state,
                 session_state=session_state,
                 user_message=user_message,
-                assistant_message=build_tool_timeout_message(),
+                assistant_message=build_tool_timeout_message(session_state),
                 intent=intent
                 or self._turn_intent(previous_state, user_message, session_state),
                 diagnostics=diagnostics,
@@ -854,7 +864,7 @@ class OrchestratorService:
                 previous_state=previous_state,
                 session_state=session_state,
                 user_message=user_message,
-                assistant_message=build_tool_failure_message(),
+                assistant_message=build_tool_failure_message(session_state),
                 intent=intent
                 or self._turn_intent(previous_state, user_message, session_state),
                 diagnostics=diagnostics,
@@ -957,7 +967,26 @@ class OrchestratorService:
                 diagnostics.composer_status = "skipped_fast_path"
             return fallback_message
 
+        if is_unsupported_flight_request(
+            user_message
+        ) or is_unsupported_flight_route_reply(
+            message=user_message,
+            session_state=session_state,
+        ):
+            if (
+                diagnostics is not None
+                and diagnostics.composer_status == "not_requested"
+            ):
+                diagnostics.composer_status = "skipped_fast_path"
+            return fallback_message
+
         if response_composer is not None:
+            if outcome == "results" and not self._is_results_composer_ready(
+                recommendations
+            ):
+                if diagnostics is not None:
+                    diagnostics.composer_status = "skipped_sparse_result_grounding"
+                return fallback_message
             prompt = build_response_prompt_context(
                 session_state=session_state,
                 recent_messages=list(recent_messages),
@@ -973,12 +1002,136 @@ class OrchestratorService:
             if isinstance(composed_message, str):
                 normalized = composed_message.strip()
                 if normalized:
+                    if not self._is_safe_composer_message(
+                        session_state=session_state,
+                        user_message=user_message,
+                        recommendations=recommendations,
+                        outcome=outcome,
+                        candidate_message=normalized,
+                    ):
+                        if diagnostics is not None:
+                            diagnostics.composer_status = (
+                                "rejected_ungrounded_results"
+                                if outcome == "results"
+                                else "rejected_misaligned_clarification"
+                            )
+                        return fallback_message
                     if diagnostics is not None:
                         diagnostics.composer_used = True
                     return normalized
             return fallback_message
 
         return fallback_message
+
+    def _is_safe_composer_message(
+        self,
+        *,
+        session_state: SessionState,
+        user_message: str,
+        recommendations: Sequence[RecommendationResult],
+        outcome: Literal[
+            "clarification", "results", "empty_results", "invalid_request"
+        ],
+        candidate_message: str,
+    ) -> bool:
+        if outcome == "results":
+            return self._is_safe_results_composer_message(
+                recommendations=recommendations,
+                candidate_message=candidate_message,
+            )
+        if outcome != "clarification":
+            return True
+        if is_greeting(user_message) or is_social_turn(user_message):
+            return True
+
+        clarification_kind = clarification_kind_for_state(session_state)
+        normalized_candidate = candidate_message.casefold()
+        requested_slots = list(session_state.conversation.last_requested_slots)
+
+        if clarification_kind == "search_type":
+            return all(
+                token in normalized_candidate
+                for token in ("hotel", "restaurant", "activity")
+            )
+
+        if clarification_kind != "core_slot" or not requested_slots:
+            return True
+
+        expected_slot = requested_slots[0]
+        slot_cues: dict[str, tuple[str, ...]] = {
+            "destination": ("destination", "city", "place"),
+            "dates": ("date", "dates", "when"),
+            "budget": ("budget", "price", "cost", "range"),
+        }
+        conflicting_cues = {
+            slot: cues for slot, cues in slot_cues.items() if slot != expected_slot
+        }
+
+        if not any(cue in normalized_candidate for cue in slot_cues[expected_slot]):
+            return False
+        return not any(
+            cue in normalized_candidate
+            for cues in conflicting_cues.values()
+            for cue in cues
+        )
+
+    def _is_results_composer_ready(
+        self,
+        recommendations: Sequence[RecommendationResult],
+    ) -> bool:
+        if not recommendations:
+            return False
+        return all(
+            isinstance(item.features.get("name"), str)
+            and bool(str(item.features.get("name")).strip())
+            for item in recommendations
+        )
+
+    def _is_safe_results_composer_message(
+        self,
+        *,
+        recommendations: Sequence[RecommendationResult],
+        candidate_message: str,
+    ) -> bool:
+        if not recommendations:
+            return True
+
+        normalized_candidate = candidate_message.casefold()
+        if any(
+            token in normalized_candidate
+            for token in ("match score", "scoring", "ranking", "ranked", " score")
+        ):
+            return False
+
+        display_names = [_recommendation_display_name(item) for item in recommendations]
+        ordered_name_hits: list[tuple[int, int]] = []
+        for index, name in enumerate(display_names):
+            normalized_name = name.casefold()
+            position = normalized_candidate.find(normalized_name)
+            if position >= 0:
+                ordered_name_hits.append((index, position))
+
+        if ordered_name_hits:
+            ordered_name_hits.sort(key=lambda item: item[1])
+            hit_indexes = [index for index, _position in ordered_name_hits]
+            if hit_indexes != list(range(len(hit_indexes))):
+                return False
+
+        quoted_mentions = [
+            match.strip().casefold()
+            for match in re.findall(r"['\"]([^'\"]{2,80})['\"]", candidate_message)
+        ]
+        if quoted_mentions:
+            known_names = {name.casefold() for name in display_names}
+            if any(
+                mention
+                and any(character.isalpha() for character in mention)
+                and mention not in known_names
+                for mention in quoted_mentions
+            ):
+                return False
+
+        return True
 
     def _orchestrator_response_from_recommendation_outcome(
         self,

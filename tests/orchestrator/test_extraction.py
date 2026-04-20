@@ -128,6 +128,51 @@ def test_day_first_date_reply_does_not_overwrite_existing_destination() -> None:
     assert updated.constraints.dates.end.isoformat() == "2026-05-20"
 
 
+def test_shared_month_day_first_reply_keeps_destination() -> None:
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-day-first-shared-month",
+            "constraints": {"destination": "Milan"},
+            "entities": {"destinations": ["Milan"]},
+            "conversation": {
+                "last_requested_slots": ["dates"],
+                "last_user_intent": "recommend",
+            },
+        }
+    )
+
+    updated = apply_message_state_updates(
+        message="from the 20th to the 25th of April",
+        session_state=state,
+        today=date(2026, 4, 17),
+    )
+
+    assert updated.constraints.destination == "Milan"
+    assert updated.constraints.dates is not None
+    assert updated.constraints.dates.start.isoformat() == "2026-04-20"
+    assert updated.constraints.dates.end.isoformat() == "2026-04-25"
+
+
+@pytest.mark.parametrize(
+    ("message",),
+    [
+        ("from the 20th to the 25th of April",),
+        ("to the",),
+    ],
+)
+def test_low_confidence_fragments_do_not_persist_as_destinations(message: str) -> None:
+    state = SessionState(session_id="sess-low-confidence-destination")
+
+    updated = apply_message_state_updates(
+        message=message,
+        session_state=state,
+        today=date(2026, 4, 17),
+    )
+
+    assert updated.constraints.destination is None
+    assert updated.entities.destinations == []
+
+
 def test_extracts_bare_budget_reply_with_symbol_when_budget_slot_requested() -> None:
     state = SessionState.model_validate(
         {
@@ -614,6 +659,51 @@ def test_natural_hotel_phrase_extracts_destination_dates_and_budget() -> None:
     assert updated.constraints.budget.currency == "EUR"
 
 
+def test_inline_trailing_budget_phrase_extracts_budget_for_complete_hotel_request() -> (
+    None
+):
+    state = SessionState(session_id="sess-inline-budget")
+
+    updated = apply_message_state_updates(
+        message="Santa Barbara May 10-20, 2000 EUR, hotels",
+        session_state=state,
+        today=date(2026, 3, 23),
+    )
+
+    assert updated.constraints.destination == "Santa Barbara"
+    assert updated.constraints.dates is not None
+    assert updated.constraints.budget is not None
+    assert updated.constraints.budget.max == 2000.0
+    assert updated.constraints.budget.currency == "EUR"
+
+
+def test_shorthand_relative_dates_do_not_pollute_destination() -> None:
+    state = SessionState(session_id="sess-shorthand-typos")
+
+    updated = apply_message_state_updates(
+        message="need smth chill in lisbn nxt wknd",
+        session_state=state,
+        today=date(2026, 3, 23),
+    )
+
+    assert updated.constraints.destination == "Lisbn"
+    assert updated.constraints.dates is not None
+    assert updated.constraints.dates.start.isoformat() == "2026-04-04"
+    assert updated.constraints.dates.end.isoformat() == "2026-04-05"
+
+
+def test_unsupported_flight_request_does_not_capture_trip_constraints() -> None:
+    updated = apply_message_state_updates(
+        message="Find me flights from Paris to Lisbon next weekend",
+        session_state=SessionState(session_id="sess-unsupported-flight"),
+        today=date(2026, 3, 23),
+    )
+
+    assert updated.constraints.origin is None
+    assert updated.constraints.destination is None
+    assert updated.constraints.dates is None
+
+
 def test_unsupported_flight_route_reply_does_not_capture_origin_or_item_type() -> None:
     state = SessionState.model_validate(
         {
@@ -634,3 +724,34 @@ def test_unsupported_flight_route_reply_does_not_capture_origin_or_item_type() -
 
     assert updated.constraints.origin is None
     assert updated.constraints.destination is None
+
+
+def test_vague_empty_results_reply_preserves_prior_query_context() -> None:
+    state = SessionState.model_validate(
+        {
+            "session_id": "sess-empty-vague",
+            "constraints": {
+                "destination": "Santa Barbara",
+                "dates": {"start": "2026-05-10", "end": "2026-05-20"},
+                "budget": {"min": 0, "max": 2000, "currency": "USD"},
+            },
+            "conversation": {
+                "last_user_intent": "recommend",
+                "last_clarification_kind": "refine_preference",
+                "last_search_outcome": "empty_results",
+                "last_recommendation_item_type": "hotel",
+                "last_recommendation_query": (
+                    "Hotels in Santa Barbara from 2026-05-10 to 2026-05-20 "
+                    "under 2000 USD"
+                ),
+            },
+        }
+    )
+
+    assert build_effective_recommendation_query_text(
+        message="anything works",
+        session_state=state,
+    ) == (
+        "anything works Hotels in Santa Barbara from 2026-05-10 to "
+        "2026-05-20 under 2000 USD"
+    )

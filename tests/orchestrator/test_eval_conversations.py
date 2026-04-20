@@ -46,7 +46,7 @@ def test_eval_missing_core_slots() -> None:
     assert response.state["conversation"]["last_recommendation_item_type"] == "hotel"
 
 
-def test_eval_complete_request_progressively_asks_for_budget_when_missing() -> None:
+def test_eval_complete_request_runs_search_with_optional_hotel_budget() -> None:
     service = OrchestratorService()
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}
 
@@ -77,10 +77,14 @@ def test_eval_complete_request_progressively_asks_for_budget_when_missing() -> N
         recommendation_executor=recommendation_executor,
     )
 
-    assert captured_query["value"] is None
-    assistant = response.assistant_message.casefold()
-    assert "budget" in assistant
-    assert response.state["conversation"]["last_requested_slots"] == ["budget"]
+    query = captured_query["value"]
+    assert query is not None
+    assert query.constraints.destination == "Santa Barbara"
+    assert query.constraints.dates is not None
+    assert query.constraints.budget is not None
+    assert query.constraints.budget.max == 2000.0
+    assert response.state["conversation"]["last_requested_slots"] == []
+    assert response.recommendations[0].item_id == "hotel-sb-1"
 
 
 def test_eval_empty_results_fallback_no_hallucinations_and_suggests_adjustments() -> (
@@ -161,3 +165,21 @@ def test_eval_personalization_follow_up_query_includes_interests() -> None:
     ].casefold()
     assert "nightlife" in normalized_query
     assert "food" in normalized_query
+
+
+def test_eval_generic_trip_setup_asks_for_search_type_before_budget() -> None:
+    service = OrchestratorService()
+
+    response = service.handle_message(
+        user_message="I am going to Lisbon next weekend",
+        session_state=SessionState(session_id="sess-eval-search-type"),
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+    )
+
+    assert response.state["constraints"]["destination"] == "Lisbon"
+    assert response.state["constraints"]["dates"] == {
+        "start": "2026-05-02",
+        "end": "2026-05-03",
+    }
+    assert response.state["conversation"]["last_clarification_kind"] == "search_type"
+    assert "hotel, a restaurant, or an activity" in response.assistant_message

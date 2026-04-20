@@ -212,7 +212,7 @@ class OrchestratorDiagnostics(BaseModel):
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    provider: Literal["disabled", "ollama", "openai"] | None = None
+    provider: Literal["disabled", "ollama", "phi35mini", "openai"] | None = None
     planner_attempted: bool = False
     planner_used: bool = False
     planner_status: str = "not_requested"

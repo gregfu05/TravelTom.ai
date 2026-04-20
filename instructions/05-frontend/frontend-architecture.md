@@ -21,8 +21,9 @@
   chat stays visible while recommendation cards are present.
 - Planner empty-state suggestion chips and helper copy now align with backend
   recommendation timing:
-  hotel prompts should include destination, dates, and budget, while
-  restaurant and activity prompts only require destination.
+  hotel prompts should include destination and dates, with budget used as an
+  optional refinement hint, while restaurant and activity prompts only require
+  destination.
 
 ## Frontend structure
 

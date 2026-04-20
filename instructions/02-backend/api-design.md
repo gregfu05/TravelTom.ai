@@ -196,7 +196,8 @@ Implementation notes (current):
   across clarification turns, then converts grounded backend outcomes into the
   normalized response.
 - Hybrid recommendation policy:
-  - hotel searches wait for destination, dates, and budget
+  - hotel searches wait for destination and dates; budget is an optional
+    refinement input
   - restaurant and activity searches require destination
   - if the final required slot arrives and the runtime still clarifies, backend
     runs the deterministic recommendation path immediately

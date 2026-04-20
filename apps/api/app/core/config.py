@@ -72,9 +72,11 @@ class Settings(BaseSettings):
         "http://localhost:5173 http://127.0.0.1:5173",
         validation_alias=AliasChoices("CORS_ALLOWED_ORIGINS"),
     )
-    orchestrator_llm_provider: Literal["disabled", "ollama", "openai"] = Field(
-        "ollama",
-        validation_alias=AliasChoices("ORCHESTRATOR_LLM_PROVIDER"),
+    orchestrator_llm_provider: Literal["disabled", "ollama", "phi35mini", "openai"] = (
+        Field(
+            "phi35mini",
+            validation_alias=AliasChoices("ORCHESTRATOR_LLM_PROVIDER"),
+        )
     )
     orchestrator_llm_timeout_seconds: float = Field(
         20.0,
@@ -123,6 +125,24 @@ class Settings(BaseSettings):
         ge=0.0,
         le=2.0,
         validation_alias=AliasChoices("OLLAMA_TEMPERATURE"),
+    )
+    phi35mini_base_url: str = Field(
+        "http://127.0.0.1:11434",
+        validation_alias=AliasChoices("PHI35MINI_BASE_URL"),
+    )
+    phi35mini_planning_model: str = Field(
+        "phi3.5:mini",
+        validation_alias=AliasChoices("PHI35MINI_PLANNING_MODEL"),
+    )
+    phi35mini_response_model: str = Field(
+        "phi3.5:mini",
+        validation_alias=AliasChoices("PHI35MINI_RESPONSE_MODEL"),
+    )
+    phi35mini_temperature: float = Field(
+        0.0,
+        ge=0.0,
+        le=2.0,
+        validation_alias=AliasChoices("PHI35MINI_TEMPERATURE"),
     )
     openai_base_url: str = Field(
         "https://api.openai.com/v1",

@@ -27,6 +27,9 @@ def test_build_chat_model_returns_deterministic_model_for_disabled_provider() ->
         ollama_chat_model="llama3.1:8b",
         llm_timeout_seconds=20.0,
         ollama_temperature=0.0,
+        phi35mini_base_url="http://127.0.0.1:11434",
+        phi35mini_chat_model="phi3.5:mini",
+        phi35mini_temperature=0.0,
         openai_base_url="https://api.openai.com/v1",
         openai_api_key="test-key",
         openai_chat_model="gpt-4.1-mini",
@@ -45,6 +48,9 @@ def test_build_chat_model_requires_key_for_openai() -> None:
             ollama_chat_model="llama3.1:8b",
             llm_timeout_seconds=20.0,
             ollama_temperature=0.0,
+            phi35mini_base_url="http://127.0.0.1:11434",
+            phi35mini_chat_model="phi3.5:mini",
+            phi35mini_temperature=0.0,
             openai_base_url="https://api.openai.com/v1",
             openai_api_key=None,
             openai_chat_model="gpt-4.1-mini",
@@ -60,6 +66,9 @@ def test_build_chat_model_returns_langchain_openai_model() -> None:
         ollama_chat_model="llama3.1:8b",
         llm_timeout_seconds=20.0,
         ollama_temperature=0.0,
+        phi35mini_base_url="http://127.0.0.1:11434",
+        phi35mini_chat_model="phi3.5:mini",
+        phi35mini_temperature=0.0,
         openai_base_url="https://api.openai.com/v1",
         openai_api_key="test-key",
         openai_chat_model="gpt-4.1-mini",
@@ -90,6 +99,9 @@ def test_build_chat_model_returns_langchain_ollama_model(monkeypatch) -> None:
         ollama_chat_model="llama3.1:8b",
         llm_timeout_seconds=20.0,
         ollama_temperature=0.0,
+        phi35mini_base_url="http://127.0.0.1:11434",
+        phi35mini_chat_model="phi3.5:mini",
+        phi35mini_temperature=0.0,
         openai_base_url="https://api.openai.com/v1",
         openai_api_key="test-key",
         openai_chat_model="gpt-4.1-mini",
@@ -100,6 +112,42 @@ def test_build_chat_model_returns_langchain_ollama_model(monkeypatch) -> None:
     assert isinstance(model, ChatOllama)
     assert model.model == "llama3.1:8b-instruct-q4_0"
     assert captured["base_url"] == "http://127.0.0.1:11434/"
+    assert captured["timeout_seconds"] == 5.0
+
+
+def test_build_chat_model_returns_langchain_phi35mini_model(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_get_ollama_models(*, base_url: str, timeout_seconds: float) -> list[str]:
+        captured["base_url"] = base_url
+        captured["timeout_seconds"] = timeout_seconds
+        return ["phi3.5:mini-instruct-q4_0"]
+
+    monkeypatch.setattr(
+        "app.services.orchestrator.llm_provider.get_ollama_available_model_names",
+        fake_get_ollama_models,
+    )
+
+    model = build_chat_model(
+        provider="phi35mini",
+        ollama_base_url="http://127.0.0.1:11434",
+        ollama_chat_model="llama3.1:8b",
+        llm_timeout_seconds=20.0,
+        ollama_temperature=0.0,
+        phi35mini_base_url=" http://127.0.0.1:11435 ",
+        phi35mini_chat_model="phi3.5:mini",
+        phi35mini_temperature=0.1,
+        openai_base_url="https://api.openai.com/v1",
+        openai_api_key="test-key",
+        openai_chat_model="gpt-4.1-mini",
+        openai_temperature=0.0,
+        max_results=5,
+    )
+
+    assert isinstance(model, ChatOllama)
+    assert model.model == "phi3.5:mini-instruct-q4_0"
+    assert model.base_url == "http://127.0.0.1:11435/"
+    assert captured["base_url"] == "http://127.0.0.1:11435/"
     assert captured["timeout_seconds"] == 5.0
 
 
@@ -127,6 +175,15 @@ def test_resolve_structured_stage_timeout_seconds_clamps_local_ollama() -> None:
             local_environment=True,
         )
         == 20.0
+    )
+    assert (
+        _resolve_structured_stage_timeout_seconds(
+            provider_name="phi35mini",
+            stage_name="planner",
+            timeout_seconds=20.0,
+            local_environment=True,
+        )
+        == 60.0
     )
     assert (
         _resolve_structured_stage_timeout_seconds(

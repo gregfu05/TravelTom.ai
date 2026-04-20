@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+from collections.abc import Sequence
 from typing import Any, Literal
 
 from app.schemas.orchestrator import (
@@ -79,13 +81,22 @@ _CORE_SLOT_LABELS = {
     "dates": "travel dates",
     "budget": "budget range",
 }
-_CORE_SLOT_QUESTIONS = {
-    "destination": "Which destination should I focus on?",
-    "dates": "What travel dates should I plan around?",
-    "budget": "What budget range should I use?",
+_CORE_SLOT_QUESTION_VARIANTS = {
+    "destination": (
+        "Which destination should I focus on?",
+        "What destination should I focus on?",
+    ),
+    "dates": (
+        "What travel dates should I plan around?",
+        "Which travel dates should I plan around?",
+    ),
+    "budget": (
+        "What budget range should I use?",
+        "Which budget range should I use?",
+    ),
 }
 _ITEM_TYPE_REQUIRED_SLOT_ORDER = {
-    "hotel": ("destination", "dates", "budget"),
+    "hotel": ("destination", "dates"),
     "restaurant": ("destination",),
     "activity": ("destination",),
 }
@@ -94,20 +105,142 @@ _ITEM_TYPE_LABELS = {
     "restaurant": "restaurant recommendations",
     "activity": "activity recommendations",
 }
-_SEARCH_TYPE_QUESTION = "Sure - do you mean a hotel, a restaurant, or an activity?"
-_SEARCH_TYPE_QUESTION_WITH_DESTINATION = (
-    "Sure - for that destination, do you want a hotel, a restaurant, or an activity?"
+_SEARCH_TYPE_QUESTION_VARIANTS = (
+    "Sure - do you mean a hotel, a restaurant, or an activity?",
+    "Got it - are you looking for a hotel, a restaurant, or an activity?",
 )
-_SEARCH_TYPE_FOLLOW_UP_QUESTION = (
-    "Sure - do you mean a hotel, a restaurant, or an activity?"
-)
-_SEARCH_TYPE_FOLLOW_UP_QUESTION_WITH_DESTINATION = (
-    "Sure - for that destination, do you want a hotel, a restaurant, or an activity?"
+_SEARCH_TYPE_QUESTION_WITH_DESTINATION_VARIANTS = (
+    "Sure - for that destination, do you want a hotel, a restaurant, or an activity?",
+    (
+        "Got it - for that destination, are you looking for a hotel, a "
+        "restaurant, or an activity?"
+    ),
 )
 _TRANSCRIPT_MESSAGE_MAX_CHARS = 240
 _UNSUPPORTED_FLIGHT_MESSAGE = (
     "Flights are not supported. I can help with hotels, restaurants, or activities."
 )
+_GREETING_MESSAGE_VARIANTS = (
+    (
+        "Hi, I'm Tom. Tell me where you want to go, or share destination, "
+        "dates, and budget and I'll turn that into grounded recommendations."
+    ),
+    (
+        "Hi, I'm Tom. Share where you want to go, or send destination, dates, "
+        "and budget and I'll turn that into grounded recommendations."
+    ),
+)
+_REFINE_PREFERENCE_MESSAGE_VARIANTS = (
+    (
+        "I can help narrow this down. Tell me what you want to optimize for, "
+        "like lower cost, a different neighborhood, cuisine, or vibe."
+    ),
+    (
+        "I can narrow this down with one more preference, like lower cost, a "
+        "different neighborhood, cuisine, or vibe."
+    ),
+)
+_EMPTY_MESSAGE_VARIANTS = (
+    (
+        "I can help plan this trip. Share where you want to go, when you want "
+        "to travel, and your budget, and I will take it from there."
+    ),
+    (
+        "I can help plan this trip. Share your destination, travel timing, and "
+        "budget, and I'll take it from there."
+    ),
+)
+_EMPTY_RESULTS_WITH_SLOT_VARIANTS = (
+    "I did not find grounded matches with those constraints yet. {question}",
+    "I do not have grounded matches with those constraints yet. {question}",
+)
+_EMPTY_RESULTS_VARIANTS = (
+    (
+        "I did not find grounded matches with those constraints"
+        "{destination_clause}. Try adjusting your budget, changing the travel "
+        "dates, or switching the location."
+    ),
+    (
+        "I do not have grounded matches with those constraints"
+        "{destination_clause}. Try adjusting your budget, changing the travel "
+        "dates, or trying a different location."
+    ),
+)
+_NO_NEW_RESULTS_WITH_SLOT_VARIANTS = (
+    "I do not have new grounded options to show yet from that same search. {question}",
+    (
+        "I still do not have new grounded options to show from that same "
+        "search. {question}"
+    ),
+)
+_NO_NEW_RESULTS_VARIANTS = (
+    (
+        "I do not have new grounded options to show yet from that same search. "
+        "Tell me what to change, like budget, vibe, neighborhood, or activity."
+    ),
+    (
+        "I still do not have new grounded options from that same search. Tell "
+        "me what to change, like budget, vibe, neighborhood, or activity."
+    ),
+)
+_TOOL_TIMEOUT_MESSAGE_VARIANTS = (
+    (
+        "I could not finish the search in time. Please try again in a moment "
+        "and I will pick up from the same trip details."
+    ),
+    (
+        "I ran out of time while finishing that search. Please try again in a "
+        "moment and I will continue from the same trip details."
+    ),
+)
+_INVALID_TOOL_PAYLOAD_MESSAGE_VARIANTS = (
+    (
+        "I received an invalid recommendation payload, so I stopped rather "
+        "than guess. Please retry and I will fetch the results again."
+    ),
+    (
+        "I received an invalid recommendation payload, so I stopped instead of "
+        "guessing. Please retry and I will fetch the results again."
+    ),
+)
+_TOOL_FAILURE_MESSAGE_VARIANTS = (
+    (
+        "I hit a temporary search issue. Please retry in a moment and I will "
+        "continue from the same plan."
+    ),
+    (
+        "I ran into a temporary search issue. Please retry in a moment and I "
+        "will continue from the same plan."
+    ),
+)
+
+
+def select_copy_variant(
+    variants: Sequence[str],
+    *,
+    category: str,
+    session_state: SessionState | None = None,
+    message: str | None = None,
+    extra_seed: str | None = None,
+) -> str:
+    """Pick a stable copy variant without introducing runtime randomness."""
+
+    if not variants:
+        raise ValueError("variants must not be empty")
+    if len(variants) == 1:
+        return variants[0]
+
+    seed_parts = [category]
+    if session_state is not None:
+        seed_parts.append(session_state.session_id)
+    if message:
+        seed_parts.append(message.strip().casefold())
+    if extra_seed:
+        seed_parts.append(extra_seed)
+
+    seed = "|".join(seed_parts)
+    digest = hashlib.sha256(seed.encode("utf-8")).digest()
+    return variants[int.from_bytes(digest[:4], byteorder="big") % len(variants)]
 
 
 def classify_intent(message: str) -> Intent:
@@ -208,9 +341,9 @@ def build_social_turn_message(message: str) -> str:
 def build_greeting_message() -> str:
     """Build deterministic copy for greeting/opening turns."""
 
-    return (
-        "Hi, I'm Tom. Tell me where you want to go, or share destination, dates, "
-        "and budget and I'll turn that into grounded recommendations."
+    return select_copy_variant(
+        _GREETING_MESSAGE_VARIANTS,
+        category="greeting",
     )
 
 
@@ -374,9 +507,7 @@ def build_clarification_message(
             prefix = _build_acknowledgement_prefix(acknowledged_slots or [])
         if not prefix:
             return build_search_type_question(session_state)
-        if session_state.constraints.destination:
-            return prefix + _SEARCH_TYPE_FOLLOW_UP_QUESTION_WITH_DESTINATION
-        return prefix + _SEARCH_TYPE_FOLLOW_UP_QUESTION
+        return prefix + build_search_type_question(session_state)
 
     if clarification_kind == "refine_preference":
         if (
@@ -389,9 +520,11 @@ def build_clarification_message(
             }
         ):
             return build_no_preference_after_empty_results_message(session_state)
-        return (
-            "I can help narrow this down. Tell me what you want to optimize for, "
-            "like lower cost, a different neighborhood, cuisine, or vibe."
+        return select_copy_variant(
+            _REFINE_PREFERENCE_MESSAGE_VARIANTS,
+            category="clarification:refine_preference",
+            session_state=session_state,
+            message=message,
         )
 
     prefix = _build_acknowledgement_prefix(acknowledged_slots or [])
@@ -412,10 +545,10 @@ def build_clarification_message(
 def build_empty_message(session_state: SessionState) -> str:
     """Build deterministic copy for an empty user message."""
 
-    del session_state
-    return (
-        "I can help plan this trip. Share where you want to go, when you want to "
-        "travel, and your budget, and I will take it from there."
+    return select_copy_variant(
+        _EMPTY_MESSAGE_VARIANTS,
+        category="empty_message",
+        session_state=session_state,
     )
 
 
@@ -442,20 +575,21 @@ def build_empty_results_message(session_state: SessionState) -> str:
 
     next_slot = next_missing_core_constraint_slot(session_state)
     if next_slot is not None:
-        return (
-            "I did not find grounded matches with those constraints yet. "
-            + _CORE_SLOT_QUESTIONS[next_slot]
-        )
+        return select_copy_variant(
+            _EMPTY_RESULTS_WITH_SLOT_VARIANTS,
+            category=f"empty_results:{next_slot}",
+            session_state=session_state,
+        ).format(question=build_core_slot_question(session_state, next_slot))
 
     destination = session_state.constraints.destination
     destination_clause = f" for {destination}" if destination else ""
 
-    return (
-        "I did not find grounded matches with those constraints"
-        + destination_clause
-        + ". Try adjusting your budget, changing the travel dates, or "
-        + "switching the location."
-    )
+    return select_copy_variant(
+        _EMPTY_RESULTS_VARIANTS,
+        category="empty_results:generic",
+        session_state=session_state,
+        extra_seed=destination_clause,
+    ).format(destination_clause=destination_clause)
 
 
 def build_no_new_results_message(session_state: SessionState) -> str:
@@ -463,40 +597,47 @@ def build_no_new_results_message(session_state: SessionState) -> str:
 
     next_slot = next_missing_core_constraint_slot(session_state)
     if next_slot is None:
-        return (
-            "I do not have new grounded options to show yet from that same search. "
-            "Tell me what to change, like budget, vibe, neighborhood, or activity."
+        return select_copy_variant(
+            _NO_NEW_RESULTS_VARIANTS,
+            category="no_new_results:generic",
+            session_state=session_state,
         )
-    return (
-        "I do not have new grounded options to show yet from that same search. "
-        + _CORE_SLOT_QUESTIONS[next_slot]
-    )
+    return select_copy_variant(
+        _NO_NEW_RESULTS_WITH_SLOT_VARIANTS,
+        category=f"no_new_results:{next_slot}",
+        session_state=session_state,
+    ).format(question=build_core_slot_question(session_state, next_slot))
 
 
-def build_tool_timeout_message() -> str:
+def build_tool_timeout_message(session_state: SessionState | None = None) -> str:
     """Build deterministic copy for recommendation timeouts."""
 
-    return (
-        "I could not finish the search in time. Please try again in a moment and "
-        "I will pick up from the same trip details."
+    return select_copy_variant(
+        _TOOL_TIMEOUT_MESSAGE_VARIANTS,
+        category="tool_timeout",
+        session_state=session_state,
     )
 
 
-def build_invalid_tool_payload_message() -> str:
+def build_invalid_tool_payload_message(
+    session_state: SessionState | None = None,
+) -> str:
     """Build deterministic copy for invalid recommendation payloads."""
 
-    return (
-        "I received an invalid recommendation payload, so I stopped rather than "
-        "guess. Please retry and I will fetch the results again."
+    return select_copy_variant(
+        _INVALID_TOOL_PAYLOAD_MESSAGE_VARIANTS,
+        category="invalid_tool_payload",
+        session_state=session_state,
     )
 
 
-def build_tool_failure_message() -> str:
+def build_tool_failure_message(session_state: SessionState | None = None) -> str:
     """Build deterministic copy for unexpected recommendation failures."""
 
-    return (
-        "I hit a temporary search issue. Please retry in a moment and I will "
-        "continue from the same plan."
+    return select_copy_variant(
+        _TOOL_FAILURE_MESSAGE_VARIANTS,
+        category="tool_failure",
+        session_state=session_state,
     )
 
 
@@ -679,7 +820,7 @@ def _build_contextual_slot_question(
     ):
         return build_search_type_question(session_state)
 
-    question = _CORE_SLOT_QUESTIONS[next_slot]
+    question = build_core_slot_question(session_state, next_slot)
     item_type = session_state.conversation.last_recommendation_item_type
     if (
         session_state.conversation.last_user_intent not in {"recommend", "refine"}
@@ -761,7 +902,11 @@ def build_response_prompt_context(
         "Grounding rules:\n"
         "- Use only the recommendation list provided below.\n"
         "- Prefer recommendation names in user-facing text.\n"
+        "- If you mention recommendation names, keep them in the same surfaced "
+        "order and do not skip within the named subset.\n"
         "- Do not invent item ids, prices, or availability.\n"
+        "- Do not mention scores, rankings, or matching rationale unless it is "
+        "directly stated in the recommendation explanation.\n"
         "- If no recommendations exist, ask for tighter constraints.\n"
         "- Use the recent transcript to avoid repeating the same clarification.\n"
         f"- If you are uncertain, use this exact fallback message: {fallback_message}\n"
@@ -879,14 +1024,9 @@ def needs_search_type_clarification(state: SessionState) -> bool:
         return False
     if state.conversation.last_clarification_kind == "search_type":
         return True
-    return not missing_core_constraint_slots(
-        state.model_copy(
-            update={
-                "conversation": state.conversation.model_copy(
-                    update={"last_recommendation_item_type": None}
-                )
-            }
-        )
+    return (
+        state.constraints.destination is not None
+        and state.constraints.dates is not None
     )
 
 
@@ -926,8 +1066,29 @@ def build_search_type_question(session_state: SessionState) -> str:
     """Build clarification copy asking what kind of recommendation to run."""
 
     if session_state.constraints.destination:
-        return _SEARCH_TYPE_QUESTION_WITH_DESTINATION
-    return _SEARCH_TYPE_QUESTION
+        return select_copy_variant(
+            _SEARCH_TYPE_QUESTION_WITH_DESTINATION_VARIANTS,
+            category="search_type:destination",
+            session_state=session_state,
+        )
+    return select_copy_variant(
+        _SEARCH_TYPE_QUESTION_VARIANTS,
+        category="search_type:generic",
+        session_state=session_state,
+    )
+
+
+def build_core_slot_question(session_state: SessionState, slot: str) -> str:
+    """Build deterministic core-slot clarification copy with controlled variety."""
+
+    variants = _CORE_SLOT_QUESTION_VARIANTS.get(slot)
+    if variants is None:
+        raise ValueError(f"Unsupported core slot: {slot}")
+    return select_copy_variant(
+        variants,
+        category=f"core_slot:{slot}",
+        session_state=session_state,
+    )
 
 
 def build_no_preference_after_empty_results_message(session_state: SessionState) -> str:
@@ -936,10 +1097,16 @@ def build_no_preference_after_empty_results_message(session_state: SessionState)
     item_type = session_state.conversation.last_recommendation_item_type
     if item_type == "hotel":
         destination = session_state.constraints.destination or "that destination"
+        date_clause = (
+            " with the current dates" if session_state.constraints.dates else ""
+        )
+        budget_clause = (
+            " and budget" if session_state.constraints.budget is not None else ""
+        )
         return (
             "I still do not have grounded hotel matches for "
-            f"{destination} with the current dates and budget. Try widening the "
-            "budget or changing the dates."
+            f"{destination}{date_clause}{budget_clause}. Try widening the "
+            "budget, changing the dates, or trying a nearby area."
         )
     if item_type == "restaurant":
         destination = session_state.constraints.destination or "that destination"
