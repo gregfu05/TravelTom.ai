@@ -1658,9 +1658,7 @@ def test_orchestrator_day_first_dates_fill_advances_past_dates_slot() -> None:
     assert response.recommendations[0].item_id == "hotel-sb-day-first"
 
 
-def test_orchestrator_shared_month_day_first_dates_trigger_hotel_results_without_budget() -> (
-    None
-):
+def test_orchestrator_day_first_dates_trigger_hotel_results_without_budget() -> None:
     service = OrchestratorService()
     state = SessionState.model_validate(
         {
@@ -2511,7 +2509,7 @@ def test_orchestrator_generic_trip_message_asks_for_search_type_before_budget() 
     assert "hotel, a restaurant, or an activity" in response.assistant_message
 
 
-def test_orchestrator_unsupported_flight_request_does_not_persist_state_from_planner() -> (
+def test_orchestrator_unsupported_flight_request_does_not_persist_planner_state() -> (
     None
 ):
     service = OrchestratorService()
