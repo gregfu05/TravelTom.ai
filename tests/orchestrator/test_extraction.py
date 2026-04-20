@@ -128,9 +128,8 @@ def test_day_first_date_reply_does_not_overwrite_existing_destination() -> None:
     assert updated.constraints.dates.end.isoformat() == "2026-05-20"
 
 
-def test_shared_month_day_first_date_reply_fills_dates_without_overwriting_destination() -> (
-    None
-):
+def test_shared_month_day_first_date_reply_fills_dates_without_overwriting_destination(
+) -> None:
     state = SessionState.model_validate(
         {
             "session_id": "sess-day-first-shared-month",
@@ -743,7 +742,8 @@ def test_vague_empty_results_reply_preserves_prior_query_context() -> None:
                 "last_search_outcome": "empty_results",
                 "last_recommendation_item_type": "hotel",
                 "last_recommendation_query": (
-                    "Hotels in Santa Barbara from 2026-05-10 to 2026-05-20 under 2000 USD"
+                    "Hotels in Santa Barbara from 2026-05-10 to 2026-05-20 "
+                    "under 2000 USD"
                 ),
             },
         }
@@ -754,5 +754,8 @@ def test_vague_empty_results_reply_preserves_prior_query_context() -> None:
             message="anything works",
             session_state=state,
         )
-        == "anything works Hotels in Santa Barbara from 2026-05-10 to 2026-05-20 under 2000 USD"
+        == (
+            "anything works Hotels in Santa Barbara from 2026-05-10 to "
+            "2026-05-20 under 2000 USD"
+        )
     )

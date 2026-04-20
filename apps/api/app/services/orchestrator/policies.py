@@ -111,51 +111,107 @@ _SEARCH_TYPE_QUESTION_VARIANTS = (
 )
 _SEARCH_TYPE_QUESTION_WITH_DESTINATION_VARIANTS = (
     "Sure - for that destination, do you want a hotel, a restaurant, or an activity?",
-    "Got it - for that destination, are you looking for a hotel, a restaurant, or an activity?",
+    (
+        "Got it - for that destination, are you looking for a hotel, a "
+        "restaurant, or an activity?"
+    ),
 )
 _TRANSCRIPT_MESSAGE_MAX_CHARS = 240
 _UNSUPPORTED_FLIGHT_MESSAGE = (
     "Flights are not supported. I can help with hotels, restaurants, or activities."
 )
 _GREETING_MESSAGE_VARIANTS = (
-    "Hi, I'm Tom. Tell me where you want to go, or share destination, dates, and budget and I'll turn that into grounded recommendations.",
-    "Hi, I'm Tom. Share where you want to go, or send destination, dates, and budget and I'll turn that into grounded recommendations.",
+    (
+        "Hi, I'm Tom. Tell me where you want to go, or share destination, "
+        "dates, and budget and I'll turn that into grounded recommendations."
+    ),
+    (
+        "Hi, I'm Tom. Share where you want to go, or send destination, dates, "
+        "and budget and I'll turn that into grounded recommendations."
+    ),
 )
 _REFINE_PREFERENCE_MESSAGE_VARIANTS = (
-    "I can help narrow this down. Tell me what you want to optimize for, like lower cost, a different neighborhood, cuisine, or vibe.",
-    "I can narrow this down with one more preference, like lower cost, a different neighborhood, cuisine, or vibe.",
+    (
+        "I can help narrow this down. Tell me what you want to optimize for, "
+        "like lower cost, a different neighborhood, cuisine, or vibe."
+    ),
+    (
+        "I can narrow this down with one more preference, like lower cost, a "
+        "different neighborhood, cuisine, or vibe."
+    ),
 )
 _EMPTY_MESSAGE_VARIANTS = (
-    "I can help plan this trip. Share where you want to go, when you want to travel, and your budget, and I will take it from there.",
-    "I can help plan this trip. Share your destination, travel timing, and budget, and I'll take it from there.",
+    (
+        "I can help plan this trip. Share where you want to go, when you want "
+        "to travel, and your budget, and I will take it from there."
+    ),
+    (
+        "I can help plan this trip. Share your destination, travel timing, and "
+        "budget, and I'll take it from there."
+    ),
 )
 _EMPTY_RESULTS_WITH_SLOT_VARIANTS = (
     "I did not find grounded matches with those constraints yet. {question}",
     "I do not have grounded matches with those constraints yet. {question}",
 )
 _EMPTY_RESULTS_VARIANTS = (
-    "I did not find grounded matches with those constraints{destination_clause}. Try adjusting your budget, changing the travel dates, or switching the location.",
-    "I do not have grounded matches with those constraints{destination_clause}. Try adjusting your budget, changing the travel dates, or trying a different location.",
+    (
+        "I did not find grounded matches with those constraints"
+        "{destination_clause}. Try adjusting your budget, changing the travel "
+        "dates, or switching the location."
+    ),
+    (
+        "I do not have grounded matches with those constraints"
+        "{destination_clause}. Try adjusting your budget, changing the travel "
+        "dates, or trying a different location."
+    ),
 )
 _NO_NEW_RESULTS_WITH_SLOT_VARIANTS = (
     "I do not have new grounded options to show yet from that same search. {question}",
-    "I still do not have new grounded options to show from that same search. {question}",
+    (
+        "I still do not have new grounded options to show from that same "
+        "search. {question}"
+    ),
 )
 _NO_NEW_RESULTS_VARIANTS = (
-    "I do not have new grounded options to show yet from that same search. Tell me what to change, like budget, vibe, neighborhood, or activity.",
-    "I still do not have new grounded options from that same search. Tell me what to change, like budget, vibe, neighborhood, or activity.",
+    (
+        "I do not have new grounded options to show yet from that same search. "
+        "Tell me what to change, like budget, vibe, neighborhood, or activity."
+    ),
+    (
+        "I still do not have new grounded options from that same search. Tell "
+        "me what to change, like budget, vibe, neighborhood, or activity."
+    ),
 )
 _TOOL_TIMEOUT_MESSAGE_VARIANTS = (
-    "I could not finish the search in time. Please try again in a moment and I will pick up from the same trip details.",
-    "I ran out of time while finishing that search. Please try again in a moment and I will continue from the same trip details.",
+    (
+        "I could not finish the search in time. Please try again in a moment "
+        "and I will pick up from the same trip details."
+    ),
+    (
+        "I ran out of time while finishing that search. Please try again in a "
+        "moment and I will continue from the same trip details."
+    ),
 )
 _INVALID_TOOL_PAYLOAD_MESSAGE_VARIANTS = (
-    "I received an invalid recommendation payload, so I stopped rather than guess. Please retry and I will fetch the results again.",
-    "I received an invalid recommendation payload, so I stopped instead of guessing. Please retry and I will fetch the results again.",
+    (
+        "I received an invalid recommendation payload, so I stopped rather "
+        "than guess. Please retry and I will fetch the results again."
+    ),
+    (
+        "I received an invalid recommendation payload, so I stopped instead of "
+        "guessing. Please retry and I will fetch the results again."
+    ),
 )
 _TOOL_FAILURE_MESSAGE_VARIANTS = (
-    "I hit a temporary search issue. Please retry in a moment and I will continue from the same plan.",
-    "I ran into a temporary search issue. Please retry in a moment and I will continue from the same plan.",
+    (
+        "I hit a temporary search issue. Please retry in a moment and I will "
+        "continue from the same plan."
+    ),
+    (
+        "I ran into a temporary search issue. Please retry in a moment and I "
+        "will continue from the same plan."
+    ),
 )
 
 
@@ -846,9 +902,11 @@ def build_response_prompt_context(
         "Grounding rules:\n"
         "- Use only the recommendation list provided below.\n"
         "- Prefer recommendation names in user-facing text.\n"
-        "- If you mention recommendation names, keep them in the same surfaced order and do not skip within the named subset.\n"
+        "- If you mention recommendation names, keep them in the same surfaced "
+        "order and do not skip within the named subset.\n"
         "- Do not invent item ids, prices, or availability.\n"
-        "- Do not mention scores, rankings, or matching rationale unless it is directly stated in the recommendation explanation.\n"
+        "- Do not mention scores, rankings, or matching rationale unless it is "
+        "directly stated in the recommendation explanation.\n"
         "- If no recommendations exist, ask for tighter constraints.\n"
         "- Use the recent transcript to avoid repeating the same clarification.\n"
         f"- If you are uncertain, use this exact fallback message: {fallback_message}\n"
