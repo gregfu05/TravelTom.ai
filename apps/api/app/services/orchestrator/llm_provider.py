@@ -29,6 +29,7 @@ from app.services.orchestrator.policies import (
     build_clarification_message,
     build_empty_results_message,
     build_guardrail_plan,
+    build_invalid_tool_payload_message,
     build_tool_failure_message,
     build_tool_timeout_message,
     decide_next_action,
@@ -452,22 +453,17 @@ class DeterministicTravelTomChatModel(_DeterministicToolCallingModel):
         artifact = getattr(tool_message, "artifact", None) or {}
         status = artifact.get("status")
         if status == "timeout":
-            return AIMessage(content=build_tool_timeout_message())
+            return AIMessage(content=build_tool_timeout_message(session_state))
         if status == "invalid_payload":
-            return AIMessage(
-                content=(
-                    "I received an invalid recommendation payload, so I stopped "
-                    "rather than guess."
-                )
-            )
+            return AIMessage(content=build_invalid_tool_payload_message(session_state))
         if status != "success":
-            return AIMessage(content=build_tool_failure_message())
+            return AIMessage(content=build_tool_failure_message(session_state))
 
         response_payload = artifact.get("response") or {}
         try:
             response = RecommendationToolResponse.model_validate(response_payload)
         except Exception:
-            return AIMessage(content=build_tool_failure_message())
+            return AIMessage(content=build_tool_failure_message(session_state))
 
         if not response.results:
             return AIMessage(content=build_empty_results_message(session_state))

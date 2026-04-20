@@ -15,8 +15,23 @@ from app.services.orchestrator.extraction import is_follow_up_refinement
 from app.services.orchestrator.policies import (
     build_empty_results_message,
     build_no_new_results_message,
+    select_copy_variant,
 )
 from app.services.orchestrator.runtime_types import RecommendationOutcome
+
+_RESULTS_SINGLE_MESSAGE_VARIANTS = (
+    "{preference_preface}I found 1 {singular_label} that fits your request. "
+    "Top pick: {preview_name}",
+    "{preference_preface}I found 1 {singular_label} matching your request. "
+    "Top pick: {preview_name}",
+)
+
+_RESULTS_MULTI_MESSAGE_VARIANTS = (
+    "{preference_preface}I found {result_count} {result_label} that fit your "
+    "request. Top picks:\n{preview_items}",
+    "{preference_preface}I found {result_count} {result_label} matching your "
+    "request. Top picks:\n{preview_items}",
+)
 
 
 class ResponseAssembler:
@@ -59,20 +74,33 @@ class ResponseAssembler:
         )
         result_label = self._result_collection_label(results)
         result_count = len(results)
+        results_seed = "|".join(item.item_id for item in displayed_results) or str(
+            result_count
+        )
         if result_count == 1:
             preview_name = self._recommendation_display_name(displayed_results[0])
             singular_label = self._result_singular_label(results)
-            base = (
-                preference_preface
-                + f"I found 1 {singular_label} "
-                + "that fits your request. "
-                + f"Top pick: {preview_name}"
+            base = select_copy_variant(
+                _RESULTS_SINGLE_MESSAGE_VARIANTS,
+                category="results_single_message",
+                session_state=session_state,
+                extra_seed=results_seed,
+            ).format(
+                preference_preface=preference_preface,
+                singular_label=singular_label,
+                preview_name=preview_name,
             )
         else:
-            base = (
-                preference_preface
-                + f"I found {result_count} {result_label} that fit your request. "
-                + f"Top picks:\n{preview_items}"
+            base = select_copy_variant(
+                _RESULTS_MULTI_MESSAGE_VARIANTS,
+                category="results_multi_message",
+                session_state=session_state,
+                extra_seed=results_seed,
+            ).format(
+                preference_preface=preference_preface,
+                result_count=result_count,
+                result_label=result_label,
+                preview_items=preview_items,
             )
         if limit_notice:
             return f"{limit_notice} {base}"

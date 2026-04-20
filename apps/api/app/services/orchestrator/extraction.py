@@ -389,6 +389,13 @@ _TRAILING_BUDGET_REPLY_PATTERN = re.compile(
     rf"\s*[{_CURRENCY_SYMBOL_CLASS}]?\s*[.!?]?\s*$",
     flags=re.IGNORECASE,
 )
+_INLINE_BUDGET_AMOUNT_PATTERN = re.compile(
+    rf"(?:^|[\s,;:])"
+    rf"[{_CURRENCY_SYMBOL_CLASS}]?\s*(?P<amount>\d[\d,]*(?:\.\d+)?k?)"
+    r"\s*(?P<currency>usd|eur|euro|euros|gbp|pound|pounds|cad|aud|jpy|yen|inr|rupee|rupees|dollar|dollars)"
+    rf"(?=(?:[\s,;:]+(?:hotel|hotels|restaurant|restaurants|activity|activities)\b)|[\s,;:.!?]|$)",
+    flags=re.IGNORECASE,
+)
 
 _PARTY_ADULTS_CHILDREN_PATTERN = re.compile(
     r"\b(?P<adults>\d+)\s*adults?(?:\s*(?:and|,)\s*"
@@ -560,6 +567,11 @@ _CONVERSATIONAL_RECOMMENDATION_PATTERNS = (
     r"\bnot too pricey\b",
     r"\baffordable\b",
 )
+_COMMON_MESSAGE_CANONICALIZATIONS = (
+    (re.compile(r"\bnxt\b", flags=re.IGNORECASE), "next"),
+    (re.compile(r"\bwknd\b", flags=re.IGNORECASE), "weekend"),
+    (re.compile(r"\bsmth\b", flags=re.IGNORECASE), "something"),
+)
 
 
 def apply_message_state_updates(
@@ -570,28 +582,30 @@ def apply_message_state_updates(
 ) -> SessionState:
     """Apply deterministic state extraction for a single user message."""
 
-    normalized_message = " ".join(message.strip().split())
+    normalized_message = _canonicalize_message(message)
     if not normalized_message:
         return session_state.model_copy(deep=True)
 
     extraction_day = today or date.today()
     next_state = session_state.model_copy(deep=True)
+    unsupported_flight_request = is_unsupported_flight_request(normalized_message)
     unsupported_route_reply = _is_unsupported_flight_route_reply(
         message=normalized_message,
         session_state=session_state,
     )
+    skip_trip_constraint_updates = unsupported_flight_request or unsupported_route_reply
 
     destination_source: str | None = None
     destination = None
-    if not unsupported_route_reply and destination is None:
+    if not skip_trip_constraint_updates and destination is None:
         destination = _extract_destination(normalized_message)
         if destination is not None:
             destination_source = "pattern"
-    if not unsupported_route_reply and destination is None:
+    if not skip_trip_constraint_updates and destination is None:
         destination = _extract_bare_destination(normalized_message)
         if destination is not None:
             destination_source = "bare"
-    if not unsupported_route_reply and destination is None:
+    if not skip_trip_constraint_updates and destination is None:
         destination = _extract_leading_destination_fragment(normalized_message)
         if destination is not None:
             destination_source = "leading"
@@ -608,13 +622,15 @@ def apply_message_state_updates(
         ):
             next_state.entities.destinations.append(destination)
 
-    parsed_dates = _extract_dates(normalized_message, today=extraction_day)
+    parsed_dates = None
+    if not skip_trip_constraint_updates:
+        parsed_dates = _extract_dates(normalized_message, today=extraction_day)
     if parsed_dates is not None:
         next_state.constraints.dates = parsed_dates
         next_state.constraints.trip_length_days = (
             parsed_dates.end - parsed_dates.start
         ).days + 1
-    else:
+    elif not skip_trip_constraint_updates:
         trip_length_days = _extract_trip_length_days(normalized_message)
         if trip_length_days is not None:
             next_state.constraints.trip_length_days = trip_length_days
@@ -638,17 +654,19 @@ def apply_message_state_updates(
             )
         )
     )
-    parsed_budget = _extract_budget(
-        normalized_message,
-        fallback_currency=fallback_currency,
-        allow_bare_amount=allow_bare_budget_amount,
-    )
-    if parsed_budget is not None:
-        next_state.constraints.budget = parsed_budget
+    if not skip_trip_constraint_updates:
+        parsed_budget = _extract_budget(
+            normalized_message,
+            fallback_currency=fallback_currency,
+            allow_bare_amount=allow_bare_budget_amount,
+        )
+        if parsed_budget is not None:
+            next_state.constraints.budget = parsed_budget
 
-    parsed_party_size = _extract_party_size(normalized_message)
-    if parsed_party_size is not None:
-        next_state.constraints.party_size = parsed_party_size
+    if not skip_trip_constraint_updates:
+        parsed_party_size = _extract_party_size(normalized_message)
+        if parsed_party_size is not None:
+            next_state.constraints.party_size = parsed_party_size
 
     extracted_interests = _extract_weighted_interests(normalized_message)
     if extracted_interests:
@@ -803,6 +821,13 @@ def resolve_effective_item_type(
 
     if (
         remembered_item_type is not None
+        and session_state.status == "refine"
+        and session_state.conversation.last_user_intent in {"recommend", "refine"}
+    ):
+        return remembered_item_type
+
+    if (
+        remembered_item_type is not None
         and session_state.conversation.last_requested_slots
         and session_state.conversation.last_user_intent in {"recommend", "refine"}
     ):
@@ -826,6 +851,14 @@ def build_effective_recommendation_query_text(
 
     if not is_follow_up_refinement(normalized_message):
         if (
+            prior_query
+            and session_state.conversation.last_clarification_kind == "refine_preference"
+            and session_state.conversation.last_search_outcome
+            in {"empty_results", "no_new_results"}
+            and is_vague_acceptance_reply(normalized_message)
+        ):
+            base = _merge_query_fragments(normalized_message, prior_query)
+        elif (
             prior_query
             and session_state.conversation.last_clarification_kind == "search_type"
         ):
@@ -898,6 +931,13 @@ def apply_structured_state_patch(
         ).days + 1
 
     return next_state
+
+
+def _canonicalize_message(message: str) -> str:
+    normalized = " ".join(message.strip().split())
+    for pattern, replacement in _COMMON_MESSAGE_CANONICALIZATIONS:
+        normalized = pattern.sub(replacement, normalized)
+    return normalized
 
 
 def _extract_destination(message: str) -> str | None:
@@ -1261,6 +1301,8 @@ def _extract_budget(
         bare_amount_match = _BARE_BUDGET_REPLY_PATTERN.search(message)
         if bare_amount_match is None:
             bare_amount_match = _TRAILING_BUDGET_REPLY_PATTERN.search(message)
+        if bare_amount_match is None:
+            bare_amount_match = _INLINE_BUDGET_AMOUNT_PATTERN.search(message)
         if bare_amount_match is not None:
             amount = _parse_amount(bare_amount_match.group("amount"))
             if amount is not None:

@@ -807,10 +807,9 @@ def test_orchestrator_follow_up_uses_carried_item_type_and_query() -> None:
     )
 
     assert captured["messages"][-1]["content"] == "show me more"
-    assert response.assistant_message == (
-        "Based on your interests in nightlife, I found 1 hotel that fits your "
-        "request. Top pick: Lisbon Stay"
-    )
+    assert "Based on your interests in nightlife" in response.assistant_message
+    assert "I found 1 hotel" in response.assistant_message
+    assert "Top pick: Lisbon Stay" in response.assistant_message
     assert response.recommendations[0].item_id == "hotel-lisbon-1"
     assert response.state["conversation"]["last_recommendation_item_type"] == "hotel"
     assert (
@@ -1144,9 +1143,7 @@ def test_orchestrator_nice_but_unclear_request_asks_natural_type_question() -> N
         agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
     )
 
-    assert response.assistant_message == (
-        "Sure - do you mean a hotel, a restaurant, or an activity?"
-    )
+    assert "hotel, a restaurant, or an activity" in response.assistant_message
     assert response.state["conversation"]["last_user_intent"] == "recommend"
     assert response.state["conversation"]["last_recommendation_item_type"] is None
 
@@ -1160,9 +1157,7 @@ def test_orchestrator_budget_preference_gets_natural_clarification() -> None:
         agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
     )
 
-    assert response.assistant_message == (
-        "Sure - do you mean a hotel, a restaurant, or an activity?"
-    )
+    assert "hotel, a restaurant, or an activity" in response.assistant_message
     assert response.state["conversation"]["last_user_intent"] == "recommend"
     assert response.state["constraints"]["budget"] == {
         "min": 0.0,
@@ -2088,7 +2083,7 @@ def test_orchestrator_uses_grounded_response_composer_after_tool_result() -> Non
 
     def response_composer(prompt: str) -> str:
         captured_prompts.append(prompt)
-        return "Here is a more natural grounded hotel update."
+        return "Lisbon Stay is the top grounded hotel option I found for you."
 
     response = service.handle_message(
         user_message="show me more",
@@ -2139,10 +2134,14 @@ def test_orchestrator_uses_grounded_response_composer_after_tool_result() -> Non
         response_composer=response_composer,
     )
 
-    assert response.assistant_message == "Here is a more natural grounded hotel update."
+    assert (
+        response.assistant_message
+        == "Lisbon Stay is the top grounded hotel option I found for you."
+    )
     assert captured_prompts
     assert "Lisbon Stay" in captured_prompts[0]
     assert "Raw transcript copy" not in response.assistant_message
+    assert response.diagnostics.composer_used is True
 
 
 def test_orchestrator_rejects_misaligned_composer_clarification_copy() -> None:
@@ -2181,6 +2180,228 @@ def test_orchestrator_rejects_misaligned_composer_clarification_copy() -> None:
     )
     assert response.state["conversation"]["last_requested_slots"] == ["dates"]
     assert response.diagnostics.composer_status == ("rejected_misaligned_clarification")
+    assert response.diagnostics.composer_used is False
+
+
+def test_orchestrator_rejects_result_composer_that_skips_ranked_items() -> None:
+    service = OrchestratorService(
+        policy_config=OrchestratorPolicyConfig(max_recommendation_results=3)
+    )
+
+    response = service.handle_message(
+        user_message="show me more",
+        session_state=_base_state(),
+        recent_messages=[
+            TranscriptMessage(role="user", content="Find me a hotel in Lisbon"),
+        ],
+        agent_executor=lambda _messages: {
+            "messages": [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "recommendation_query",
+                            "args": {
+                                "session_id": "sess-123",
+                                "query": "show me more hotel Lisbon nightlife",
+                                "constraints": {
+                                    "destination": "Lisbon",
+                                    "dates": {
+                                        "start": "2026-06-10",
+                                        "end": "2026-06-17",
+                                    },
+                                    "budget": {
+                                        "min": 1000,
+                                        "max": 2500,
+                                        "currency": "USD",
+                                    },
+                                },
+                                "filters": {"item_type": "hotel"},
+                                "max_results": 3,
+                                "ranking_version": "heuristic-v1",
+                            },
+                            "id": "call-1",
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                ToolMessage(
+                    content="Found 3 grounded options.",
+                    name="recommendation_query",
+                    tool_call_id="call-1",
+                    artifact=RecommendationToolRuntimePayload(
+                        status="success",
+                        response={
+                            "ranking_version": "heuristic-v1",
+                            "results": [
+                                {
+                                    "item_id": "hotel-lisbon-1",
+                                    "item_type": "hotel",
+                                    "score": 0.92,
+                                    "rank": 1,
+                                    "features": {"name": "Lisbon Stay"},
+                                    "explanation": "Strong nightlife fit.",
+                                },
+                                {
+                                    "item_id": "hotel-lisbon-2",
+                                    "item_type": "hotel",
+                                    "score": 0.9,
+                                    "rank": 2,
+                                    "features": {"name": "Alfama Loft"},
+                                    "explanation": "Walkable evening area.",
+                                },
+                                {
+                                    "item_id": "hotel-lisbon-3",
+                                    "item_type": "hotel",
+                                    "score": 0.88,
+                                    "rank": 3,
+                                    "features": {"name": "River View Suites"},
+                                    "explanation": "Late-night dining nearby.",
+                                },
+                            ],
+                        },
+                    ).model_dump(mode="json"),
+                ),
+            ]
+        },
+        response_composer=lambda _prompt: (
+            "Top picks: Lisbon Stay and River View Suites are the best matches."
+        ),
+    )
+
+    assert "1. Lisbon Stay" in response.assistant_message
+    assert "2. Alfama Loft" in response.assistant_message
+    assert "3. River View Suites" in response.assistant_message
+    assert response.diagnostics.composer_status == "rejected_ungrounded_results"
+    assert response.diagnostics.composer_used is False
+
+
+def test_orchestrator_rejects_result_composer_with_unsupported_scoring_claims() -> None:
+    service = OrchestratorService()
+
+    response = service.handle_message(
+        user_message="show me more",
+        session_state=_base_state(),
+        recent_messages=[
+            TranscriptMessage(role="user", content="Find me a hotel in Lisbon"),
+        ],
+        agent_executor=lambda _messages: {
+            "messages": [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "recommendation_query",
+                            "args": {
+                                "session_id": "sess-123",
+                                "query": "show me more hotel Lisbon nightlife",
+                                "constraints": {
+                                    "destination": "Lisbon",
+                                    "dates": {
+                                        "start": "2026-06-10",
+                                        "end": "2026-06-17",
+                                    },
+                                    "budget": {
+                                        "min": 1000,
+                                        "max": 2500,
+                                        "currency": "USD",
+                                    },
+                                },
+                                "filters": {"item_type": "hotel"},
+                                "max_results": 5,
+                                "ranking_version": "heuristic-v1",
+                            },
+                            "id": "call-1",
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                ToolMessage(
+                    content="Found 1 grounded option.",
+                    name="recommendation_query",
+                    tool_call_id="call-1",
+                    artifact=_success_tool_artifact(),
+                ),
+            ]
+        },
+        response_composer=lambda _prompt: (
+            "Lisbon Stay has the highest match score for nightlife on this list."
+        ),
+    )
+
+    assert "Top pick: Lisbon Stay" in response.assistant_message
+    assert response.diagnostics.composer_status == "rejected_ungrounded_results"
+    assert response.diagnostics.composer_used is False
+
+
+def test_orchestrator_skips_result_composer_when_names_are_sparse() -> None:
+    service = OrchestratorService()
+
+    response = service.handle_message(
+        user_message="show me more",
+        session_state=_base_state(),
+        recent_messages=[
+            TranscriptMessage(role="user", content="Find me a hotel in Lisbon"),
+        ],
+        agent_executor=lambda _messages: {
+            "messages": [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "recommendation_query",
+                            "args": {
+                                "session_id": "sess-123",
+                                "query": "show me more hotel Lisbon nightlife",
+                                "constraints": {
+                                    "destination": "Lisbon",
+                                    "dates": {
+                                        "start": "2026-06-10",
+                                        "end": "2026-06-17",
+                                    },
+                                    "budget": {
+                                        "min": 1000,
+                                        "max": 2500,
+                                        "currency": "USD",
+                                    },
+                                },
+                                "filters": {"item_type": "hotel"},
+                                "max_results": 5,
+                                "ranking_version": "heuristic-v1",
+                            },
+                            "id": "call-1",
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                ToolMessage(
+                    content="Found 1 grounded option.",
+                    name="recommendation_query",
+                    tool_call_id="call-1",
+                    artifact=RecommendationToolRuntimePayload(
+                        status="success",
+                        response={
+                            "ranking_version": "heuristic-v1",
+                            "results": [
+                                {
+                                    "item_id": "hotel-lisbon-untitled",
+                                    "item_type": "hotel",
+                                    "score": 0.9,
+                                    "rank": 1,
+                                    "features": {},
+                                    "explanation": "Strong nightlife fit.",
+                                }
+                            ],
+                        },
+                    ).model_dump(mode="json"),
+                ),
+            ]
+        },
+        response_composer=lambda _prompt: "This should be skipped for sparse results.",
+    )
+
+    assert "Top pick: hotel-lisbon-untitled" in response.assistant_message
+    assert response.diagnostics.composer_status == "skipped_sparse_result_grounding"
     assert response.diagnostics.composer_used is False
 
 
@@ -2245,7 +2466,14 @@ def test_orchestrator_slot_filling_reaches_recommendation_on_final_turn() -> Non
     )
     state = SessionState.model_validate(response.state)
     assert state.constraints.dates is not None
-    assert state.conversation.last_requested_slots == ["budget"]
+    assert state.conversation.last_requested_slots == []
+    assert response.recommendations[0].item_id == "hotel-lisbon-3"
+
+    query = captured_query["value"]
+    assert query is not None
+    assert query.constraints.destination == "Lisbon"
+    assert query.constraints.dates is not None
+    assert query.constraints.budget is None
 
     response = service.handle_message(
         user_message="under 1500 EUR",
@@ -2263,6 +2491,81 @@ def test_orchestrator_slot_filling_reaches_recommendation_on_final_turn() -> Non
     assert query.constraints.budget is not None
     assert query.constraints.budget.max == 1500.0
     assert response.recommendations[0].item_id == "hotel-lisbon-3"
+
+
+def test_orchestrator_generic_trip_message_asks_for_search_type_before_budget() -> None:
+    service = OrchestratorService()
+
+    response = service.handle_message(
+        user_message="I am going to Lisbon next weekend",
+        session_state=SessionState(session_id="sess-generic-trip-search-type"),
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+    )
+
+    assert response.state["constraints"]["destination"] == "Lisbon"
+    assert response.state["constraints"]["dates"] == {
+        "start": "2026-05-02",
+        "end": "2026-05-03",
+    }
+    assert response.state["conversation"]["last_clarification_kind"] == "search_type"
+    assert response.state["conversation"]["last_requested_slots"] == []
+    assert "hotel, a restaurant, or an activity" in response.assistant_message
+
+
+def test_orchestrator_unsupported_flight_request_does_not_persist_state_from_planner() -> (
+    None
+):
+    service = OrchestratorService()
+
+    response = service.handle_message(
+        user_message="Find me flights from Paris to Lisbon next weekend",
+        session_state=SessionState(session_id="sess-flight-planner"),
+        planner_executor=lambda _prompt: {
+            "intent": "recommend",
+            "should_call_recommendation_tool": False,
+            "clarification_message": "What dates should I use?",
+            "state_patch": {
+                "constraints": {
+                    "destination": "Lisbon",
+                    "dates": {"start": "2026-05-02", "end": "2026-05-03"},
+                }
+            },
+        },
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+    )
+
+    assert response.assistant_message == (
+        "Flights are not supported. I can help with hotels, restaurants, or activities."
+    )
+    assert response.state["constraints"]["destination"] is None
+    assert response.state["constraints"]["dates"] is None
+
+
+def test_orchestrator_unsupported_flight_clarification_skips_composer_override() -> (
+    None
+):
+    service = OrchestratorService()
+
+    response = service.handle_message(
+        user_message="Find me flights from Paris to Lisbon next weekend",
+        session_state=SessionState(session_id="sess-flight-composer"),
+        planner_executor=lambda _prompt: {
+            "intent": "clarify",
+            "should_call_recommendation_tool": False,
+            "clarification_message": (
+                "Flights are not supported. I can help with hotels, restaurants, or activities."
+            ),
+        },
+        response_composer=lambda _prompt: (
+            "I understand you're looking for flight options. What dates should I use?"
+        ),
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+    )
+
+    assert response.assistant_message == (
+        "Flights are not supported. I can help with hotels, restaurants, or activities."
+    )
+    assert response.diagnostics.composer_used is False
 
 
 def test_orchestrator_handles_invalid_tool_payload_with_safe_copy() -> None:
@@ -2320,7 +2623,8 @@ def test_orchestrator_recommendation_fallback_timeout_returns_timeout_copy() -> 
         recommendation_executor=recommendation_executor,
     )
 
-    assert "could not finish the search in time" in response.assistant_message
+    assert "search" in response.assistant_message
+    assert "try again" in response.assistant_message
     assert response.recommendations == []
 
 
@@ -2343,10 +2647,8 @@ def test_orchestrator_build_results_message_falls_back_to_item_id_without_name()
         ]
     )
 
-    assert (
-        message
-        == "I found 1 activity that fits your request. Top pick: activity-lisbon"
-    )
+    assert "I found 1 activity" in message
+    assert "Top pick: activity-lisbon" in message
 
 
 def test_orchestrator_extracts_direct_recommendation_payload_from_tool_message() -> (
