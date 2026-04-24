@@ -188,12 +188,19 @@ class TurnPreparer:
             normalized_plan_payload["state_patch"] = {}
         try:
             plan = LLMOrchestrationPlan.model_validate(normalized_plan_payload)
+            state_patch_payload = plan.state_patch.model_dump(
+                mode="python",
+                exclude_unset=True,
+            )
             planned_state = apply_structured_state_patch(
-                session_state=deterministic_state,
-                state_patch=plan.state_patch.model_dump(
-                    mode="python",
-                    exclude_unset=True,
-                ),
+                session_state=previous_state,
+                state_patch=state_patch_payload,
+            )
+            planned_state = self._apply_deterministic_guardrails(
+                previous_state=previous_state,
+                deterministic_state=deterministic_state,
+                planned_state=planned_state,
+                state_patch=state_patch_payload,
             )
         except ValidationError as exc:
             logger.warning(
@@ -230,6 +237,78 @@ class TurnPreparer:
             planner_used=True,
             planner_status="succeeded",
         )
+
+    def _apply_deterministic_guardrails(
+        self,
+        *,
+        previous_state: SessionState,
+        deterministic_state: SessionState,
+        planned_state: SessionState,
+        state_patch: Mapping[str, Any],
+    ) -> SessionState:
+        next_state = planned_state.model_copy(deep=True)
+        patched_constraints = state_patch.get("constraints")
+        patched_constraint_keys = (
+            set(patched_constraints.keys())
+            if isinstance(patched_constraints, Mapping)
+            else set()
+        )
+
+        if (
+            "destination" not in patched_constraint_keys
+            and previous_state.constraints.destination is None
+            and next_state.constraints.destination is None
+            and deterministic_state.constraints.destination is not None
+        ):
+            next_state.constraints.destination = (
+                deterministic_state.constraints.destination
+            )
+
+        if (
+            "dates" not in patched_constraint_keys
+            and previous_state.constraints.dates is None
+            and next_state.constraints.dates is None
+            and deterministic_state.constraints.dates is not None
+        ):
+            next_state.constraints.dates = deterministic_state.constraints.dates
+            next_state.constraints.trip_length_days = (
+                deterministic_state.constraints.trip_length_days
+            )
+
+        if (
+            "budget" not in patched_constraint_keys
+            and previous_state.constraints.budget is None
+            and next_state.constraints.budget is None
+            and deterministic_state.constraints.budget is not None
+        ):
+            next_state.constraints.budget = deterministic_state.constraints.budget
+
+        if (
+            "party_size" not in patched_constraint_keys
+            and previous_state.constraints.party_size is None
+            and next_state.constraints.party_size is None
+            and deterministic_state.constraints.party_size is not None
+        ):
+            next_state.constraints.party_size = (
+                deterministic_state.constraints.party_size
+            )
+
+        for destination in deterministic_state.entities.destinations:
+            if all(
+                existing.casefold() != destination.casefold()
+                for existing in next_state.entities.destinations
+            ) and (
+                destination.casefold()
+                == (next_state.constraints.destination or "").casefold()
+            ):
+                next_state.entities.destinations.append(destination)
+
+        merged_interests = dict(next_state.preferences.weighted_interests)
+        for key, value in deterministic_state.preferences.weighted_interests.items():
+            merged_interests[key] = max(merged_interests.get(key, 0), value)
+        next_state.preferences.weighted_interests = merged_interests
+
+        return next_state
 
     def enforce_recommendation_slot_gating(
         self,
