@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { useSessionStore } from "./session";
 
 describe("useSessionStore", () => {
+  beforeEach(() => {
+    useSessionStore.setState(useSessionStore.getInitialState(), true);
+    window.localStorage.removeItem("traveltom-session");
+  });
+
   it("hydrates a backend-backed conversation without losing auth", () => {
     useSessionStore.setState({
       sessionId: "session-initial",
@@ -65,5 +70,82 @@ describe("useSessionStore", () => {
     state.resetConversation();
     expect(useSessionStore.getState().hasRemoteSession).toBe(false);
     expect(useSessionStore.getState().authToken).toBe(state.authToken);
+  });
+
+  it("stores saved recommendation snapshots once and clears workflow state on reset", () => {
+    const state = useSessionStore.getState();
+
+    state.setSessionId("session-workflow");
+    state.saveRecommendation(
+      {
+        itemId: "hotel-1",
+        itemType: "hotel",
+        rank: 1,
+        score: 0.91,
+        explanation: "Near the beach",
+        metadata: { name: "Harbor Hotel", city: "Lisbon" },
+      },
+      "session-workflow",
+    );
+    state.saveRecommendation(
+      {
+        itemId: "hotel-1",
+        itemType: "hotel",
+        rank: 1,
+        metadata: { name: "Harbor Hotel" },
+      },
+      "session-workflow",
+    );
+    state.confirmBookingStub(
+      {
+        itemId: "hotel-1",
+        itemType: "hotel",
+        rank: 1,
+        metadata: { name: "Harbor Hotel" },
+      },
+      "Harbor Hotel",
+      "session-workflow",
+    );
+
+    expect(useSessionStore.getState().savedRecommendations).toHaveLength(1);
+    expect(useSessionStore.getState().savedRecommendations[0]).toMatchObject({
+      itemId: "hotel-1",
+      score: 0.91,
+      explanation: "Near the beach",
+      sourceSessionId: "session-workflow",
+    });
+    expect(useSessionStore.getState().bookingConfirmation?.itemName).toBe(
+      "Harbor Hotel",
+    );
+
+    state.resetConversation();
+
+    expect(useSessionStore.getState().savedRecommendations).toHaveLength(0);
+    expect(useSessionStore.getState().bookingConfirmation).toBeNull();
+  });
+
+  it("removing a saved item also clears its booking confirmation", () => {
+    const state = useSessionStore.getState();
+
+    state.saveRecommendation({
+      itemId: "restaurant-1",
+      itemType: "restaurant",
+      rank: 1,
+      metadata: { name: "Mesa" },
+    });
+    state.confirmBookingStub(
+      {
+        itemId: "restaurant-1",
+        itemType: "restaurant",
+        rank: 1,
+        metadata: { name: "Mesa" },
+      },
+      "Mesa",
+    );
+
+    state.removeSavedRecommendation("restaurant-1");
+
+    expect(useSessionStore.getState().savedRecommendations).toHaveLength(0);
+    expect(useSessionStore.getState().bookingConfirmation).toBeNull();
   });
 });
