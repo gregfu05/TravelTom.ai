@@ -11,6 +11,8 @@ Ownership: Backend/Data.
 - `evaluate_ranker_v3.py`: evaluation helper for the recommender pipeline.
 - `check_ranker_gates.py`: gate/check helper for ranking outputs.
 - `smoke-api.ps1`: API smoke verification.
+- `smoke-chat-runtime.ps1`: live chat runtime scenario verification.
+- `smoke-planner-live.ps1`: real frontend/backend planner release verification.
 - `smoke-web.ps1`: web smoke verification.
 
 ## Common Tasks
@@ -59,11 +61,26 @@ unsupported-flight refusal, and direct recommendation execution:
 ```bash
 pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider disabled
 pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider ollama
+pwsh ./scripts/smoke-planner-live.ps1 -ApiBaseUrl http://localhost:8000 -Provider disabled
 ```
 
 If you need a stable auth credential for repeated runs, pass `-Password`
 explicitly or set `TRAVELTOM_SMOKE_PASSWORD`. Otherwise the script generates a
 one-off password for the temporary smoke account it creates.
+
+Live planner verification runs the real web app against the real API with a
+seeded catalog:
+
+```bash
+pwsh ./scripts/smoke-planner-live.ps1 -ApiBaseUrl http://localhost:8000 -Provider disabled
+```
+
+The command checks `/api/v1/health`, verifies hotel seed rows for a supported
+destination via `/api/v1/recommendations/query`, signs up through the frontend
+when auth is enabled, and runs `apps/web/e2e/planner-live.spec.ts`. Use
+`-AuthMode disabled` only for an intentionally auth-disabled backend. Use
+`-Provider ollama` as an optional provider-assisted release gate after the
+deterministic run passes.
 
 For the full scenario matrix, expected slot/state outcomes, and manual release
 checks that still sit outside automated smoke coverage, see

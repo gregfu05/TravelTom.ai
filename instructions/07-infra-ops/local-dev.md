@@ -40,6 +40,10 @@ Services:
 - `OLLAMA_PLANNING_MODEL` (default `llama3.1:8b`)
 - `OLLAMA_RESPONSE_MODEL` (default `llama3.1:8b`)
 - `OLLAMA_TEMPERATURE` (default `0`)
+- `PHI35MINI_BASE_URL` (default `http://127.0.0.1:11434`)
+- `PHI35MINI_PLANNING_MODEL` (default `phi3.5:mini`)
+- `PHI35MINI_RESPONSE_MODEL` (default `phi3.5:mini`)
+- `PHI35MINI_TEMPERATURE` (default `0`)
 - `ORCHESTRATOR_OPENAI_BASE_URL` (default `https://api.openai.com/v1`)
 - `ORCHESTRATOR_OPENAI_API_KEY` or `OPENAI_API_KEY` (required when provider is `openai`)
 - `OPENAI_PLANNING_MODEL` (default `gpt-4.1-mini`)
@@ -54,6 +58,9 @@ Local chat runtime default:
 - `.env.example`, the checked-in local `.env`, and backend config default to
   `ORCHESTRATOR_LLM_PROVIDER=phi35mini` so local chat uses provider-assisted
   planning/composition by default.
+- The `phi35mini` provider is an Ollama-backed alias. Its example and settings
+  defaults use `PHI35MINI_PLANNING_MODEL=phi3.5:mini` and
+  `PHI35MINI_RESPONSE_MODEL=phi3.5:mini`.
 - Set `ORCHESTRATOR_LLM_PROVIDER=disabled` only when you explicitly want the
   deterministic-only runtime/test path.
 - `/api/v1/chat` stays backend-owned in every mode.
@@ -154,13 +161,18 @@ Optional pre-check:
   - `pwsh ./scripts/smoke-api.ps1 -BaseUrl http://localhost:8000`
   - `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider disabled`
   - `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider ollama -Email smoke@example.com`
+  - `pwsh ./scripts/smoke-planner-live.ps1 -ApiBaseUrl http://localhost:8000 -Provider disabled`
   - The chat runtime smoke now covers greeting, slot gating, complete hotel
     search, same-session refinement continuity, empty-results follow-up
     recovery, generic search-type clarification, preference carry-forward,
     repair turns, unsupported-flight refusal, and direct recommendation
     execution.
+  - The live planner smoke starts the Vite dev server through Playwright,
+    checks backend health and seeded hotel readiness first, then
+    verifies the real planner UI renders latest-turn recommendation cards and a
+    `show me more` continuity turn.
   - Use `docs/chat-feature-audit.md` as the source of truth for the current
-    release scenario matrix and the remaining manual planner checks.
+    release scenario matrix.
 
 ## Troubleshooting
 
@@ -217,6 +229,18 @@ Optional pre-check:
 - Browser requests fail before reaching the API:
   - If the frontend is not using the Vite dev proxy, set backend
     `CORS_ALLOWED_ORIGINS` to include the frontend origin and restart the API.
+- Live planner smoke fails before opening a browser:
+  - Verify `pwsh ./scripts/smoke-planner-live.ps1 -ApiBaseUrl http://localhost:8000 -Provider disabled`
+    can reach `/api/v1/health` and that the readiness query returns hotel rows
+    for at least one supported seeded destination.
+  - The script defaults to `ORCHESTRATOR_LLM_PROVIDER=disabled` expectations for
+    deterministic release verification, but it cannot change a backend process
+    that is already running. Restart the API with the intended provider before
+    rerunning the smoke.
+  - If Playwright reports `spawn EPERM` or Vite/esbuild cannot start under a
+    restricted sandbox, rerun the command in a normal PowerShell session or an
+    approved elevated shell. This is an environment process-spawn limitation,
+    not a planner assertion failure.
 
 ## Pre-deploy checks (local)
 
@@ -228,6 +252,7 @@ Run from repo root:
 - `pwsh ./scripts/smoke-api.ps1 -BaseUrl http://localhost:8000`
 - `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider disabled`
 - `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider ollama -Email smoke@example.com`
+- `pwsh ./scripts/smoke-planner-live.ps1 -ApiBaseUrl http://localhost:8000 -Provider disabled`
 
 Run from `apps/web`:
 - `npm install`
