@@ -59,22 +59,31 @@
   - Compact top-5 list from latest `/api/v1/chat` response
   - Constrained-height recommendation rail with internal scroll
   - Mobile path uses a header-level picks button that opens a drawer version of
-    the same recommendations list
+    the same recommendations list and planner workflow state
   - Header-level metadata and collapsible per-item rationale
   - Card metadata for item name, score, and available attributes (e.g., city, stars)
+  - Save/remove actions persist recommendation snapshots for the browser session
+  - Booking-stub CTA simulates conversion without creating a real booking
   - Empty state handled by chat assistant clarification/error copy
 - Shortlist view
-  - Add/remove items
-  - Compare saved items
-  - Notes for saved items
+  - Add/remove items from recommendation cards or saved list
+  - Saved items persist while the current browser session remains active
+  - Compare saved items by common fields and available metadata
+  - Empty compare state prompts the user to save at least two items
 - Itinerary view
-  - Day-by-day breakdown
-  - Editable order (optional for MVP)
+  - Displays itinerary data from the current chat response when present
+  - Empty state clearly indicates no itinerary has been assembled yet
+  - Editable order remains future work
 - Booking stub
-  - CTA to simulate booking with a confirmation toast
+  - CTA to simulate booking with a confirmation state/toast
+  - No reservation, payment, supplier request, or external booking provider call
+    is created
 
 ## Analytics hooks
 
 - Impression events when items are visible.
 - Click events on items and booking CTA.
 - Save/remove events on shortlist.
+- Current frontend dispatches local `traveltom:planner-workflow` browser events
+  for shortlist and booking-stub interactions until network event ingestion is
+  implemented.

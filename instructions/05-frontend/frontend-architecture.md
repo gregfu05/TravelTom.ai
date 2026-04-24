@@ -19,6 +19,9 @@
 - Added recommendations rendering in planner from `/api/v1/chat` responses
   (latest response snapshot) with a split chat + recommendation rail layout so
   chat stays visible while recommendation cards are present.
+- Added browser-session planner workflow state for saving/removing
+  recommendation snapshots, comparing saved items, rendering itinerary state,
+  and confirming a non-transactional booking stub.
 - Planner empty-state suggestion chips and helper copy now align with backend
   recommendation timing:
   hotel prompts should include destination and dates, with budget used as an
@@ -57,8 +60,9 @@
   - `/planner`
   - `/why-traveltom`
   - `/how-it-works`
-- Chat + recommendations are implemented on `/planner`; shortlist/itinerary/booking
-  remain upcoming route-level capabilities.
+- Chat, recommendations, shortlist, itinerary display, comparison, and the
+  booking stub are implemented on `/planner`; standalone shortlist/itinerary/
+  booking routes remain future route-level capabilities.
 
 ## State management
 
@@ -66,7 +70,8 @@
 - Use React Query for API calls and caching.
 - Keep server state in React Query; UI state in Zustand.
 - Current chat implementation stores `sessionId`, `messages`,
-  `latestRecommendations`, send status, and error state in Zustand
+  `latestRecommendations`, itinerary state, saved recommendation snapshots,
+  booking-stub confirmation, send status, and error state in Zustand
   (`src/store/session.ts`).
 - Store and domain helpers must not depend on shared UI component folders.
   Planner error-state logic now lives under `src/features/planner/model/`.
@@ -114,8 +119,12 @@
   response.
 - Recommendation rail presents only top 5 items with collapsed per-item
   rationale, constrained panel height, and internal scrolling.
+- Recommendation cards expose save/remove actions and a booking-stub CTA.
+- Planner workflow state includes a shortlist, compare table for saved items,
+  itinerary empty/populated states, and local booking-stub confirmation.
 - Mobile recommendation access is provided through a header-level picks button
-  that opens the planner drawer.
+  that opens the planner drawer; saved workflow state remains reachable from
+  the same drawer when current picks are no longer present.
 - Retry button on chat failures.
 - Distinguish TravelTom cooldowns from provider quota failures in planner chat UX.
 - Homepage API status states: checking, online, unreachable.
@@ -136,3 +145,7 @@
 
 - Centralized `trackEvent` helper that posts to `/api/v1/events`.
 - Include `session_id`, `message_id`, and `idempotency_key` in all events.
+- Until the events endpoint is active, planner workflow interactions dispatch
+  local `traveltom:planner-workflow` events for `rec.save`, `rec.dismiss`,
+  `shortlist.update`, and `booking.funnel` so the UI integration point is
+  ready without requiring network ingestion.

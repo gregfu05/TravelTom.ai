@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Documented the implemented browser-session planner workflow:
+  - Planner recommendations now support save/remove actions, local saved-item
+    comparison, itinerary display states, and a non-transactional booking stub.
+  - Frontend docs now describe the local `traveltom:planner-workflow` event
+    bridge used until `/api/v1/events` ingestion is active.
 - Updated orchestrator and frontend guidance so hotel searches become
   search-ready with destination and dates, while budget is treated as an
   optional refinement input.

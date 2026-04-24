@@ -54,3 +54,12 @@
 - `booking.funnel`:
   - `step`: `view|start|confirm`
   - `item_id`
+
+## Current frontend integration
+
+- Planner shortlist and booking-stub interactions currently dispatch local
+  `traveltom:planner-workflow` browser events instead of posting to
+  `/api/v1/events`.
+- The local event detail mirrors the taxonomy with `eventType`, `sessionId`,
+  `itemId`, `itemType`, and optional `step` so network ingestion can be wired
+  later without changing planner UI behavior.
