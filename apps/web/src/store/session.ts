@@ -8,8 +8,26 @@ export type SessionMessageRole = "user" | "assistant";
 export interface SessionRecommendation {
   itemId: string;
   itemType: "hotel" | "restaurant" | "activity";
+  score?: number;
   rank: number;
+  explanation?: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface SavedRecommendation extends SessionRecommendation {
+  savedAt: string;
+  sourceSessionId: string;
+}
+
+export interface SessionItinerary {
+  days: unknown[];
+}
+
+export interface BookingStubConfirmation {
+  itemId: string;
+  itemName: string;
+  confirmedAt: string;
+  sourceSessionId: string;
 }
 
 export interface SessionMessage {
@@ -24,6 +42,9 @@ interface SessionState {
   hasRemoteSession: boolean;
   messages: SessionMessage[];
   latestRecommendations: SessionRecommendation[];
+  latestItinerary: SessionItinerary | null;
+  savedRecommendations: SavedRecommendation[];
+  bookingConfirmation: BookingStubConfirmation | null;
   isSending: boolean;
   chatError: ChatErrorState | null;
   authToken: string | null;
@@ -31,6 +52,18 @@ interface SessionState {
   setHasRemoteSession: (value: boolean) => void;
   addMessage: (message: SessionMessage) => void;
   setLatestRecommendations: (items: SessionRecommendation[]) => void;
+  setLatestItinerary: (itinerary: SessionItinerary | null) => void;
+  saveRecommendation: (
+    item: SessionRecommendation,
+    sourceSessionId?: string,
+  ) => void;
+  removeSavedRecommendation: (itemId: string) => void;
+  confirmBookingStub: (
+    item: SessionRecommendation,
+    itemName: string,
+    sourceSessionId?: string,
+  ) => void;
+  clearBookingConfirmation: () => void;
   setIsSending: (value: boolean) => void;
   setChatError: (value: ChatErrorState | null) => void;
   setAuthToken: (token: string | null) => void;
@@ -38,6 +71,7 @@ interface SessionState {
     sessionId: string;
     messages: SessionMessage[];
     latestRecommendations: SessionRecommendation[];
+    latestItinerary?: SessionItinerary | null;
   }) => void;
   resetConversation: () => void;
 }
@@ -57,6 +91,9 @@ export const useSessionStore = create<SessionState>()(
       hasRemoteSession: false,
       messages: [],
       latestRecommendations: [],
+      latestItinerary: null,
+      savedRecommendations: [],
+      bookingConfirmation: null,
       isSending: false,
       chatError: null,
       authToken: null,
@@ -72,6 +109,55 @@ export const useSessionStore = create<SessionState>()(
       setLatestRecommendations: (items) => {
         set({ latestRecommendations: items });
       },
+      setLatestItinerary: (itinerary) => {
+        set({ latestItinerary: itinerary });
+      },
+      saveRecommendation: (item, sourceSessionId) => {
+        set((state) => {
+          if (
+            state.savedRecommendations.some(
+              (savedItem) => savedItem.itemId === item.itemId,
+            )
+          ) {
+            return state;
+          }
+
+          return {
+            savedRecommendations: [
+              ...state.savedRecommendations,
+              {
+                ...item,
+                savedAt: new Date().toISOString(),
+                sourceSessionId: sourceSessionId ?? state.sessionId,
+              },
+            ],
+          };
+        });
+      },
+      removeSavedRecommendation: (itemId) => {
+        set((state) => ({
+          savedRecommendations: state.savedRecommendations.filter(
+            (item) => item.itemId !== itemId,
+          ),
+          bookingConfirmation:
+            state.bookingConfirmation?.itemId === itemId
+              ? null
+              : state.bookingConfirmation,
+        }));
+      },
+      confirmBookingStub: (item, itemName, sourceSessionId) => {
+        set((state) => ({
+          bookingConfirmation: {
+            itemId: item.itemId,
+            itemName,
+            confirmedAt: new Date().toISOString(),
+            sourceSessionId: sourceSessionId ?? state.sessionId,
+          },
+        }));
+      },
+      clearBookingConfirmation: () => {
+        set({ bookingConfirmation: null });
+      },
       setIsSending: (value) => {
         set({ isSending: value });
       },
@@ -85,6 +171,7 @@ export const useSessionStore = create<SessionState>()(
           hasRemoteSession: true,
           messages: payload.messages,
           latestRecommendations: payload.latestRecommendations,
+          latestItinerary: payload.latestItinerary ?? state.latestItinerary,
           isSending: false,
           chatError: null,
           authToken: state.authToken,
@@ -96,6 +183,9 @@ export const useSessionStore = create<SessionState>()(
           hasRemoteSession: false,
           messages: [],
           latestRecommendations: [],
+          latestItinerary: null,
+          savedRecommendations: [],
+          bookingConfirmation: null,
           isSending: false,
           chatError: null,
           authToken: state.authToken,
