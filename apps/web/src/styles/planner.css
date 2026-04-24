@@ -303,6 +303,11 @@
   border-color: var(--primary-border);
 }
 
+.recommendation-card-saved {
+  border-color: var(--primary-border);
+  box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.18);
+}
+
 .recommendation-card-head {
   display: inline-flex;
   align-items: center;
@@ -338,6 +343,18 @@
   color: var(--primary);
 }
 
+.recommendation-saved {
+  margin: 0;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.14);
+  padding: 0.12rem 0.42rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #22c55e;
+}
+
 .recommendation-card h3 {
   margin: 0.1rem 0 0;
   font-size: 1.02rem;
@@ -353,8 +370,141 @@
   font-size: 0.78rem;
 }
 
+.recommendation-explanation {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+  font-size: 0.8rem;
+}
+
 .recommendation-map-link {
   color: var(--accent-sand);
+}
+
+.recommendation-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.2rem;
+}
+
+.planner-workflow-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-md);
+}
+
+.workflow-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.workflow-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.workflow-section-header p,
+.workflow-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.shortlist-list,
+.itinerary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shortlist-item,
+.itinerary-day {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.65rem;
+}
+
+.itinerary-day {
+  flex-direction: column;
+}
+
+.itinerary-day span,
+.shortlist-item-name {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.itinerary-day p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.shortlist-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.compare-table-wrap {
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.compare-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.compare-table th,
+.compare-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.55rem;
+  text-align: left;
+  vertical-align: top;
+  color: var(--muted);
+}
+
+.compare-table th {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.compare-table tbody tr:last-child th,
+.compare-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.booking-confirmation {
+  margin: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  background: rgba(34, 197, 94, 0.11);
+  color: #86efac;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .chat-input-form {
