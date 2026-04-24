@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 import uuid
 from collections.abc import Iterator
@@ -78,10 +79,31 @@ def _read_dataframe(file_path: Path) -> pd.DataFrame:
     raise ValueError("Only CSV datasets")
 
 
+def _is_lfs_pointer(file_path: Path) -> bool:
+    try:
+        with file_path.open("rb") as handle:
+            prefix = handle.read(128)
+    except OSError:
+        return False
+
+    return prefix.startswith(b"version https://git-lfs.github.com/spec/v1")
+
+
+def _set_github_output(name: str, value: str) -> None:
+    output_path = os.environ.get("GITHUB_OUTPUT")
+    if not output_path:
+        return
+
+    with Path(output_path).open("a", encoding="utf-8") as handle:
+        handle.write(f"{name}={value}\n")
+
+
 def _load_source_dataset(dataset_path: Path) -> tuple[pd.DataFrame | None, str]:
     if dataset_path.exists():
         if dataset_path.suffix != ".csv":
             raise ValueError("Only CSV datasets")
+        if _is_lfs_pointer(dataset_path):
+            return None, f"Dataset is a Git LFS pointer: {dataset_path}"
         return _read_dataframe(dataset_path), str(dataset_path)
 
     return None, f"Dataset not found: {dataset_path}"
@@ -341,7 +363,11 @@ async def main_async(args: argparse.Namespace) -> None:
     print(f"Dataset: {label}")
 
     if df is None:
-        print("Dataset not found. Skipping catalog_items seed.")
+        if label.startswith("Dataset not found:"):
+            print("Dataset not found. Skipping catalog_items seed.")
+        else:
+            print("Dataset unavailable. Skipping catalog_items seed.")
+        _set_github_output("seed_skipped", "true")
         return
 
     df = _filter(df, args.min_review_count)
