@@ -143,9 +143,17 @@
 
 ## Analytics
 
-- Centralized `trackEvent` helper that posts to `/api/v1/events`.
-- Include `session_id`, `message_id`, and `idempotency_key` in all events.
-- Until the events endpoint is active, planner workflow interactions dispatch
-  local `traveltom:planner-workflow` events for `rec.save`, `rec.dismiss`,
-  `shortlist.update`, and `booking.funnel` so the UI integration point is
-  ready without requiring network ingestion.
+Current shipped behavior:
+
+- Planner workflow interactions dispatch local `traveltom:planner-workflow`
+  events for `rec.save`, `rec.dismiss`, `shortlist.update`, and
+  `booking.funnel`.
+- These local events are an integration point only; no network ingestion occurs
+  because `/api/v1/events` is not currently wired.
+
+Planned behavior:
+
+- Add a centralized `trackEvent` helper that posts to `/api/v1/events` after the
+  backend events endpoint exists.
+- Include `session_id`, `message_id`, and `idempotency_key` in all ingested
+  events.
