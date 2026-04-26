@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -230,6 +230,7 @@ describe("ChatView", () => {
     expect(screen.getByText("Start with a trip idea")).toBeTruthy();
     expect(useSessionStore.getState().authToken).toBe("token-123");
     expect(useSessionStore.getState().messages).toHaveLength(0);
+    expect(useSessionStore.getState().savedRecommendations).toHaveLength(0);
   });
 
   it("opens and closes the mobile recommendations drawer", async () => {
@@ -248,12 +249,192 @@ describe("ChatView", () => {
     renderWithProviders(<ChatView />);
 
     await user.click(screen.getByRole("button", { name: "1 Picks" }));
-    expect(screen.getByRole("dialog", { name: "Recommendations" })).toBeTruthy();
+    expect(
+      await screen.findByRole("dialog", { name: "Recommendations" }),
+    ).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Close" }));
 
-    expect(screen.getByRole("dialog", { name: "Recommendations" }).className).not.toContain(
-      "drawer-open",
-    );
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Recommendations" }),
+      ).toBeNull();
+    });
+  });
+
+  it("saves and removes recommendations while preserving saved snapshots across turns", async () => {
+    const user = userEvent.setup();
+    const workflowEvents: string[] = [];
+    const listener = (event: Event) => {
+      workflowEvents.push(
+        (event as CustomEvent<{ eventType: string }>).detail.eventType,
+      );
+    };
+    window.addEventListener("traveltom:planner-workflow", listener);
+
+    seedSessionStore({
+      sessionId: "session-123",
+      latestRecommendations: [
+        {
+          itemId: "hotel-1",
+          itemType: "hotel",
+          rank: 1,
+          score: 0.92,
+          explanation: "Close to the waterfront",
+          metadata: { name: "Harbor Hotel", city: "Lisbon", stars: 4 },
+        },
+      ],
+    });
+
+    renderWithProviders(<ChatView />);
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(useSessionStore.getState().savedRecommendations).toHaveLength(1);
+    expect(screen.getAllByText("1 saved for this session").length).toBeGreaterThan(0);
+
+    act(() => {
+      useSessionStore.getState().setLatestRecommendations([
+        {
+          itemId: "activity-2",
+          itemType: "activity",
+          rank: 1,
+          metadata: { name: "Tile Walk", city: "Lisbon" },
+        },
+      ]);
+    });
+
+    expect(screen.getAllByText("Harbor Hotel").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Tile Walk").length).toBeGreaterThan(0);
+    expect(workflowEvents).toContain("rec.save");
+    expect(workflowEvents).toContain("shortlist.update");
+
+    await user.click(screen.getAllByRole("button", { name: "Remove" })[0]);
+
+    expect(useSessionStore.getState().savedRecommendations).toHaveLength(0);
+    expect(workflowEvents).toContain("rec.dismiss");
+
+    window.removeEventListener("traveltom:planner-workflow", listener);
+  });
+
+  it("shows compare guidance until at least two saved items are available", () => {
+    seedSessionStore({
+      savedRecommendations: [
+        {
+          itemId: "hotel-1",
+          itemType: "hotel",
+          rank: 1,
+          savedAt: "2026-04-24T10:00:00Z",
+          sourceSessionId: "session-123",
+          metadata: { name: "Harbor Hotel", city: "Lisbon" },
+        },
+      ],
+    });
+
+    renderWithProviders(<ChatView />);
+
+    expect(
+      screen.getAllByText(
+        "Save at least two recommendations to compare them side by side.",
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("compares saved items with common fields and metadata", () => {
+    seedSessionStore({
+      savedRecommendations: [
+        {
+          itemId: "hotel-1",
+          itemType: "hotel",
+          rank: 1,
+          score: 0.92,
+          explanation: "Close to the waterfront",
+          savedAt: "2026-04-24T10:00:00Z",
+          sourceSessionId: "session-123",
+          metadata: { name: "Harbor Hotel", city: "Lisbon", stars: 4 },
+        },
+        {
+          itemId: "hotel-2",
+          itemType: "hotel",
+          rank: 2,
+          score: 0.87,
+          explanation: "Lower nightly cost",
+          savedAt: "2026-04-24T10:01:00Z",
+          sourceSessionId: "session-123",
+          metadata: { name: "Garden Hotel", city: "Lisbon", stars: 3 },
+        },
+      ],
+    });
+
+    renderWithProviders(<ChatView />);
+
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getAllByText("Harbor Hotel").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Garden Hotel").length).toBeGreaterThan(0);
+    expect(screen.getByRole("columnheader", { name: "stars" })).toBeTruthy();
+    expect(screen.getAllByText("0.92").length).toBeGreaterThan(0);
+  });
+
+  it("renders itinerary empty and populated states", () => {
+    seedSessionStore({
+      savedRecommendations: [
+        {
+          itemId: "activity-1",
+          itemType: "activity",
+          rank: 1,
+          savedAt: "2026-04-24T10:00:00Z",
+          sourceSessionId: "session-123",
+          metadata: { name: "Museum Walk" },
+        },
+      ],
+    });
+
+    renderWithProviders(<ChatView />);
+
+    expect(
+      screen.getAllByText("No itinerary has been assembled for this session yet.")
+        .length,
+    ).toBeGreaterThan(0);
+
+    act(() => {
+      useSessionStore.getState().setLatestItinerary({
+        days: [{ title: "Museum morning" }],
+      });
+    });
+
+    expect(screen.getAllByText("Day 1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText('{"title":"Museum morning"}').length).toBeGreaterThan(0);
+  });
+
+  it("confirms booking stub locally without calling an external API", async () => {
+    const user = userEvent.setup();
+    const sendSpy = vi.spyOn(apiClient, "sendChatMessage");
+    seedSessionStore({
+      sessionId: "session-123",
+      latestRecommendations: [
+        {
+          itemId: "restaurant-1",
+          itemType: "restaurant",
+          rank: 1,
+          metadata: { name: "Mesa", city: "Lisbon" },
+        },
+      ],
+    });
+
+    renderWithProviders(<ChatView />);
+
+    await user.click(screen.getByRole("button", { name: "Book stub" }));
+
+    expect(
+      screen.getAllByText(
+        "Simulated booking confirmed for Mesa. No reservation, payment, or supplier request was created.",
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(useSessionStore.getState().bookingConfirmation).toMatchObject({
+      itemId: "restaurant-1",
+      itemName: "Mesa",
+      sourceSessionId: "session-123",
+    });
+    expect(sendSpy).not.toHaveBeenCalled();
   });
 });

@@ -18,6 +18,7 @@ Primary automated commands:
 - `cd apps/web && npm run test:e2e`
 - `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider disabled`
 - `pwsh ./scripts/smoke-chat-runtime.ps1 -BaseUrl http://localhost:8000 -Provider ollama -Email <generated>`
+- `pwsh ./scripts/smoke-planner-live.ps1 -ApiBaseUrl http://localhost:8000 -Provider disabled`
 
 ## Scenario Matrix
 
@@ -39,27 +40,39 @@ Primary automated commands:
 | API failure handling | Rollback, invalid-state rejection, provider `429` mapping, auth ownership, and TravelTom rate limiting are surfaced correctly | `tests/api/test_chat.py`, `tests/api/test_auth.py`, `tests/api/test_local_auth.py`, `tests/orchestrator/test_llm_provider.py` | Provider-agnostic | Covered |
 | Frontend happy path | Login redirect, message send, assistant response, and recommendation rendering work end-to-end with mocked API responses | `apps/web/e2e/planner-smoke.spec.ts`, `apps/web/src/features/planner/components/ChatView.test.tsx` | Mocked frontend | Covered |
 | Frontend recovery and continuity UI | Retry flow avoids duplicate user messages; new-session reset and hydration discard logic remain stable | `apps/web/e2e/planner-smoke.spec.ts`, `apps/web/src/features/planner/components/ChatView.test.tsx`, `apps/web/src/features/planner/lib/sessionHydration/sessionHydration.test.ts` | Mocked frontend | Covered |
-| Frontend against the real backend | Planner UI matches live backend behavior for one supported flow and one continuity/recovery flow | Manual release verification only | `disabled`, `ollama` | Partial |
+| Frontend against the real backend | Planner UI matches live backend behavior for one supported flow and one continuity/recovery flow | `scripts/smoke-planner-live.ps1`, `apps/web/e2e/planner-live.spec.ts` | `disabled`; optional `ollama` gate | Covered |
 | Live degraded provider visibility | `X-TravelTom-*` degraded headers are asserted through tests, but not forced by the default live smoke path | `tests/api/test_chat.py`, `tests/api/test_local_auth.py` | `ollama` | Partial |
 
-## Remaining Manual Release Checks
+## Live Planner Release Verification
 
-- Run one real-backend happy path in the planner UI:
-  - login
-  - complete a supported hotel or activity request
-  - confirm recommendation cards match the latest assistant turn
-- Run one real-backend continuity or recovery path in the planner UI:
-  - either `show me more` / `lower cost` after an initial recommendation turn
-  - or a recoverable retry path after a temporary backend failure
-- Repeat the backend smoke matrix in both `disabled` and `ollama` modes before release.
+Run the real frontend against a migrated, seeded backend:
+
+```powershell
+pwsh ./scripts/smoke-planner-live.ps1 -ApiBaseUrl http://localhost:8000 -Provider disabled
+```
+
+The smoke signs up through the UI when auth is enabled, checks health and
+catalog readiness before browser assertions, sends a complete seeded-destination
+hotel request, confirms recommendation cards reflect the latest assistant turn,
+then sends `show me more` in the same session and verifies the UI updates from
+that latest backend response.
+
+Use `-AuthMode disabled` only for a backend deliberately running without auth;
+the frontend still receives a local smoke token so `/planner` can render while
+the backend ignores bearer validation. Run `-Provider ollama` as an optional
+provider-assisted release gate after the default deterministic smoke passes.
+
+If Playwright or Vite fails with `spawn EPERM` under a restricted sandbox, rerun
+the same command in a normal PowerShell session or approved elevated shell.
 
 ## Notes
 
 - Backend correctness is intentionally locked at orchestrator and API-test layers first.
 - The PowerShell smoke script is the live evidence for slot persistence and
   provider-assisted parity, but it is not the only guardrail.
-- Frontend Playwright coverage remains mocked by design; real-backend parity is
-  still a release checklist item instead of a CI gate.
+- Frontend Playwright coverage remains mocked by design for fast CI feedback;
+  the live planner smoke is a release verification command for seeded local or
+  deployed environments.
 - Provider-assisted naturalness is preferred when the composed result summary
   stays grounded to surfaced recommendation records; otherwise backend-owned
   fallback copy takes over.

@@ -6,7 +6,8 @@
 - Integration tests: API endpoints with test DB.
 - Contract tests: tool schemas and orchestrator I/O.
 - Backend smoke tests: live API checks for `/health`, `/chat`, and `/recommendations/query`.
-- E2E tests: chat flow in frontend (smoke).
+- E2E tests: mocked planner chat flow in frontend plus live-backend planner
+  release verification.
 - Frontend static quality checks: TypeScript type-check and production build.
 
 ## Recommender tests
@@ -52,8 +53,13 @@
 - E2E tests required for release.
   - Mocked planner E2E must cover one happy path and one recovery/continuity
     path.
-  - Real-backend planner parity remains a short manual release checklist item;
-    track it in `docs/chat-feature-audit.md`.
+  - Live-backend planner verification must run before release against seeded
+    `catalog_items` with provider mode `disabled`. Provider-assisted `ollama`
+    is an optional release gate when local model infrastructure is available.
+  - Use explicit readiness checks instead of UI-only waiting: `/api/v1/health`
+    must return `ok`, and `/api/v1/recommendations/query` must return at least
+    one hotel result for a supported seeded destination before the browser flow
+    starts.
 
 ## Backend commands
 
@@ -66,3 +72,9 @@
 - `cd apps/web && npm run test:e2e`: Playwright planner smoke flow with mocked API responses
 - `cd apps/web && npm run test:ci`: combined frontend automated test run
 - `cd apps/web && npm run build`: required static verification for frontend changes
+- `pwsh ./scripts/smoke-planner-live.ps1 -ApiBaseUrl http://localhost:8000 -Provider disabled`: live seeded backend planner UI verification. The script signs up through the UI when `-AuthMode enabled` is used; pass `-AuthMode disabled` only when the backend is intentionally running with auth disabled.
+- `pwsh ./scripts/smoke-planner-live.ps1 -ApiBaseUrl http://localhost:8000 -Provider ollama`: optional provider-assisted release gate.
+
+Run mocked E2E for fast frontend regression feedback and CI. Run the live
+planner smoke only when a real API, migrated database, and seeded catalog are
+available.

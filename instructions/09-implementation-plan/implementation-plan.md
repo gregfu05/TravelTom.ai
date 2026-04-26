@@ -340,6 +340,9 @@ Rollback notes: Remove endpoint and tests.
 
 #### Step 13: Add events endpoint with idempotency
 
+Status: Planned. `/api/v1/events` is not currently wired into the active API
+router.
+
 Objective: Provide `/api/v1/events` ingestion with validation and idempotency.
 Rationale: Required for analytics and evaluation.
 Preconditions: Step 12 complete.
@@ -449,6 +452,10 @@ Rollback notes: Remove panel component.
 
 #### Step 17: Add shortlist and itinerary views
 
+Status: Partially shipped. Browser-session save/remove, compare, itinerary
+state display, and local booking-stub workflow now live inside `/planner`;
+standalone shortlist/itinerary routes and backend shortlist APIs remain planned.
+
 Objective: Implement shortlist management and itinerary view.
 Rationale: Supports user planning workflow.
 Preconditions: Step 16 complete.
@@ -473,6 +480,10 @@ Suggested commit message: `feat(frontend): add shortlist and itinerary views`
 Rollback notes: Remove shortlist and itinerary components.
 
 #### Step 18: Add booking stub and event tracking
+
+Status: Partially shipped. The planner has a non-transactional local booking
+stub and local workflow events. Network analytics ingestion through
+`/api/v1/events` remains planned until the events endpoint is implemented.
 
 Objective: Add booking stub UI and fire analytics events.
 Rationale: Required for funnel tracking and demo.
@@ -708,6 +719,10 @@ Rollback notes: Disable streaming feature flag.
 ### Epic: Security hardening
 
 #### Step 27: Add authentication and rate limiting
+
+Status: Partially shipped. Local email/password auth, bearer-token sessions,
+logout, and chat rate limiting are implemented. Azure AD B2C provider rollout
+and events-endpoint rate limiting remain planned.
 
 Objective: Secure endpoints with auth and enforce rate limits.
 Rationale: Required for production-grade demo.

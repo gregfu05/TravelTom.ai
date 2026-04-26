@@ -1288,6 +1288,93 @@ def test_orchestrator_planner_first_trip_flow_reaches_hotel_recommendation() -> 
     assert response.state["constraints"]["destination"] == "Santa Barbara"
 
 
+def test_orchestrator_planner_dates_do_not_accept_bad_deterministic_destination() -> (
+    None
+):
+    service = OrchestratorService()
+    captured_query: dict[str, RecommendationQuery | None] = {"value": None}
+
+    def recommendation_executor(
+        query: RecommendationQuery,
+    ) -> RecommendationToolResponse:
+        captured_query["value"] = query
+        return RecommendationToolResponse.model_validate(
+            {
+                "ranking_version": "heuristic-v1",
+                "results": [
+                    {
+                        "item_id": "hotel-paris-1",
+                        "item_type": "hotel",
+                        "score": 0.9,
+                        "rank": 1,
+                        "features": {"name": "Paris Stay"},
+                        "explanation": "Grounded hotel for the planner-first flow.",
+                    }
+                ],
+            }
+        )
+
+    state = SessionState(session_id="sess-paris-flow")
+
+    response = service.handle_message(
+        user_message="Let's plan a trip to Paris",
+        session_state=state,
+        planner_executor=lambda _prompt: {
+            "intent": "recommend",
+            "should_call_recommendation_tool": False,
+            "clarification_message": "What travel dates should I plan around?",
+            "state_patch": {"constraints": {"destination": "Paris"}},
+        },
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+        recommendation_executor=recommendation_executor,
+    )
+    state = SessionState.model_validate(response.state)
+    assert state.constraints.destination == "Paris"
+
+    response = service.handle_message(
+        user_message="Let's try to go for 25th May to 1st June",
+        session_state=state,
+        planner_executor=lambda _prompt: {
+            "intent": "recommend",
+            "should_call_recommendation_tool": False,
+            "clarification_message": (
+                "Sure - for that destination, do you want a hotel, "
+                "a restaurant, or an activity?"
+            ),
+            "state_patch": {
+                "constraints": {"dates": {"start": "2026-05-25", "end": "2026-06-01"}}
+            },
+        },
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+        recommendation_executor=recommendation_executor,
+    )
+    state = SessionState.model_validate(response.state)
+    assert state.constraints.destination == "Paris"
+    assert state.constraints.dates is not None
+    assert state.conversation.last_clarification_kind == "search_type"
+
+    response = service.handle_message(
+        user_message="I want a hotel",
+        session_state=state,
+        planner_executor=lambda _prompt: {
+            "intent": "recommend",
+            "should_call_recommendation_tool": True,
+            "state_patch": {},
+            "query_controls": {"filters": {"item_type": "hotel"}},
+        },
+        agent_executor=lambda _messages: {"messages": [AIMessage(content="ignored")]},
+        recommendation_executor=recommendation_executor,
+    )
+
+    query = captured_query["value"]
+    assert query is not None
+    assert query.constraints.destination == "Paris"
+    assert query.filters["item_type"] == "hotel"
+    assert response.recommendations[0].item_id == "hotel-paris-1"
+    assert response.state["constraints"]["destination"] == "Paris"
+    assert "Go" not in response.assistant_message
+
+
 def test_orchestrator_planner_search_type_reply_bypasses_agent_when_ready() -> None:
     service = OrchestratorService()
     captured_query: dict[str, RecommendationQuery | None] = {"value": None}

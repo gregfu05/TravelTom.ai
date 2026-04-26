@@ -29,7 +29,12 @@ Rate-limit note:
 - TravelTom-owned chat throttling also returns `Retry-After` and
   `details.retry_after_seconds`.
 
-## Endpoints
+## Active runtime endpoints
+
+The currently wired `/api/v1` router surface is limited to health, local auth,
+chat, and deterministic recommendation query. Endpoints outside this section are
+roadmap/spec targets and should not be called as shipped runtime APIs until their
+routers are added.
 
 ### POST /api/v1/auth/signup
 
@@ -290,7 +295,12 @@ Notes:
 - Service validates tool payloads using `app/schemas/tools/recommendations.py` contracts.
 - In placeholder mode, results may be an empty list while recommender integration is pending.
 
-### POST /api/v1/events
+## Planned roadmap endpoints
+
+The endpoints below preserve product/API intent for future implementation. They
+are not currently included in `apps/api/app/api/v1/__init__.py`.
+
+### POST /api/v1/events (planned)
 
 Ingests client and server events.
 
@@ -311,13 +321,13 @@ Request:
 
 Response: `204 No Content` on success.
 
-### GET /api/v1/catalog/search
+### GET /api/v1/catalog/search (planned)
 
 Search and filter catalog items (used for debugging or admin tooling).
 
 Query params: `q`, `type` (`hotel|restaurant|activity`), `limit`, `offset`.
 
-### POST /api/v1/shortlists
+### POST /api/v1/shortlists (planned)
 
 Creates/updates a shortlist.
 
@@ -331,21 +341,22 @@ Request:
 }
 ```
 
-### GET /api/v1/itineraries/{session_id}
+### GET /api/v1/itineraries/{session_id} (planned)
 
 Returns the current itinerary for a session.
 
 ## Status codes
 
 - 200 OK: Successful request.
-- 201 Created: Resource created.
-- 204 No Content: Event accepted.
+- 201 Created: Resource created by endpoints that support creation.
+- 204 No Content: Successful empty response, currently used by auth logout.
+  Planned event ingestion will also use this status when implemented.
 - 400 Bad Request: Validation error.
 - 422 Unprocessable Entity: Request schema validation error (FastAPI default).
 - 401 Unauthorized: Missing or invalid auth.
 - 403 Forbidden: Authenticated caller is not allowed to access the resource.
 - 404 Not Found: Missing resource.
-- 409 Conflict: Idempotency conflict.
+- 409 Conflict: Idempotency conflict or duplicate local account conflict.
 - 429 Too Many Requests: Rate limit.
   - `rate_limit_exceeded`: TravelTom-owned throttling.
   - `provider_rate_limited`: upstream model/provider quota or rate limit.

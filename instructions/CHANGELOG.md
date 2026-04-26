@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+- Aligned runtime documentation with the active shipped surface:
+  - `02-backend/api-design.md` now separates active `/api/v1` routes from
+    planned events, shortlist, itinerary, and catalog-search endpoints.
+  - `02-backend/services-and-modules.md` now distinguishes current route/service
+    modules from planned catalog/events modules.
+  - `05-frontend/frontend-architecture.md` and
+    `09-implementation-plan/implementation-plan.md` now call out shipped
+    browser-session planner workflow behavior separately from planned backend
+    APIs and event ingestion.
+  - `.env.example` and local-dev docs now align `PHI35MINI_*` defaults with the
+    backend settings defaults.
+- Added live planner release verification:
+  - `scripts/smoke-planner-live.ps1` now checks API health, seeded catalog
+    readiness, and the real planner UI against a live backend.
+  - `apps/web/e2e/planner-live.spec.ts` covers signup/auth-disabled entry,
+    a supported Santa Barbara hotel recommendation flow, and a same-session
+    `show me more` continuity turn.
+  - `07-infra-ops/local-dev.md`, `08-quality/testing-strategy.md`,
+    `scripts/README.md`, and `docs/chat-feature-audit.md` now distinguish fast
+    mocked E2E from live-backend release verification and document the
+    Vite/Playwright `spawn EPERM` sandbox limitation.
+- Documented the implemented browser-session planner workflow:
+  - Planner recommendations now support save/remove actions, local saved-item
+    comparison, itinerary display states, and a non-transactional booking stub.
+  - Frontend docs now describe the local `traveltom:planner-workflow` event
+    bridge used until `/api/v1/events` ingestion is active.
 - Updated orchestrator and frontend guidance so hotel searches become
   search-ready with destination and dates, while budget is treated as an
   optional refinement input.

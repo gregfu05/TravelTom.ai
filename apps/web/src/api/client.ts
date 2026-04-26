@@ -17,7 +17,9 @@ const healthResponseSchema = z.object({
 const recommendationSchema = z.object({
   item_id: z.string(),
   item_type: z.enum(["hotel", "restaurant", "activity"]),
+  score: z.number().optional(),
   rank: z.number(),
+  explanation: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -79,7 +81,9 @@ export interface ChatRequest {
 export interface Recommendation {
   itemId: string;
   itemType: ItemType;
+  score?: number;
   rank: number;
+  explanation?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -227,7 +231,9 @@ function mapChatResponse(raw: z.output<typeof chatResponseSchema>): ChatResponse
     recommendations: raw.recommendations.map((item) => ({
       itemId: item.item_id,
       itemType: item.item_type,
+      score: item.score,
       rank: item.rank,
+      explanation: item.explanation,
       metadata: item.metadata,
     })),
     itinerary: raw.itinerary,
@@ -260,7 +266,9 @@ function mapChatSessionResponse(
     recommendations: raw.recommendations.map((item) => ({
       itemId: item.item_id,
       itemType: item.item_type,
+      score: item.score,
       rank: item.rank,
+      explanation: item.explanation,
       metadata: item.metadata,
     })),
   };

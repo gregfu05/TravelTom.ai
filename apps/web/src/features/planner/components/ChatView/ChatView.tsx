@@ -6,9 +6,11 @@ import {
   createMessage,
   createMessageId,
   getClientContext,
+  getRecommendationName,
   type PendingRequest,
 } from "../../lib/plannerChat";
 import { shouldDiscardHydratedSession } from "../../lib/sessionHydration/sessionHydration";
+import { trackPlannerWorkflowEvent } from "../../lib/workflowEvents";
 import {
   buildChatErrorState,
   getCooldownRemainingSeconds,
@@ -52,11 +54,18 @@ export function ChatView() {
     isSending,
     chatError,
     latestRecommendations,
+    latestItinerary,
+    savedRecommendations,
+    bookingConfirmation,
     authToken,
     setSessionId,
     setHasRemoteSession,
     addMessage,
     setLatestRecommendations,
+    setLatestItinerary,
+    saveRecommendation,
+    removeSavedRecommendation,
+    confirmBookingStub,
     setIsSending,
     setChatError,
     setAuthToken,
@@ -88,6 +97,11 @@ export function ChatView() {
     .reverse()
     .find((item) => item.role === "assistant")?.id;
   const hasRecommendations = topRecommendations.length > 0;
+  const hasPlannerWorkflow =
+    hasRecommendations ||
+    savedRecommendations.length > 0 ||
+    (latestItinerary?.days.length ?? 0) > 0 ||
+    bookingConfirmation !== null;
 
   useEffect(() => {
     if (
@@ -266,6 +280,7 @@ export function ChatView() {
         ),
       );
       setLatestRecommendations(response.recommendations);
+      setLatestItinerary(response.itinerary ?? null);
       setPendingRequest(null);
       setChatError(null);
     } catch (error: unknown) {
@@ -305,6 +320,50 @@ export function ChatView() {
     });
   }
 
+  function handleSaveRecommendation(item: (typeof topRecommendations)[number]) {
+    saveRecommendation(item, sessionId);
+    trackPlannerWorkflowEvent({
+      eventType: "rec.save",
+      sessionId,
+      itemId: item.itemId,
+      itemType: item.itemType,
+    });
+    trackPlannerWorkflowEvent({
+      eventType: "shortlist.update",
+      sessionId,
+      itemId: item.itemId,
+      itemType: item.itemType,
+    });
+  }
+
+  function handleRemoveSavedRecommendation(itemId: string) {
+    const savedItem = savedRecommendations.find((item) => item.itemId === itemId);
+    removeSavedRecommendation(itemId);
+    trackPlannerWorkflowEvent({
+      eventType: "rec.dismiss",
+      sessionId,
+      itemId,
+      itemType: savedItem?.itemType,
+    });
+    trackPlannerWorkflowEvent({
+      eventType: "shortlist.update",
+      sessionId,
+      itemId,
+      itemType: savedItem?.itemType,
+    });
+  }
+
+  function handleBookStub(item: (typeof topRecommendations)[number]) {
+    confirmBookingStub(item, getRecommendationName(item), sessionId);
+    trackPlannerWorkflowEvent({
+      eventType: "booking.funnel",
+      sessionId,
+      itemId: item.itemId,
+      itemType: item.itemType,
+      step: "confirm",
+    });
+  }
+
   const avatarClass = [
     "tom-avatar",
     isSending ? "tom-avatar-thinking" : "",
@@ -327,6 +386,7 @@ export function ChatView() {
             onOpenDrawer={() => setIsDrawerOpen(true)}
             recommendationsCount={topRecommendations.length}
             recsJustArrived={recsJustArrived}
+            workflowCount={topRecommendations.length + savedRecommendations.length}
           />
           <p className="session-pill">Session {sessionId.slice(0, 8)}</p>
           <button
@@ -426,12 +486,18 @@ export function ChatView() {
           </form>
         </div>
 
-        {hasRecommendations ? (
+        {hasPlannerWorkflow ? (
           <PlannerRecommendationsSurface
+            bookingConfirmation={bookingConfirmation}
             isDrawerOpen={isDrawerOpen}
+            latestItinerary={latestItinerary}
+            onBook={handleBookStub}
             onCloseDrawer={() => setIsDrawerOpen(false)}
+            onRemoveSavedRecommendation={handleRemoveSavedRecommendation}
+            onSaveRecommendation={handleSaveRecommendation}
             recommendations={topRecommendations}
             recsJustArrived={recsJustArrived}
+            savedRecommendations={savedRecommendations}
           />
         ) : null}
       </div>

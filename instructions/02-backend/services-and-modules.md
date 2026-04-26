@@ -1,6 +1,6 @@
 # Services and Modules
 
-## Suggested FastAPI layout
+## Current FastAPI layout
 
 ```
 apps/api/
@@ -11,10 +11,6 @@ apps/api/
         health.py
         chat.py
         recommendations.py
-        events.py
-        catalog.py
-        shortlists.py
-        itineraries.py
     core/
       config.py
       errors.py
@@ -36,8 +32,6 @@ apps/api/
       travel_tom_agent.py
       orchestrator/
       recommender/
-      catalog/
-      events/
       health_status.py
       recommendation_query.py
       chat_uow.py
@@ -50,11 +44,15 @@ apps/api/
         chat.py
         health.py
         recommendations.py
-      events/
       tools/
       state.py
     main.py
 ```
+
+Current active route modules are `auth.py`, `health.py`, `chat.py`, and
+`recommendations.py`. Planned modules such as `events.py`, `catalog.py`,
+`shortlists.py`, and `itineraries.py` remain roadmap targets until their routers
+and services are implemented and registered.
 
 ## Dependency injection
 
@@ -120,10 +118,14 @@ apps/api/
 - Recommender service:
   - Owns retrieval and ranking logic.
   - Deterministic outputs with versioned scoring.
-- Catalog service:
-  - Responsible for catalog CRUD and search.
-- Event logger:
-  - Validates and writes events with idempotency.
+- Catalog service (planned):
+  - Will own catalog CRUD/search when `/api/v1/catalog/search` is implemented.
+  - Current runtime reads PostgreSQL `catalog_items` through the recommendation
+    runtime rather than a standalone catalog API route.
+- Event logger (planned):
+  - Will validate and write events with idempotency when `/api/v1/events` is
+    implemented.
+  - Current planner workflow analytics are local frontend events only.
 - Health status service (`app/services/health_status.py`):
   - Owns health payload construction for `/health`.
   - Keeps router logic limited to HTTP wiring.
