@@ -38,7 +38,7 @@ dependencies = [
 dev = [
   "black==26.3.1",
   "httpx>=0.28",
-  "mypy==1.20.2",
+  "mypy==2.1.0",
   "pytest==9.0.3",
   "ruff==0.15.12",
 ]
