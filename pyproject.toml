@@ -36,7 +36,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "black==26.3.1",
+  "black==26.5.1",
   "httpx>=0.28",
   "mypy==1.20.2",
   "pytest==9.0.3",
